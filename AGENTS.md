@@ -14,6 +14,13 @@ Default branch: `main`
 
 Self-hosted deploys run Kamal against `config/deploy.yml` — see `docs/kamal-deployment.md`.
 
+## Poly-repo shells
+
+The Handy poly-repo may enter this checkout with RVM already active. `bin/setup`
+clears inherited Ruby/Bundler variables and `bin/dev` re-enters through the Ruby
+pinned by mise. Do not remove that boundary: mixing RVM native extensions with
+the mise Ruby fails later as an unrelated OpenSSL or psych activation error.
+
 ## SaaS mode
 
 For local agent work, `tmp/saas.txt` is the checkout-level SaaS switch used by `bin/setup`. When present, read `saas/AGENTS.md` before continuing. Otherwise, do not apply its instructions.

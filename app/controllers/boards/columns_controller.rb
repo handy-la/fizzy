@@ -1,5 +1,5 @@
 class Boards::ColumnsController < ApplicationController
-  wrap_parameters :column, include: %i[ name color ]
+  wrap_parameters :column, include: %i[ name color notify_on_entry ]
 
   include BoardScoped
 
@@ -48,6 +48,6 @@ class Boards::ColumnsController < ApplicationController
     end
 
     def column_params
-      params.expect(column: [ :name, :color ])
+      params.expect(column: [ :name, :color, :notify_on_entry ])
     end
 end

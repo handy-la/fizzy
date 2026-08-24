@@ -45,6 +45,17 @@ class Card::TriageableTest < ActiveSupport::TestCase
     end
   end
 
+  test "triage event snapshots the destination column notification setting" do
+    card = cards(:buy_domain)
+    column = columns(:writebook_in_progress)
+    column.update!(notify_on_entry: false)
+
+    card.triage_into(column)
+
+    event = card.events.where(action: "card_triaged").last
+    assert_equal false, event.particulars.dig("particulars", "notify_on_entry")
+  end
+
   test "send a card back to triage" do
     card = cards(:logo)
     assert card.triaged?

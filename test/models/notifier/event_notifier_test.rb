@@ -117,6 +117,22 @@ class Notifier::EventNotifierTest < ActiveSupport::TestCase
     assert_equal [ users(:jz) ], notifications.map(&:user)
   end
 
+  test "card triage events do not notify watchers when disabled for the destination column" do
+    boards(:writebook).access_for(users(:kevin)).watching!
+    event = events(:logo_published)
+    event.update!(action: "card_triaged", particulars: { particulars: { column: "Quiet", notify_on_entry: false } })
+
+    assert_empty Notifier.for(event).notify
+  end
+
+  test "legacy card triage events still notify watchers" do
+    boards(:writebook).access_for(users(:kevin)).watching!
+    event = events(:logo_published)
+    event.update!(action: "card_triaged", particulars: { particulars: { column: "In progress" } })
+
+    assert_equal [ users(:kevin) ], Notifier.for(event).notify.map(&:user)
+  end
+
   private
     def mention_html_for(user)
       ActionText::Attachment.from_attachable(user).to_html

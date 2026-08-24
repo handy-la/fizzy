@@ -1,0 +1,10 @@
+#!/usr/bin/env bash
+# managed by: bin/signoff install-hook — the review gate; logic lives in bin/signoff.
+set -euo pipefail
+root=""; d="$(git rev-parse --show-toplevel 2>/dev/null || pwd)"
+while [ -n "$d" ] && [ "$d" != "/" ]; do
+  [ -x "$d/bin/signoff" ] && { root="$d"; break; }
+  d="$(dirname "$d")"
+done
+[ -n "$root" ] || exit 0   # not in the poly workspace; do nothing
+exec "$root/bin/signoff" pre-push-check fizzy-custom "$@"

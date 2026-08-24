@@ -1,5 +1,5 @@
 json.cache! column do
-  json.(column, :id, :name, :color)
+  json.(column, :id, :name, :color, :notify_on_entry)
   json.created_at column.created_at.utc
   json.cards_url board_column_cards_url(column.board, column)
 end

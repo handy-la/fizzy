@@ -17,6 +17,14 @@ class Boards::ColumnsControllerTest < ActionDispatch::IntegrationTest
     end
 
     assert_equal "New Column", boards(:writebook).columns.last.name
+    assert boards(:writebook).columns.last.notify_on_entry?
+  end
+
+  test "create with entry notifications disabled" do
+    post board_columns_path(boards(:writebook)), params: { column: { name: "Quiet", notify_on_entry: false } }, as: :turbo_stream
+
+    assert_response :success
+    assert_not boards(:writebook).columns.last.notify_on_entry?
   end
 
   test "create refreshes adjacent columns" do
@@ -39,6 +47,15 @@ class Boards::ColumnsControllerTest < ActionDispatch::IntegrationTest
     end
   end
 
+  test "update entry notification setting" do
+    column = columns(:writebook_in_progress)
+
+    assert_changes -> { column.reload.notify_on_entry? }, from: true, to: false do
+      put board_column_path(column.board, column), params: { column: { notify_on_entry: false } }, as: :turbo_stream
+      assert_response :success
+    end
+  end
+
   test "destroy" do
     column = columns(:writebook_in_progress)
     adjacent_columns = column.adjacent_columns.to_a
@@ -56,6 +73,7 @@ class Boards::ColumnsControllerTest < ActionDispatch::IntegrationTest
     assert_response :success
     assert_equal board.columns.count, @response.parsed_body.count
     assert_equal board_column_cards_url(board, board.columns.sorted.first), @response.parsed_body.first["cards_url"]
+    assert_equal true, @response.parsed_body.first["notify_on_entry"]
   end
 
   test "show as JSON" do
@@ -66,6 +84,7 @@ class Boards::ColumnsControllerTest < ActionDispatch::IntegrationTest
     assert_response :success
     assert_equal column.id, @response.parsed_body["id"]
     assert_equal board_column_cards_url(column.board, column), @response.parsed_body["cards_url"]
+    assert_equal true, @response.parsed_body["notify_on_entry"]
   end
 
   test "create as JSON" do

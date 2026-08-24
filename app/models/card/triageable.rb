@@ -22,7 +22,7 @@ module Card::Triageable
     transaction do
       resume
       update! column: column
-      track_event "triaged", particulars: { column: column.name }
+      track_event "triaged", particulars: { column: column.name, notify_on_entry: column.notify_on_entry? }
     end
   end
 

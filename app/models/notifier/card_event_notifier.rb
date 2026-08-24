@@ -11,9 +11,15 @@ class Notifier::CardEventNotifier < Notifier
         board.watchers.without(creator, *card.scan_mentionees).including(*card.assignees).uniq
       when "comment_created"
         card.watchers.without(creator, *source.eventable.scan_mentionees)
+      when "card_triaged"
+        notify_on_entry? ? board.watchers.without(creator) : User.none
       else
         board.watchers.without(creator)
       end
+    end
+
+    def notify_on_entry?
+      source.particulars.dig("particulars", "notify_on_entry") != false
     end
 
     def card

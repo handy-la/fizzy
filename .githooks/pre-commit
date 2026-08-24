@@ -1,4 +1,20 @@
 #!/bin/sh
+# A clone nested in Handy's poly-repo also carries a branch gate. Keep it ahead
+# of the fork's own lint hook: core.hooksPath points Git at this tracked file, so
+# a shim written under .git/hooks would never execute.
+poly_root=''
+dir=$(git rev-parse --show-toplevel 2>/dev/null || pwd)
+while [ -n "$dir" ] && [ "$dir" != / ]; do
+  if [ -x "$dir/bin/signoff" ]; then
+    poly_root=$dir
+    break
+  fi
+  dir=$(dirname "$dir")
+done
+if [ -n "$poly_root" ]; then
+  "$poly_root/bin/signoff" pre-commit-check fizzy-custom || exit $?
+fi
+
 # Keep the developer's own PATH -- bin/setup accepts whichever mise it finds and
 # upgrades that one -- but drop relative entries first. Shipyard puts ./bin at
 # high precedence, and a hook runs with a checkout as its cwd, so a relative

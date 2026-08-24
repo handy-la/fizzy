@@ -10,7 +10,7 @@
 #
 # It's strongly recommended that you check this file into your version control system.
 
-ActiveRecord::Schema[8.2].define(version: 2026_07_09_120000) do
+ActiveRecord::Schema[8.2].define(version: 2026_08_24_210000) do
   create_table "accesses", id: :uuid, force: :cascade do |t|
     t.datetime "accessed_at"
     t.uuid "account_id", null: false
@@ -261,6 +261,7 @@ ActiveRecord::Schema[8.2].define(version: 2026_07_09_120000) do
     t.string "name", limit: 255, null: false
     t.integer "position", default: 0, null: false
     t.datetime "updated_at", null: false
+    t.boolean "notify_on_entry", default: true, null: false
     t.index ["account_id"], name: "index_columns_on_account_id"
     t.index ["board_id", "position"], name: "index_columns_on_board_id_and_position"
     t.index ["board_id"], name: "index_columns_on_board_id"

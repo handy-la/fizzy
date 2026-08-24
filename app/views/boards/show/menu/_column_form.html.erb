@@ -12,5 +12,13 @@
     <% end %>
   </div>
 
+  <label class="flex align-center gap cursor-pointer">
+    <span class="switch txt-x-small flex-item-no-shrink">
+      <%= form.check_box :notify_on_entry, class: "switch__input" %>
+      <span class="switch__btn round"></span>
+    </span>
+    <span class="min-width">Notify watchers when cards enter this column</span>
+  </label>
+
   <%= form.submit label, class: "btn btn--link" %>
 <% end %>

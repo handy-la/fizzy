@@ -1,5 +1,23 @@
 #!/usr/bin/env bash
 
+app_root="$(cd "$(dirname "$0")/.." && pwd)"
+script_path="$app_root/bin/dev"
+cd "$app_root"
+
+# Always enter through the Ruby pinned by this checkout. A parent poly-repo
+# shell may have RVM active; without this boundary, foreman can load native gems
+# from a different Ruby and fail before Puma starts.
+if [ -z "${FIZZY_MISE_EXEC:-}" ]; then
+  if ! command -v mise >/dev/null 2>&1; then
+    echo "Error: mise not found. Run bin/setup first." >&2
+    exit 1
+  fi
+
+  exec env -u GEM_HOME -u GEM_PATH -u MY_RUBY_HOME -u RUBY_VERSION -u RUBYOPT -u RUBYLIB \
+    -u RBENV_VERSION -u BUNDLE_PATH -u BUNDLE_WITH -u BUNDLE_WITHOUT \
+    FIZZY_MISE_EXEC=1 mise exec -- "$script_path" "$@"
+fi
+
 PORT=3006
 USE_TAILSCALE=0
 USE_PUSH=0
