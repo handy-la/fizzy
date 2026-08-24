@@ -96,5 +96,5 @@ Rails.application.configure do
   ]
 
   # Canonical host for mailer URLs (emails always link here, not personal Tailscale URLs)
-  config.action_mailer.default_url_options = { host: "#{config.hosts.first}:3006" }
+  config.action_mailer.default_url_options = { host: "#{config.hosts.first}:#{ENV.fetch("PORT", 3006)}" }
 end

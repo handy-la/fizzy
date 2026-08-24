@@ -20,6 +20,7 @@ CI.run do
   step "Security: Gitleaks audit", "bin/gitleaks-audit"
 
   step "Tests: Setup phases", "test/setup-phases-test"
+  step "Tests: Dev ports", "test/dev-port-test"
 
   if Fizzy.saas?
     step "Tests: SaaS",          "#{SAAS_ENV} bin/rails test"

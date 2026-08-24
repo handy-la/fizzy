@@ -15,7 +15,9 @@ And then run the development server:
 bin/dev
 ```
 
-You'll be able to access the app in development at http://app.fizzy.localhost:3006.
+You'll be able to access the app in development at http://app.fizzy.localhost:3006. `bin/dev` prints the
+URL it picked: a checkout claims the first free port from 3006 up and remembers it in `tmp/dev-port.txt`,
+so several checkouts of the repo can run at the same time on one machine. Set `PORT` to choose your own.
 
 To log in, enter `david@example.com`. In development the verification code is shown on the page itself, under "Psst, here's your code" — no need to check your email.
 

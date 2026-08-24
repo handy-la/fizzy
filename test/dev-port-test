@@ -1,0 +1,185 @@
+#!/usr/bin/env bash
+# Port claiming and tailscale route ownership in bin/dev, checked in a sandbox
+# where foreman and tailscale are stubs and the only real resources are host TCP
+# ports. The bug this brackets: bin/dev hard-coded PORT=3006, so a second
+# checkout could not bind, and — with --tailscale — its exit trap retired the
+# serve route of the checkout that was already running, taking that one off the
+# tailnet. `tailscale serve` state is the machine's, so nothing but an ownership
+# check can tell the two apart.
+#
+# Invocation (from anywhere):
+#
+#   test/dev-port-test
+set -uo pipefail
+
+ROOT="$(cd "$(dirname "$0")/.." && pwd)"
+command -v jq >/dev/null 2>&1 || { echo "error: dev-port-test needs jq on PATH" >&2; exit 1; }
+command -v ruby >/dev/null 2>&1 || { echo "error: dev-port-test needs ruby on PATH" >&2; exit 1; }
+
+WORK="$(mktemp -d "${TMPDIR:-/tmp}/dev-port.XXXXXX")"
+HELD_PIDS=()
+cleanup() {
+  local pid
+  for pid in ${HELD_PIDS+"${HELD_PIDS[@]}"}; do kill "$pid" 2>/dev/null; done
+  rm -rf "$WORK"
+}
+trap cleanup EXIT
+TS_STATE="$WORK/tailscale.json"
+echo '{"TCP":{},"Web":{}}' > "$TS_STATE"
+TS_HOSTNAME=sandbox.tail0000.ts.net
+
+pass=0 fail=0
+ok()  { pass=$((pass+1)); echo "  ok: $1"; }
+bad() { fail=$((fail+1)); echo "  FAIL: $1"; }
+eq()  { [ "$2" = "$3" ] && ok "$1" || bad "$1 (expected '$3', got '$2')"; }
+
+# A sandbox is a checkout: bin/dev, a Procfile, its own tmp/, and stubs ahead of
+# everything else on PATH. Only tmp/dev-port.txt distinguishes one from another,
+# which is exactly the state the fix keys on.
+build_sandbox() { # build_sandbox <dir>
+  local sb="$1"
+  mkdir -p "$sb/bin" "$sb/tmp" "$sb/stubbin"
+  cp "$ROOT/bin/dev" "$sb/bin/dev"
+  cp "$ROOT/Procfile.dev" "$sb/Procfile.dev"
+
+  # Records the PORT it was handed. STUB_HOLD_PORT makes it bind that port and
+  # stay up, standing in for the puma of a checkout that is already running.
+  cat > "$sb/stubbin/foreman" <<'EOF'
+#!/usr/bin/env bash
+[ "${1:-}" = version ] && exit 0
+printf '%s\n' "${PORT:-unset}" > "$STUB_PORT_RECORD"
+if [ -n "${STUB_HOLD_PORT:-}" ]; then
+  printf '%s\n' $$ > "$STUB_PORT_RECORD.pid"
+  exec ruby -rsocket -e 'TCPServer.new("127.0.0.1", ARGV[0].to_i); trap("TERM") { exit 0 }; sleep' "$PORT"
+fi
+EOF
+
+  # tailscale serve state lives in one JSON file shared by every sandbox, the
+  # way the real one is shared by every checkout on the machine.
+  cat > "$sb/stubbin/tailscale" <<'EOF'
+#!/usr/bin/env bash
+key() { echo "$STUB_TS_HOSTNAME:$1"; }
+write() { jq "$@" "$STUB_TS_STATE" > "$STUB_TS_STATE.tmp" && mv "$STUB_TS_STATE.tmp" "$STUB_TS_STATE"; }
+
+case "$1 ${2:-}" in
+  "status --self")
+    jq -n --arg n "$STUB_TS_HOSTNAME." '{Self:{DNSName:$n}}' ;;
+  "serve status")
+    cat "$STUB_TS_STATE" ;;
+  "serve --bg")
+    port="${3#--https=}"; target="http://$4"
+    write --arg p "$port" --arg k "$(key "$port")" --arg t "$target" \
+      '.TCP[$p] = {HTTPS:true} | .Web[$k] = {Handlers:{"/":{Proxy:$t}}}' ;;
+  "serve --https="*)
+    port="${2#--https=}"
+    write --arg p "$port" --arg k "$(key "$port")" 'del(.TCP[$p]) | del(.Web[$k])' ;;
+  *) echo "stub tailscale: unhandled: $*" >&2; exit 1 ;;
+esac
+EOF
+
+  chmod +x "$sb/stubbin/foreman" "$sb/stubbin/tailscale"
+}
+
+# Run bin/dev in a sandbox and answer with its exit status; the PORT foreman saw
+# is left in <sandbox>/port-record.
+run_dev() { # run_dev <dir> [args...]
+  local sb="$1"; shift
+  ( cd "$sb" && env -u PORT PATH="$sb/stubbin:$PATH" FIZZY_MISE_EXEC=1 \
+      STUB_PORT_RECORD="$sb/port-record" STUB_TS_STATE="$TS_STATE" \
+      STUB_TS_HOSTNAME="$TS_HOSTNAME" \
+      bash bin/dev "$@" >"$sb/out" 2>"$sb/err" )
+}
+
+free_port() {
+  ruby -rsocket -e 's = TCPServer.new("127.0.0.1", 0); print s.addr[1]; s.close'
+}
+
+hold_port() { # hold_port <port> — a listener that is not this repo's
+  ruby -rsocket -e 'TCPServer.new("127.0.0.1", ARGV[0].to_i); sleep' "$1" &
+  HELD_PIDS+=($!)
+  disown       # so the kill in cleanup is not announced on the way out
+  sleep 0.3
+}
+
+route_target() { # route_target <tailscale port>
+  jq -r --arg k "$TS_HOSTNAME:$1" '.Web[$k].Handlers["/"].Proxy // empty' "$TS_STATE"
+}
+
+echo "A remembered port is reused"
+sb="$WORK/remembered"; build_sandbox "$sb"
+remembered="$(free_port)"
+echo "$remembered" > "$sb/tmp/dev-port.txt"
+run_dev "$sb"
+eq "foreman ran on the remembered port" "$(cat "$sb/port-record")" "$remembered"
+eq "the record is unchanged" "$(cat "$sb/tmp/dev-port.txt")" "$remembered"
+
+echo "A remembered port somebody else took is given up"
+sb="$WORK/taken"; build_sandbox "$sb"
+taken="$(free_port)"; hold_port "$taken"
+echo "$taken" > "$sb/tmp/dev-port.txt"
+run_dev "$sb"
+claimed="$(cat "$sb/port-record")"
+[ "$claimed" != "$taken" ] && ok "moved off the taken port (to $claimed)" || bad "kept the taken port $taken"
+eq "the new port is remembered" "$(cat "$sb/tmp/dev-port.txt")" "$claimed"
+
+echo "PORT from the environment wins and is not remembered"
+sb="$WORK/explicit"; build_sandbox "$sb"
+explicit="$(free_port)"
+( cd "$sb" && env PATH="$sb/stubbin:$PATH" FIZZY_MISE_EXEC=1 PORT="$explicit" \
+    STUB_PORT_RECORD="$sb/port-record" STUB_TS_STATE="$TS_STATE" \
+    STUB_TS_HOSTNAME="$TS_HOSTNAME" bash bin/dev >/dev/null 2>&1 )
+eq "foreman ran on the given port" "$(cat "$sb/port-record")" "$explicit"
+[ -f "$sb/tmp/dev-port.txt" ] && bad "wrote a record for an explicit PORT" || ok "no record written"
+
+echo "A tailscale route owned by another checkout is refused, not taken over"
+sb="$WORK/foreign"; build_sandbox "$sb"
+foreign_port="$(free_port)"
+echo "$foreign_port" > "$sb/tmp/dev-port.txt"
+jq --arg k "$TS_HOSTNAME:4$foreign_port" '.Web[$k] = {Handlers:{"/":{Proxy:"http://localhost:9999"}}}' \
+  "$TS_STATE" > "$TS_STATE.tmp" && mv "$TS_STATE.tmp" "$TS_STATE"
+run_dev "$sb" --tailscale
+eq "bin/dev refused" "$?" "1"
+eq "the other checkout's route survived" "$(route_target "4$foreign_port")" "http://localhost:9999"
+
+echo "Its own tailscale route is created and retired"
+sb="$WORK/own"; build_sandbox "$sb"
+own_port="$(free_port)"
+echo "$own_port" > "$sb/tmp/dev-port.txt"
+run_dev "$sb" --tailscale
+eq "the route was retired on exit" "$(route_target "4$own_port")" ""
+grep -q "https://$TS_HOSTNAME:4$own_port/" "$sb/out" && ok "printed its own tailnet URL" \
+  || bad "did not print its own tailnet URL"
+
+echo "A second checkout leaves the running one on the tailnet"
+first="$WORK/first"; build_sandbox "$first"
+# `env` and `bash -c` both exec, so $! is bin/dev itself and a TERM reaches its
+# trap — which is the whole point of the last assertion.
+env -u PORT PATH="$first/stubbin:$PATH" FIZZY_MISE_EXEC=1 STUB_HOLD_PORT=1 \
+    STUB_PORT_RECORD="$first/port-record" STUB_TS_STATE="$TS_STATE" \
+    STUB_TS_HOSTNAME="$TS_HOSTNAME" \
+    bash -c 'cd "$1" && exec bin/dev --tailscale' _ "$first" >"$first/out" 2>&1 &
+first_pid=$!
+HELD_PIDS+=($first_pid)
+for _ in $(seq 1 50); do [ -s "$first/port-record" ] && break; sleep 0.2; done
+first_port="$(cat "$first/port-record" 2>/dev/null)"
+[ -n "$first_port" ] && ok "the first checkout started (port $first_port)" \
+  || bad "the first checkout never started: $(cat "$first/out")"
+eq "the first checkout is on the tailnet" "$(route_target "4$first_port")" "http://localhost:$first_port"
+
+second="$WORK/second"; build_sandbox "$second"
+run_dev "$second" --tailscale
+second_port="$(cat "$second/port-record")"
+[ "$second_port" != "$first_port" ] && ok "the second checkout claimed its own port ($second_port)" \
+  || bad "both checkouts claimed port $first_port"
+eq "the first checkout is still on the tailnet" "$(route_target "4$first_port")" "http://localhost:$first_port"
+
+# Stop the stand-in server rather than bin/dev itself: bash runs an EXIT trap
+# only once the foreground command returns, so signalling bin/dev while foreman
+# holds the terminal would just queue behind it.
+kill "$(cat "$first/port-record.pid" 2>/dev/null)" 2>/dev/null
+wait "$first_pid" 2>/dev/null
+eq "the first checkout retired its own route on exit" "$(route_target "4$first_port")" ""
+
+echo
+echo "$pass passed, $fail failed"
+[ "$fail" -eq 0 ]
