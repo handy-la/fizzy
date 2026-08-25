@@ -1,5 +1,7 @@
 # Fizzy
 
+Responde únicamente en español técnico simplificado (equivalente al estándar ASD-STE100).
+
 Fizzy is a kanban-style project management and issue tracker: cards move
 across columns on boards, with comments, mentions, and assignments.
 
