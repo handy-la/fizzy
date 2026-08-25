@@ -37,7 +37,7 @@ class Notifier::EventNotifierTest < ActiveSupport::TestCase
   test "links to the card" do
     boards(:writebook).access_for(users(:kevin)).watching!
 
-    Notifier.for(events(:logo_published)).notify
+    Notifier.for(events(:logo_assignment_jz)).notify
 
     assert_equal cards(:logo), Notification.last.source.eventable
   end
@@ -68,21 +68,24 @@ class Notifier::EventNotifierTest < ActiveSupport::TestCase
     assert_empty notifications
   end
 
-  test "create notifications on publish for mentionees" do
-    users(:kevin).mentioned_by(users(:david), at: cards(:logo))
+  test "default stage entry events do not notify watchers" do
+    boards(:writebook).access_for(users(:kevin)).watching!
+    event = events(:logo_published)
 
-    notifications = Notifier.for(events(:logo_published)).notify
+    %w[ card_sent_back_to_triage card_postponed card_auto_postponed card_closed ].each do |action|
+      event.update!(action: action)
 
-    assert_includes notifications.map(&:user), users(:kevin)
+      assert_empty Notifier.for(event).notify, "Expected #{action} to be silent"
+    end
   end
 
-  test "create notifications on publish for mentionees that are not watching" do
-    users(:kevin).mentioned_by(users(:david), at: cards(:logo))
-    cards(:logo).unwatch_by(users(:kevin))
+  test "publishing only notifies assignees, not other board watchers" do
+    boards(:writebook).accesses.create!(user: users(:jason), involvement: :watching)
 
     notifications = Notifier.for(events(:logo_published)).notify
 
-    assert_includes notifications.map(&:user), users(:kevin)
+    assert_equal cards(:logo).assignees.sort_by(&:id), notifications.map(&:user).sort_by(&:id)
+    assert_not_includes notifications.map(&:user), users(:jason)
   end
 
   test "don't create notifications on comment for mentionees" do

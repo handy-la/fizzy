@@ -8,7 +8,9 @@ class Notifier::CardEventNotifier < Notifier
       when "card_assigned"
         source.assignees.excluding(creator)
       when "card_published"
-        board.watchers.without(creator, *card.scan_mentionees).including(*card.assignees).uniq
+        card.assignees.excluding(creator)
+      when "card_sent_back_to_triage", "card_postponed", "card_auto_postponed", "card_closed"
+        User.none
       when "comment_created"
         card.watchers.without(creator, *source.eventable.scan_mentionees)
       when "card_triaged"
