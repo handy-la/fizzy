@@ -167,12 +167,10 @@
     }
   }
 
-  .header__board-links--start {
-    justify-content: flex-end;
-  }
-
-  .header__board-links--end {
-    justify-content: flex-start;
+  /* An auto margin, not justify-content: when the badges overflow, the
+   * scroller must still start at the first one. */
+  .header__board-links--start > :first-child {
+    margin-inline-start: auto;
   }
 
   .header__board-link {
@@ -197,7 +195,7 @@
   }
 
   /* On a phone the menu row sits between the header buttons: the badges go to
-   * their own row under the menu and scroll sideways when there are many. */
+   * their own centered rows under the menu. */
   @media (max-width: 639px) {
     .header__menu {
       flex-wrap: wrap;
@@ -212,17 +210,16 @@
     }
 
     .header__board-links {
-      flex: 0 1 auto;
-      max-inline-size: 50%;
+      display: contents;
+    }
+
+    .header__board-links--start > :first-child {
+      margin-inline-start: 0;
     }
 
     .header__board-link {
       font-size: var(--text-x-small);
       padding: 0.45em 1em;
-    }
-
-    .header__board-links:not(:has(a)) {
-      display: none;
     }
   }
 }
