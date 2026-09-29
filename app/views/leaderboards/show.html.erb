@@ -1,0 +1,103 @@
+<% @page_title = "Leaderboard" %>
+<% shipped = @leaderboard.shipped.size %>
+
+<% content_for :header do %>
+  <div class="header__actions header__actions--start">
+    <%= back_link_to "Home", root_path, "keydown.left@document->hotkey#click keydown.esc@document->hotkey#click" %>
+  </div>
+
+  <h1 class="header__title" data-bridge--title-target="header"><%= @page_title %></h1>
+<% end %>
+
+<div class="leaderboard" data-controller="<%= "confetti" if @leaderboard.shipped_today.positive? %>">
+  <section class="leaderboard__hero" aria-label="Cards shipped">
+    <div class="leaderboard__hero-emoji" aria-hidden="true">🏆</div>
+    <div class="leaderboard__hero-number" data-controller="count-up" data-count-up-value="<%= shipped %>"><%= number_with_delimiter shipped %></div>
+    <div class="leaderboard__hero-label">cards shipped</div>
+    <div class="leaderboard__hero-sub">
+      <span class="leaderboard__chip">+<%= @leaderboard.shipped_today %> today</span>
+      <span class="leaderboard__chip">+<%= @leaderboard.shipped_this_week %> this week</span>
+    </div>
+  </section>
+
+  <section class="leaderboard__tiles" aria-label="Totals">
+    <%= render "leaderboards/tile", emoji: "🚀", label: "Deployed", value: @leaderboard.deployed.size, color: "var(--color-card-4)" %>
+    <%= render "leaderboards/tile", emoji: "🌍", label: "Published", value: @leaderboard.published.size, color: "var(--color-card-5)" %>
+    <%= render "leaderboards/tile", emoji: "✅", label: "Done", value: @leaderboard.done.size, color: "var(--color-card-6)", note: "+#{@leaderboard.done_today} today" %>
+    <%= render "leaderboards/tile", emoji: "🔥", label: "Day streak", value: @leaderboard.streak, color: "var(--color-card-3)" %>
+    <% if best_day = @leaderboard.best_day %>
+      <%= render "leaderboards/tile", emoji: "⭐", label: "Best day", value: best_day.last, color: "var(--color-card-8)", note: l(best_day.first, format: :short) %>
+    <% end %>
+  </section>
+
+  <% if next_milestone = @leaderboard.next_milestone %>
+    <% previous_milestone = @leaderboard.previous_milestone %>
+    <section class="leaderboard__panel leaderboard__milestone" aria-label="Next milestone">
+      <div class="leaderboard__panel-title">
+        <span>Next milestone: <strong><%= number_with_delimiter next_milestone %></strong> 🎯</span>
+        <span class="leaderboard__muted"><%= pluralize next_milestone - shipped, "more card" %> to go</span>
+      </div>
+      <div class="leaderboard__progress" role="progressbar" aria-valuemin="<%= previous_milestone %>" aria-valuemax="<%= next_milestone %>" aria-valuenow="<%= shipped %>">
+        <div class="leaderboard__progress-fill" style="--progress: <%= ((shipped - previous_milestone) * 100.0 / (next_milestone - previous_milestone)).round(1) %>%;"></div>
+      </div>
+    </section>
+  <% end %>
+
+  <section class="leaderboard__panel" aria-labelledby="leaderboard-days">
+    <div class="leaderboard__panel-title">
+      <h2 id="leaderboard-days">Shipped per day</h2>
+      <span class="leaderboard__muted">last <%= Leaderboard::DAYS_CHARTED %> days</span>
+    </div>
+    <% daily = @leaderboard.daily_shipped %>
+    <% busiest = daily.map(&:last).max %>
+    <ol class="leaderboard__days">
+      <% daily.each_with_index do |(day, count), index| %>
+        <li class="leaderboard__day" title="<%= l(day, format: :short) %>: <%= pluralize count, "card" %>">
+          <span class="leaderboard__day-value"><%= count if count.positive? && (count == busiest || index == daily.size - 1) %></span>
+          <span class="leaderboard__day-bar" style="--size: <%= busiest.positive? ? (count * 100.0 / busiest).round(1) : 0 %>%;"></span>
+          <span class="leaderboard__day-label"><%= day == Date.current ? "Today" : day.strftime("%-d") %></span>
+          <span class="for-screen-reader"><%= l(day, format: :short) %>: <%= pluralize count, "card" %></span>
+        </li>
+      <% end %>
+    </ol>
+  </section>
+
+  <div class="leaderboard__columns">
+    <section class="leaderboard__panel" aria-labelledby="leaderboard-boards">
+      <div class="leaderboard__panel-title"><h2 id="leaderboard-boards">By board</h2></div>
+      <% boards = @leaderboard.boards_by_shipped %>
+      <% most = boards.map(&:last).max.to_i %>
+      <ul class="leaderboard__bars">
+        <% boards.each do |board, count| %>
+          <li class="leaderboard__bar-row">
+            <%= link_to board.name, board, class: "leaderboard__bar-name overflow-ellipsis" %>
+            <span class="leaderboard__bar-track"><span class="leaderboard__bar" style="--size: <%= most.positive? ? (count * 100.0 / most).round(1) : 0 %>%;"></span></span>
+            <strong class="leaderboard__bar-value"><%= number_with_delimiter count %></strong>
+          </li>
+        <% end %>
+      </ul>
+    </section>
+
+    <section class="leaderboard__panel" aria-labelledby="leaderboard-people">
+      <div class="leaderboard__panel-title">
+        <h2 id="leaderboard-people">Most ideas shipped</h2>
+        <span class="leaderboard__muted">by who opened the card</span>
+      </div>
+      <% people = @leaderboard.top_people %>
+      <% if people.any? %>
+        <ol class="leaderboard__people">
+          <% people.each_with_index do |(person, count), index| %>
+            <li class="leaderboard__person">
+              <span class="leaderboard__medal" aria-hidden="true"><%= [ "🥇", "🥈", "🥉" ][index] || "#{index + 1}." %></span>
+              <%= avatar_tag person, hidden_for_screen_reader: true %>
+              <span class="leaderboard__person-name overflow-ellipsis"><%= person.name %></span>
+              <strong class="leaderboard__bar-value"><%= number_with_delimiter count %></strong>
+            </li>
+          <% end %>
+        </ol>
+      <% else %>
+        <p class="leaderboard__muted">Ship the first card to take the crown 👑</p>
+      <% end %>
+    </section>
+  </div>
+</div>

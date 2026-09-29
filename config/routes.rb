@@ -138,6 +138,7 @@ Rails.application.routes.draw do
   end
 
   resources :activities, only: :index
+  resource :leaderboard, only: :show
   resources :events, only: :index
   namespace :events do
     resources :days
