@@ -13,7 +13,8 @@ class Card::CommentableTest < ActiveSupport::TestCase
     assert_equal "Agreed.", cards(:logo).comments.last.body.to_plain_text.chomp
   end
 
-  test "creating a comment on a card makes the creator watch the card" do
+  # Handy: commenting never subscribes; watching is opt-in.
+  test "creating a comment on a card does not make the creator watch the card" do
     boards(:writebook).access_for(users(:kevin)).access_only!
     assert_not cards(:text).watched_by?(users(:kevin))
 
@@ -21,7 +22,7 @@ class Card::CommentableTest < ActiveSupport::TestCase
       cards(:text).comments.create!(body: "This sounds interesting!")
     end
 
-    assert cards(:text).watched_by?(users(:kevin))
+    assert_not cards(:text).watched_by?(users(:kevin))
   end
 
   test "commentable is true for published cards, false for drafts" do

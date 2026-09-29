@@ -16,10 +16,12 @@ class Card::WatchableTest < ActiveSupport::TestCase
     assert_not cards(:logo).watched_by?(users(:kevin))
   end
 
-  test "cards are initially watched by their creator" do
+  # Handy: this Fizzy is run for agents, so creating a card never subscribes
+  # its creator. Watching is opt-in through the card's watch button.
+  test "creating a card does not make its creator watch it" do
     card = boards(:writebook).cards.create!(creator: users(:kevin))
 
-    assert card.watched_by?(users(:kevin))
+    assert_not card.watched_by?(users(:kevin))
   end
 
   test "watchers" do
