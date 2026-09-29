@@ -1,7 +1,8 @@
 import { Controller } from "@hotwired/stimulus"
 
 // Handy: shows the card dock once the top of the card (its header) has scrolled
-// off screen, so Done and the stage arrows stay at hand while reading on.
+// off screen, so Done, the stage arrows, the way back to the board and the jump to the
+// bottom stay at hand while reading on.
 export default class extends Controller {
   connect() {
     this.observer = new IntersectionObserver(([ entry ]) => this.#update(entry))
@@ -20,6 +21,10 @@ export default class extends Controller {
     this.observer.disconnect()
     this.sentinel = sentinel
     if (sentinel) this.observer.observe(sentinel)
+  }
+
+  scrollToBottom() {
+    window.scrollTo({ top: document.documentElement.scrollHeight, behavior: "smooth" })
   }
 
   // A morph copies the server's class list; keep what the scroll decided.

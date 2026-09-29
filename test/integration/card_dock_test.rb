@@ -25,6 +25,16 @@ class CardDockTest < ActionDispatch::IntegrationTest
     end
   end
 
+  test "the dock goes back to the board at the far left and scrolls to the bottom at the far right" do
+    get card_path(cards(:logo))
+
+    assert_select ".card-dock > .card-dock__edge--start:first-child a[href=?]", board_path(cards(:logo).board)
+    assert_select ".card-dock > .card-dock__edge--end:last-child button[data-action=?]", "card-dock#scrollToBottom"
+
+    get card_path(cards(:shipping))
+    assert_select ".card-dock .card-dock__edge", count: 2
+  end
+
   test "the first column steps back to Maybe? and a card in Maybe? steps into the first column" do
     get card_path(cards(:text).tap { it.update_columns(column_id: columns(:writebook_triage).id) })
     assert_select ".card-dock form[action=?]", card_triage_path(cards(:text), from: "dock")

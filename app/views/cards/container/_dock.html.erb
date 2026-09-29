@@ -1,8 +1,18 @@
-<%# Handy: floating dock that follows the scroll once the card's top is off screen. %>
+<%# Handy: floating dock that follows the scroll once the card's top is off screen. Back to the board at
+    the far left, scroll to the bottom at the far right. %>
 <% previous_stage, next_stage = card_dock_stages(card) %>
 <div class="card-dock hide-on-native" id="<%= dom_id(card, :dock) %>" role="toolbar" aria-label="Card actions"
     data-controller="card-dock"
     data-action="turbo:before-morph-attribute->card-dock#preserveVisibility turbo:morph@document->card-dock#reobserve turbo:morph-element@document->card-dock#reobserve">
+  <div class="card-dock__edge card-dock__edge--start">
+    <%= link_to card.board, class: "card-dock__button btn btn--circle", title: "Back to #{card.board.name}",
+          data: { turbo_navigation_target: "referrerBackLink", turbo_navigation_allowed_referrer_paths: [ root_path, cards_path, board_path(card.board) ].join(","),
+                  action: "click->turbo-navigation#backIfSamePath" } do %>
+      <%= icon_tag "arrow-left" %>
+      <span class="for-screen-reader">Back to <%= card.board.name %></span>
+    <% end %>
+  </div>
+
   <div class="card-dock__stage card-dock__stage--previous">
     <% if previous_stage %>
       <%= button_to previous_stage.url, method: previous_stage.method, class: "card-dock__button btn btn--circle",
@@ -39,5 +49,12 @@
       <% end %>
       <%= card_dock_stage_arc next_stage, direction: :next %>
     <% end %>
+  </div>
+
+  <div class="card-dock__edge card-dock__edge--end">
+    <button type="button" class="card-dock__button btn btn--circle" title="Scroll to bottom" data-action="card-dock#scrollToBottom">
+      <%= icon_tag "arrow-down" %>
+      <span class="for-screen-reader">Scroll to bottom</span>
+    </button>
   </div>
 </div>

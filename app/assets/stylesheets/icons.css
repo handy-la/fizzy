@@ -26,6 +26,7 @@
   }
   .icon--add { --svg: url("add.svg "); }
   .icon--add--meta { --svg: url("add--meta.svg "); }
+  .icon--arrow-down { --svg: url("arrow-down.svg "); }
   .icon--arrow-left { --svg: url("arrow-left.svg "); }
   .icon--arrow-right { --svg: url("arrow-right.svg "); }
   .icon--arrow-up { --svg: url("arrow-up.svg "); }

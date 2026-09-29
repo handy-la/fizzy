@@ -37,4 +37,19 @@ class CardDockSystemTest < ApplicationSystemTestCase
     assert_selector ".card-dock--visible .card-dock__button--closed", wait: 5
     assert @card.reload.closed?
   end
+
+  test "the dock scrolls to the bottom of the page and goes back to the board" do
+    visit card_url(@card)
+    page.execute_script(%(window.scrollBy(0, document.querySelector(".card__header").getBoundingClientRect().bottom + 20)))
+    assert_selector ".card-dock--visible", wait: 5
+
+    within(".card-dock") { click_on "Scroll to bottom" }
+    assert_selector ".card-dock--visible", wait: 5
+    Timeout.timeout(5) do
+      sleep 0.1 until page.evaluate_script("Math.ceil(window.scrollY + window.innerHeight) >= document.documentElement.scrollHeight")
+    end
+
+    within(".card-dock") { click_on "Back to #{@card.board.name}" }
+    assert_current_path board_path(@card.board)
+  end
 end

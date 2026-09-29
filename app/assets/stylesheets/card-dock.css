@@ -1,6 +1,8 @@
 /* Handy: floating dock at the bottom of a card page. It appears once the top
  * of the card scrolls off screen, and carries Done plus the previous and next
- * stage, each labelled by an arc of text around its button. */
+ * stage, each labelled by an arc of text around its button. It spans the width
+ * of the card: back to the board sits at the far left, scroll to the bottom at
+ * the far right, and the stages and Done stay centred between them. */
 @layer components {
   .card-dock {
     --dock-stage-size: 5.75rem;
@@ -8,8 +10,10 @@
     --dock-done-size: 3.5rem;
 
     align-items: center;
-    display: flex;
+    display: grid;
     gap: 0.25rem;
+    grid-template-columns: 1fr auto auto auto 1fr;
+    inline-size: min(calc(100% - 2 * var(--main-padding)), 76rem);
     inset-block-end: calc(var(--footer-height) + env(safe-area-inset-bottom) + 0.75rem);
     inset-inline-start: 50%;
     opacity: 0;
@@ -22,10 +26,22 @@
 
     &.card-dock--visible {
       opacity: 1;
-      pointer-events: auto;
       transition: opacity 150ms ease, translate 150ms ease;
       translate: -50% 0;
       visibility: visible;
+    }
+
+    /* The dock spans the card, so only its buttons take the pointer: the page
+     * between them stays clickable. */
+    &.card-dock--visible :is(.card-dock__button, .card-dock__stage:has(.card-dock__button), .card-dock__done) {
+      pointer-events: auto;
+    }
+
+    @media (max-width: 399px) {
+      --dock-stage-size: 5.25rem;
+      --dock-button-size: 2.75rem;
+
+      gap: 0;
     }
 
     @media print {
@@ -40,6 +56,14 @@
 
   .card-dock__form {
     display: contents;
+  }
+
+  .card-dock__edge {
+    display: flex;
+  }
+
+  .card-dock__edge--end {
+    justify-content: end;
   }
 
   .card-dock__stage,
