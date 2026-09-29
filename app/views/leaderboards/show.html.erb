@@ -12,7 +12,7 @@
 <div class="leaderboard" data-controller="<%= "confetti" if @leaderboard.shipped_today.positive? %>">
   <section class="leaderboard__hero" aria-label="Cards shipped">
     <div class="leaderboard__hero-emoji" aria-hidden="true">🏆</div>
-    <div class="leaderboard__hero-number" data-controller="count-up" data-count-up-value="<%= shipped %>"><%= number_with_delimiter shipped %></div>
+    <div class="leaderboard__hero-number" data-controller="count-up" data-count-up-to-value="<%= shipped %>"><%= number_with_delimiter shipped %></div>
     <div class="leaderboard__hero-label">cards shipped</div>
     <div class="leaderboard__hero-sub">
       <span class="leaderboard__chip">+<%= @leaderboard.shipped_today %> today</span>

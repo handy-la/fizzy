@@ -1,7 +1,7 @@
 import { Controller } from "@hotwired/stimulus"
 
-// Handy: shows the card dock once the top of the card has scrolled off screen,
-// so Done and the stage arrows stay at hand while reading the comments.
+// Handy: shows the card dock once the top of the card (its header) has scrolled
+// off screen, so Done and the stage arrows stay at hand while reading on.
 export default class extends Controller {
   connect() {
     this.observer = new IntersectionObserver(([ entry ]) => this.#update(entry))
@@ -12,9 +12,9 @@ export default class extends Controller {
     this.observer.disconnect()
   }
 
-  // A morph can swap the card body the dock watches: follow the new one.
+  // A morph can swap the card header the dock watches: follow the new one.
   reobserve() {
-    const sentinel = this.element.closest(".card-perma")?.querySelector(".card-perma__bg")
+    const sentinel = this.element.closest(".card-perma")?.querySelector(".card__header")
     if (sentinel === this.sentinel) return
 
     this.observer.disconnect()

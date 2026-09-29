@@ -1,6 +1,6 @@
 <div class="leaderboard__tile" style="--tile-color: <%= color %>;">
   <span class="leaderboard__tile-emoji" aria-hidden="true"><%= emoji %></span>
-  <span class="leaderboard__tile-value" data-controller="count-up" data-count-up-value="<%= value %>"><%= number_with_delimiter value %></span>
+  <span class="leaderboard__tile-value" data-controller="count-up" data-count-up-to-value="<%= value %>"><%= number_with_delimiter value %></span>
   <span class="leaderboard__tile-label"><%= label %></span>
   <% if local_assigns[:note] %>
     <span class="leaderboard__tile-note"><%= note %></span>
