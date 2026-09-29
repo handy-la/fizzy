@@ -1,0 +1,6 @@
+<%# Handy: on a phone, Done is also at the top right corner of the card. %>
+<%= button_to card_closure_path(card), class: "card__quick-done btn btn--circle hide-on-native",
+      form_class: "card__quick-done-form", title: "Mark as Done" do %>
+  <%= icon_tag "check" %>
+  <span class="for-screen-reader">Mark as Done</span>
+<% end %>

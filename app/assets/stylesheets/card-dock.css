@@ -1,0 +1,127 @@
+/* Handy: floating dock at the bottom of a card page. It appears once the top
+ * of the card scrolls off screen, and carries Done plus the previous and next
+ * stage, each labelled by an arc of text around its button. */
+@layer components {
+  .card-dock {
+    --dock-stage-size: 5.75rem;
+    --dock-button-size: 3rem;
+    --dock-done-size: 3.5rem;
+
+    align-items: center;
+    display: flex;
+    gap: 0.25rem;
+    inset-block-end: calc(var(--footer-height) + env(safe-area-inset-bottom) + 0.75rem);
+    inset-inline-start: 50%;
+    opacity: 0;
+    pointer-events: none;
+    position: fixed;
+    transition: opacity 150ms ease, translate 150ms ease, visibility 0s 150ms;
+    translate: -50% 1rem;
+    visibility: hidden;
+    z-index: var(--z-flash);
+
+    &.card-dock--visible {
+      opacity: 1;
+      pointer-events: auto;
+      transition: opacity 150ms ease, translate 150ms ease;
+      translate: -50% 0;
+      visibility: visible;
+    }
+
+    @media print {
+      display: none;
+    }
+  }
+
+  /* Room at the end of the page, so the dock never covers its last actions. */
+  #main:has(.card-dock) {
+    padding-block-end: 6.5rem;
+  }
+
+  .card-dock__form {
+    display: contents;
+  }
+
+  .card-dock__stage,
+  .card-dock__done {
+    align-items: center;
+    display: grid;
+    justify-items: center;
+    place-content: center;
+  }
+
+  .card-dock__stage {
+    block-size: var(--dock-stage-size);
+    inline-size: var(--dock-stage-size);
+    position: relative;
+
+    &:has(.card-dock__button) {
+      backdrop-filter: blur(6px);
+      background: color-mix(in oklch, var(--color-canvas) 80%, transparent);
+      border-radius: 50%;
+    }
+
+    .card-dock__button,
+    .card-dock__arc {
+      grid-area: 1 / 1;
+    }
+  }
+
+  .card-dock__button {
+    --btn-background: var(--color-canvas);
+    --btn-border-color: var(--card-color);
+    --btn-color: var(--card-color);
+    --btn-size: var(--dock-button-size);
+    --icon-size: 1.2rem;
+
+    --btn-border-size: 2px;
+    box-shadow: 0 0.2em 0.6em -0.2em oklch(var(--lch-ink-darkest) / 0.35);
+    position: relative;
+    z-index: 1;
+  }
+
+  .card-dock__button--done {
+    --btn-background: var(--card-color);
+    --btn-color: var(--color-ink-inverted);
+    --btn-size: var(--dock-done-size);
+    --icon-size: 1.6rem;
+  }
+
+  .card-dock__arc {
+    block-size: 100%;
+    inline-size: 100%;
+    overflow: visible;
+    pointer-events: none;
+  }
+
+  .card-dock__arc-text {
+    fill: var(--card-color);
+    font-size: 12px;
+    font-weight: 800;
+    letter-spacing: 0.04em;
+    text-transform: uppercase;
+  }
+}
+
+/* Handy: on a phone, a Done button at the top right corner of the card. */
+@layer components {
+  .card__quick-done-form {
+    display: none;
+    margin-inline-start: auto;
+    padding-inline-end: 0.5rem;
+
+    @media (max-width: 639px) {
+      display: flex;
+    }
+  }
+
+  .card__quick-done {
+    --btn-background: var(--card-color);
+    --btn-border-color: var(--card-color);
+    --btn-color: var(--color-ink-inverted);
+    --btn-size: 2.5rem;
+    --icon-size: 1.25rem;
+
+    margin-block-start: 0.35rem;
+  }
+}

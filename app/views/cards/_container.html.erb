@@ -10,6 +10,7 @@
         <header class="card__header">
           <%= render "cards/display/perma/board", card: card %>
           <%= render "cards/display/perma/tags", card: card %>
+          <%= render "cards/container/quick_done", card: card if card.published? && card.open? %>
         </header>
 
         <div class="card__body justify-space-between">
@@ -40,5 +41,6 @@
 
   <% if card.published? %>
     <%= render "cards/container/footer/published", card: card %>
+    <%= render "cards/container/dock", card: card %>
   <% end %>
 </section>

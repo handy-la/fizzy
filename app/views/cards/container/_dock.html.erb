@@ -1,0 +1,43 @@
+<%# Handy: floating dock that follows the scroll once the card's top is off screen. %>
+<% previous_stage, next_stage = card_dock_stages(card) %>
+<div class="card-dock hide-on-native" id="<%= dom_id(card, :dock) %>" role="toolbar" aria-label="Card actions"
+    data-controller="card-dock"
+    data-action="turbo:before-morph-attribute->card-dock#preserveVisibility turbo:morph@document->card-dock#reobserve turbo:morph-element@document->card-dock#reobserve">
+  <div class="card-dock__stage card-dock__stage--previous">
+    <% if previous_stage %>
+      <%= button_to previous_stage.url, method: previous_stage.method, class: "card-dock__button btn btn--circle",
+            form_class: "card-dock__form", title: "Move to #{previous_stage.name}", data: { turbo_frame: "_top", turbo_action: "replace" } do %>
+        <%= icon_tag "arrow-left" %>
+        <span class="for-screen-reader">Move to <%= previous_stage.name %></span>
+      <% end %>
+      <%= card_dock_stage_arc previous_stage, direction: :previous %>
+    <% end %>
+  </div>
+
+  <div class="card-dock__done">
+    <% if card.closed? %>
+      <%= button_to card_closure_path(card), method: :delete, class: "card-dock__button card-dock__button--done card-dock__button--closed btn btn--circle",
+            form_class: "card-dock__form", title: "Done. Tap to undo" do %>
+        <%= icon_tag "check" %>
+        <span class="for-screen-reader">Undo Done</span>
+      <% end %>
+    <% else %>
+      <%= button_to card_closure_path(card), class: "card-dock__button card-dock__button--done btn btn--circle",
+            form_class: "card-dock__form", title: "Mark as Done" do %>
+        <%= icon_tag "check" %>
+        <span class="for-screen-reader">Mark as Done</span>
+      <% end %>
+    <% end %>
+  </div>
+
+  <div class="card-dock__stage card-dock__stage--next">
+    <% if next_stage %>
+      <%= button_to next_stage.url, method: next_stage.method, class: "card-dock__button btn btn--circle",
+            form_class: "card-dock__form", title: "Move to #{next_stage.name}", data: { turbo_frame: "_top", turbo_action: "replace" } do %>
+        <%= icon_tag "arrow-right" %>
+        <span class="for-screen-reader">Move to <%= next_stage.name %></span>
+      <% end %>
+      <%= card_dock_stage_arc next_stage, direction: :next %>
+    <% end %>
+  </div>
+</div>

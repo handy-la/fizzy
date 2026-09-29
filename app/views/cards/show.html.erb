@@ -14,6 +14,10 @@
 <%= turbo_stream_from @card %>
 <%= turbo_stream_from @card, :activity %>
 
+<% if flash[:approved_from_column_id] && (approved_column = @card.board.columns.find_by(id: flash[:approved_from_column_id])) %>
+  <%= render "cards/next_awaiting_approval", column: approved_column %>
+<% end %>
+
 <div data-controller="beacon lightbox" data-beacon-url-value="<%= card_reading_path(@card) %>">
   <%= render "cards/container", card: @card %>
   <%= render "cards/messages",  card: @card %>
