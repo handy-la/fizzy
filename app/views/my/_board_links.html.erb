@@ -1,0 +1,14 @@
+<div class="header__menu" data-testid="header-board-links">
+  <% start_boards, end_boards = header_board_links(current_board) %>
+  <div class="header__board-links header__board-links--start hide-on-native">
+    <% start_boards.each do |board| %>
+      <%= header_board_link board %>
+    <% end %>
+  </div>
+  <%= render "my/menu" %>
+  <div class="header__board-links header__board-links--end hide-on-native">
+    <% end_boards.each do |board| %>
+      <%= header_board_link board %>
+    <% end %>
+  </div>
+</div>

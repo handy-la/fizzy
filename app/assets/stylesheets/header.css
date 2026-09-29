@@ -134,3 +134,95 @@
     }
   }
 }
+
+/* Handy: direct links to the other boards, on either side of the board menu
+/* -------------------------------------------------------------------------- */
+
+@layer components {
+  .header__menu {
+    align-items: center;
+    display: flex;
+    gap: var(--inline-space);
+    grid-area: menu;
+    justify-content: center;
+    min-inline-size: 0;
+
+    nav {
+      flex: none;
+      margin-inline: 0;
+    }
+  }
+
+  .header__board-links {
+    align-items: center;
+    display: flex;
+    flex: 1 1 0;
+    gap: 0.5ch;
+    min-inline-size: 0;
+    overflow-x: auto;
+    scrollbar-width: none;
+
+    &::-webkit-scrollbar {
+      display: none;
+    }
+  }
+
+  .header__board-links--start {
+    justify-content: flex-end;
+  }
+
+  .header__board-links--end {
+    justify-content: flex-start;
+  }
+
+  .header__board-link {
+    background: var(--color-ink-lightest);
+    border: 1px solid var(--color-ink-lighter);
+    border-radius: 99rem;
+    color: var(--color-ink-dark);
+    flex: none;
+    font-size: var(--text-xx-small);
+    font-weight: 600;
+    max-inline-size: 16ch;
+    padding: 0.35em 0.9em;
+    text-decoration: none;
+    white-space: nowrap;
+
+    @media (any-hover: hover) {
+      &:hover {
+        background: var(--color-ink-lighter);
+        color: var(--color-ink);
+      }
+    }
+  }
+
+  /* On a phone the menu row sits between the header buttons: the badges go to
+   * their own row under the menu and scroll sideways when there are many. */
+  @media (max-width: 639px) {
+    .header__menu {
+      flex-wrap: wrap;
+      row-gap: 0.4rem;
+
+      nav {
+        flex-basis: 100%;
+        display: flex;
+        justify-content: center;
+        order: -1;
+      }
+    }
+
+    .header__board-links {
+      flex: 0 1 auto;
+      max-inline-size: 50%;
+    }
+
+    .header__board-link {
+      font-size: var(--text-x-small);
+      padding: 0.45em 1em;
+    }
+
+    .header__board-links:not(:has(a)) {
+      display: none;
+    }
+  }
+}
