@@ -34,7 +34,7 @@ module NotificationsHelper
       link_to(notification,
         class: [ "card card--notification", { "card--closed": notification.card.closed? }, { "unread": !notification.read? } ],
         data: { turbo_frame: "_top", badge_target: "unread", action: "badge#update dialog#close" },
-        style: { "--card-color:": notification.card.color },
+        style: "--card-color: #{notification.card.color};",
         &)
     end
   end

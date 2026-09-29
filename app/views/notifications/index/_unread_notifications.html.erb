@@ -11,7 +11,7 @@
   <% end %>
 
   <div id="notifications_list" contents>
-    <%= render partial: "notifications/notification", collection: unread, cached: true %>
+    <%= render partial: "notifications/notification", collection: unread, cached: ->(notification) { [ notification, notification.card ] } %>
   </div>
 
   <% if unread.any? %>
