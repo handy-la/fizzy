@@ -377,6 +377,8 @@ GEM
     rackup (2.3.1)
       rack (>= 3)
     ractor-dispatch (0.3.0)
+    rails-active_search (0.1.0)
+      rails (>= 8.1)
     rails-dom-testing (2.3.0)
       activesupport (>= 5.0.0)
       minitest
@@ -556,6 +558,7 @@ DEPENDENCIES
   puma (~> 8.0)
   rack-mini-profiler
   rails!
+  rails-active_search (~> 0.1.0)
   rouge
   rqrcode
   rubocop-rails-omakase
@@ -713,6 +716,7 @@ CHECKSUMS
   rackup (2.3.1) sha256=6c79c26753778e90983761d677a48937ee3192b3ffef6bc963c0950f94688868
   ractor-dispatch (0.3.0) sha256=cd2d46743303e00fe500df168b4dde85080160fd9f04539cada4b4dd5e588f68
   rails (8.2.0.alpha)
+  rails-active_search (0.1.0) sha256=e79b5d206f4d35a2c1b418f20974d64fd0f0eeff002063b9d503ccf41cf88d76
   rails-dom-testing (2.3.0) sha256=8acc7953a7b911ca44588bf08737bc16719f431a1cc3091a292bca7317925c1d
   rails-html-sanitizer (1.7.1) sha256=e797a7c9b01e567307e317c576b49ab4168017e63eea4dba9ce3cb587e2f22c2
   railties (8.2.0.alpha)

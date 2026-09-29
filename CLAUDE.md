@@ -50,10 +50,16 @@ order to id order.
 
 ## Search is sharded on MySQL, single-index on SQLite
 
-Full-text search runs in the database, not Elasticsearch. On MySQL it is
-sharded 16 ways by CRC32 of the account ID (`Search::Record::Trilogy`); on
-SQLite it is a single FTS5 index (`Search::Record::SQLite`). Don't assume the
-sharded shape when working under SQLite. Models in `app/models/search/`.
+Full-text search runs in the database through ActiveSearch, not Elasticsearch.
+On MySQL it is sharded 16 ways by CRC32 of the account ID, through our own
+`ActiveSearch::StoreAdapters::MysqlSharded`; on SQLite it is a single FTS5 index
+through the gem's `sqlite` adapter. Don't assume the sharded shape when working
+under SQLite. Index schema, adapter registration and the document class are all
+in `config/search.rb`.
+
+Models join the index with `has_search`, and the store adapter owns every
+read and write. Don't reach for a search table directly — go through
+`ActiveSearch.index(:searchable)`.
 
 ## Imports and exports
 
