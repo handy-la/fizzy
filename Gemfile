@@ -26,6 +26,7 @@ gem "thruster", require: false
 gem "trilogy", "~> 2.13"
 
 # Features
+gem "ruby_llm", "2.0.0"
 gem "rails-active_search", "~> 0.1.0"
 gem "bcrypt", "~> 3.1.22"
 gem "geared_pagination", "~> 1.2"
