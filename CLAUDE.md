@@ -71,3 +71,12 @@ file.
 ## Coding style
 
 Before editing or reviewing code, read STYLE.md.
+
+## Fireworks y RubyLLM
+
+RubyLLM 2.0 usa Responses como protocolo OpenAI predeterminado. Para Fireworks,
+crea el chat con `provider: :openai, protocol: :chat_completions,
+assume_model_exists: true`: el router de Fireworks no está en el registro de
+modelos de OpenAI. Las sugerencias son texto para editar; nunca publican un
+comentario por sí mismas. `Card::Suggestion` conserva todos los comentarios;
+un contexto demasiado grande se rechaza, nunca se recorta sin avisar.
