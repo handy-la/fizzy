@@ -1,23 +1,40 @@
 class Cards::SuggestionsController < ApplicationController
   include CardScoped
 
-  rate_limit to: 10, within: 1.minute, by: -> { Current.user.id }
+  rate_limit to: 10, within: 1.minute, by: -> { Current.user.id }, only: :create
+  before_action -> { response.headers["Cache-Control"] = "no-store" }
 
   def create
-    response.headers["Cache-Control"] = "no-store"
     if RubyLLM.config.openai_api_key.blank?
       head :service_unavailable
-    elsif params[:kind] == "title" && @card.drafted? && @card.title.blank? && params[:description].present?
-      render json: { suggestion: Card::Suggestion.new(@card, user: Current.user).title(params[:description].to_s) }
+    elsif params[:kind] == "title" && @card.drafted? && @card.title.blank? && sufficient_description?
+      accept_request("title", params[:description].to_s)
     elsif params[:kind] == "comment" && @card.commentable?
-      render json: { suggestion: Card::Suggestion.new(@card, user: Current.user).comment }
+      accept_request("comment")
     else
       head :no_content
     end
-  rescue Card::Suggestion::ContextTooLarge
-    head :unprocessable_entity
-  rescue RubyLLM::Error, RubyLLM::ConfigurationError, Faraday::Error
-    # Provider errors can include card text or credentials; never log the payload.
-    head :service_unavailable
   end
+
+  def show
+    request = Card::SuggestionRequest.find_by!(card: @card, user: Current.user, token: params[:request_id])
+    if request.expires_at <= Time.current || request.status == "failed"
+      head :service_unavailable
+    elsif request.status == "completed"
+      render json: { suggestion: request.suggestion }
+    else
+      render json: { request_id: request.token }, status: :accepted
+    end
+  end
+
+  private
+    def sufficient_description?
+      description = params[:description].to_s
+      description.bytesize <= Card::Suggestion::CONTEXT_LIMIT && ActionText::Content.new(description).to_plain_text.strip.length >= 20
+    end
+
+    def accept_request(kind, description = nil)
+      request = Card::SuggestionRequest.request(@card, user: Current.user, kind: kind, description: description)
+      render json: { request_id: request.token }, status: :accepted
+    end
 end

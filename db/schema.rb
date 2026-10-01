@@ -10,7 +10,7 @@
 #
 # It's strongly recommended that you check this file into your version control system.
 
-ActiveRecord::Schema[8.2].define(version: 2026_08_28_120000) do
+ActiveRecord::Schema[8.2].define(version: 2026_09_30_230000) do
   create_table "accesses", id: :uuid, charset: "utf8mb4", collation: "utf8mb4_0900_ai_ci", force: :cascade do |t|
     t.datetime "accessed_at"
     t.uuid "account_id", null: false
@@ -213,6 +213,21 @@ ActiveRecord::Schema[8.2].define(version: 2026_08_28_120000) do
     t.index ["account_id"], name: "index_card_not_nows_on_account_id"
     t.index ["card_id"], name: "index_card_not_nows_on_card_id", unique: true
     t.index ["user_id"], name: "index_card_not_nows_on_user_id"
+  end
+
+  create_table "card_suggestion_requests", id: :uuid, charset: "utf8mb4", collation: "utf8mb4_0900_ai_ci", force: :cascade do |t|
+    t.uuid "card_id", null: false
+    t.uuid "user_id", null: false
+    t.string "kind", limit: 255, null: false
+    t.string "token", limit: 255, null: false
+    t.string "fingerprint", limit: 255, null: false
+    t.string "status", limit: 255, default: "pending", null: false
+    t.text "description", limit: 16777215
+    t.text "suggestion", limit: 65535
+    t.datetime "expires_at", null: false
+    t.datetime "created_at", null: false
+    t.datetime "updated_at", null: false
+    t.index ["card_id", "user_id", "kind"], name: "index_card_suggestion_requests_on_card_id_and_user_id_and_kind", unique: true
   end
 
   create_table "cards", id: :uuid, charset: "utf8mb4", collation: "utf8mb4_0900_ai_ci", force: :cascade do |t|

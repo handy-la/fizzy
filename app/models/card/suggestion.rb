@@ -30,7 +30,7 @@ class Card::Suggestion
     def generate(instructions, context)
       raise ContextTooLarge if context.bytesize > CONTEXT_LIMIT
 
-      # Bound the interactive request and avoid repeated charges on a timeout.
+      # Bound the provider wait in the job and avoid repeated charges on a timeout.
       llm = RubyLLM.context do |config|
         config.request_timeout = 20
         config.max_retries = 0

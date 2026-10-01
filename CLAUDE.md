@@ -80,3 +80,11 @@ assume_model_exists: true`: el router de Fireworks no está en el registro de
 modelos de OpenAI. Las sugerencias son texto para editar; nunca publican un
 comentario por sí mismas. `Card::Suggestion` conserva todos los comentarios;
 un contexto demasiado grande se rechaza, nunca se recorta sin avisar.
+
+Las sugerencias se generan en `Card::SuggestionJob`, en la cola exclusiva
+`ai_suggestions`. Nunca esperes al proveedor en una petición web. La lista de
+colas normales en `config/queue.yml` es explícita: al agregar una cola normal,
+agrégala allí; `*` permitiría que sus workers esperen también al proveedor.
+El evento `lexxy:change` es sintético incluso al escribir: sólo un `beforeinput`
+real autoriza el debounce del título. En comentarios, un foco programático
+puede tener `isTrusted`: exige también la intención real de puntero o Tab.
