@@ -10,7 +10,7 @@
 #
 # It's strongly recommended that you check this file into your version control system.
 
-ActiveRecord::Schema[8.2].define(version: 2026_09_30_230000) do
+ActiveRecord::Schema[8.2].define(version: 2026_10_01_224000) do
   create_table "accesses", id: :uuid, force: :cascade do |t|
     t.datetime "accessed_at"
     t.uuid "account_id", null: false
@@ -631,7 +631,7 @@ ActiveRecord::Schema[8.2].define(version: 2026_09_30_230000) do
     t.uuid "account_id", null: false
     t.datetime "created_at", null: false
     t.uuid "event_id", null: false
-    t.text "request", limit: 65535
+    t.text "request", limit: 4294967295
     t.text "response", limit: 65535
     t.string "state", limit: 255, null: false
     t.datetime "updated_at", null: false

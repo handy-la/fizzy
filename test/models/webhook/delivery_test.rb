@@ -401,6 +401,28 @@ class Webhook::DeliveryTest < ActiveSupport::TestCase
     assert_equal bodies.first, bodies.last
   end
 
+  test "large payloads are persisted and retried without truncation" do
+    delivery = webhook_deliveries(:pending)
+    Current.session = sessions(:david)
+    delivery.event.eventable.update!(description: "<p>#{'Large description & detail. ' * 5_000}</p>")
+    bodies = []
+    stub_request(:post, delivery.webhook.url).to_return do |request|
+      bodies << request.body
+      { status: bodies.size == 1 ? 530 : 200 }
+    end
+
+    delivery.deliver
+    assert delivery.reload.pending?
+    assert_operator delivery.request[:payload].bytesize, :>, 65_535
+    assert_equal bodies.first, delivery.request[:payload]
+    travel 1.minute do
+      Webhook::DeliveryJob.perform_now(delivery)
+    end
+    assert delivery.reload.succeeded?
+    assert_equal 2, bodies.size
+    assert_equal bodies.first, bodies.last
+  end
+
   test "retry delay increases and is capped at thirty minutes" do
     delivery = webhook_deliveries(:pending)
     stub_request(:post, delivery.webhook.url).to_return(status: 503)

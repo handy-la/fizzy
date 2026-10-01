@@ -84,7 +84,8 @@ class Webhook::Delivery < ApplicationRecord
           webhook.delinquency_tracker.record_delivery_of(self)
         end
       rescue
-        errored!
+        self.class.where(id: id).update_all(state: :errored, updated_at: Time.current)
+        self.state = :errored
         raise
       end
     end

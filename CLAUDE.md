@@ -92,7 +92,7 @@ puede tener `isTrusted`: exige también la intención real de puntero o Tab.
 ## Reintentos de webhooks
 
 Una entrega pendiente conserva el cuerpo y las cabeceras del primer intento en
-`request`; los reintentos usan esos mismos bytes. Dédalo deduplica por el `id`
+`request` (texto largo, como los cuerpos de ActionText); los reintentos usan esos mismos bytes. Dédalo deduplica por el `id`
 JSON del evento, no por una cabecera nueva. La espera crece de 1 a 30 minutos,
 durante 24 horas desde el primer intento. Los 4xx y los destinos privados son
 fallos terminales. La cola `webhooks` serializa por receptor; cada entrega espera

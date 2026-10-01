@@ -44,10 +44,10 @@ programación para 530 y espera creciente; adelanto de un comentario; reenvío
 por job duplicado; y morosidad incrementada ante una entrega pendiente. El caso final adicional
 comprueba que un fallo terminal no desactiva el receptor mientras otra entrega
 espera un reintento; también falla en la base.
-GREEN final: exit 0, 40 casos, 147 aserciones, 0 fallos, 0 errores.
+GREEN final: exit 0, 41 casos, 154 aserciones, 0 fallos, 0 errores.
 Suite completa: mismo entorno, `PARALLEL_WORKERS=2`, `bin/rails test`;
-exit 0, 1749 casos, 6681 aserciones, 0 fallos, 0 errores, 6 omisiones.
-RuboCop: cinco archivos Ruby modificados, exit 0, sin infracciones.
+exit 0, 1750 casos, 6688 aserciones, 0 fallos, 0 errores, 6 omisiones.
+RuboCop: seis archivos Ruby modificados, exit 0, sin infracciones.
 La evidencia de trabajo está en `.context/handy-545-red-final.log` y
 `.context/handy-545-green.log`; este resumen queda versionado para la revisión.
 
@@ -55,8 +55,8 @@ La evidencia de trabajo está en `.context/handy-545-red-final.log` y
 
 La prueba de HTTP simula fallos con WebMock. No se detuvo el receptor real.
 La comprobación de deduplicación del receptor fue de sólo lectura; no se cambió
-su código ni se ejecutó su suite desde esta tarjeta. No se agregaron migraciones
-ni APIs exclusivas para pruebas. No se retiraron pruebas ni seams.
+su código ni se ejecutó su suite desde esta tarjeta. Se agregó una migración para ampliar `request`; no se agregaron APIs
+exclusivas para pruebas. No se retiraron pruebas ni seams.
 
 ## Corrección de la primera revisión
 
@@ -74,3 +74,34 @@ Los dos casos adicionales fallan en la misma exportación de la base (no por
 API ausente): se envía el comentario fuera de orden y se reclama el envío activo.
 Ambos pasan tras la recuperación. El barrido recurrente reutiliza esa recuperación
 y se declara para producción y desarrollo en `config/recurring.yml`.
+
+## Límite de almacenamiento encontrado por signoff
+
+Contrato: los mensajes mayores de 64 KB que Fizzy ya podía enviar deben poder
+persistirse y reintentarse. Regresión: guardar el cuerpo en `request` (TEXT de
+65.535 bytes) falla antes del HTTP. La cobertura anterior usaba cuerpos pequeños.
+La frontera sigue siendo `deliver` y HTTP real sustituido por WebMock; no agrega
+seams. Se agrega un caso con una descripción grande, primer 530 y posterior 200,
+que comprueba los bytes persistidos y recibidos sin truncarlos. Su RED se ejecuta
+sobre el commit revisado anterior a la migración, no sobre la base original que
+no persistía el cuerpo. La migración amplía la columna al mismo tipo largo que
+usa ActionText. El rescue persiste sólo estado y timestamp, sin volver a guardar
+los atributos que causaron el error.
+
+RED del caso grande: base `cedf626aca75a6c2e8fcf318c526ac6947864685`,
+exportada con `git archive` en `.context/handy-545-size-base`; mismo entorno
+SQLite/Ruby 3.4.8. Comando:
+
+```bash
+SAAS=false BUNDLE_GEMFILE=Gemfile PARALLEL_WORKERS=1 CI_PROGRESS_BAR=false mise exec -- bin/rails test test/models/webhook/delivery_test.rb -n /large_payloads/
+```
+
+Exit 1: `ActiveRecord::CheckViolation`, límite de `request` 65.535 bytes,
+durante el guardado previo al HTTP; un caso, un error productivo, no un problema
+de setup. Log de trabajo: `.context/handy-545-size-red.log`.
+La migración se ejecutó en la base SQLite de prueba; el schema SQLite se generó
+con Rails. El schema MySQL se actualizó con el equivalente LONGTEXT; no se
+verificó contra un servidor MySQL real. El deploy normal aplica la migración.
+
+GREEN del mismo comando `/large_payloads/`: exit 0, un caso, seis aserciones,
+sin fallos ni errores (`.context/handy-545-size-green.log`).
