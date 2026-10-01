@@ -21,7 +21,7 @@ export default class extends Controller {
 
   save() {
     const content = this.inputTarget.value
-    if (content) {
+    if (content && !this.inputTarget.isEmpty) {
       localStorage.setItem(this.keyValue, content)
     } else {
       this.#clear()

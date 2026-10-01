@@ -18,13 +18,7 @@ class Cards::SuggestionsController < ApplicationController
 
   def show
     request = Card::SuggestionRequest.find_by!(card: @card, user: Current.user, token: params[:request_id])
-    if request.expires_at <= Time.current || request.status == "failed"
-      head :service_unavailable
-    elsif request.status == "completed"
-      render json: { suggestion: request.suggestion }
-    else
-      render json: { request_id: request.token }, status: :accepted
-    end
+    render json: request.state, status: request.reload.status.in?(%w[ pending running ]) ? :accepted : :ok
   end
 
   private
@@ -35,6 +29,6 @@ class Cards::SuggestionsController < ApplicationController
 
     def accept_request(kind, description = nil)
       request = Card::SuggestionRequest.request(@card, user: Current.user, kind: kind, description: description)
-      render json: { request_id: request.token }, status: :accepted
+      render json: request.state, status: :accepted
     end
 end

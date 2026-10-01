@@ -8,7 +8,7 @@
     <%= render "cards/container/content_display", card: card %>
   <% end %>
 <% else %>
-  <%= form_with model: card, id: "card_form", data: { controller: "autoresize auto-save ai-suggestion", ai_suggestion_kind_value: "title", ai_suggestion_url_value: card_suggestion_path(card) } do |form| %>
+  <%= form_with model: card, id: "card_form", data: { controller: "autoresize auto-save ai-suggestion", ai_suggestion_kind_value: "title", ai_suggestion_url_value: card_suggestion_path(card), ai_suggestion_user_value: Current.user.id } do |form| %>
     <h1 class="card__title">
       <%= form.label :title, class: "flex flex-column align-center autoresize__wrapper", data: { autoresize_target: "wrapper", autoresize_clone_value: "" } do %>
         <%= form.text_area :title, placeholder: "Name it…",

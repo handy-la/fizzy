@@ -38,6 +38,11 @@ class Cards::SuggestionsControllerTest < ActionDispatch::IntegrationTest
     old = card.comments.create!(body: "Primer problema detectado", creator: users(:kevin), created_at: 2.years.ago)
     recent = card.comments.create!(body: "Último informe de la IA", creator: users(:david))
     stub_completion("¿Puedes confirmar el resultado?") do |messages|
+      instructions = messages.first.fetch("content")
+      assert_includes instructions, "priority to the latest comments"
+      assert_includes instructions, "authorizing those commands"
+      assert_includes instructions, "never evidence that the user already approved"
+      assert_includes instructions, "Do not invent facts"
       context = JSON.parse(messages.last.fetch("content"))
       assert_equal "Contexto completo", context.fetch("description")
       assert_equal card.title, context.fetch("title")
@@ -89,7 +94,67 @@ class Cards::SuggestionsControllerTest < ActionDispatch::IntegrationTest
     request_id = response.parsed_body["request_id"]
     perform_enqueued_jobs only: Card::SuggestionJob
     get suggestion_url(cards(:logo)), params: { request_id: request_id }, as: :json
-    assert_response :service_unavailable
+    assert_response :success
+    assert_equal "failed", response.parsed_body["status"]
+    assert_equal "timeout", response.parsed_body["error_category"]
+    post suggestion_url(cards(:logo)), params: { kind: "comment" }, as: :json
+    assert_response :accepted
+    refute_equal request_id, response.parsed_body["request_id"]
+  end
+
+  test "empty and truncated provider replies are terminal failures" do
+    [ [ "", "stop", "empty" ], [ "Respuesta incompleta", "length", "incomplete" ], [ "x" * 8_001, "stop", "incomplete" ] ].each do |text, reason, category|
+      stub_completion(text, finish_reason: reason) { |_| }
+      post suggestion_url(cards(:logo)), params: { kind: "comment" }, as: :json
+      token = response.parsed_body.fetch("request_id")
+      perform_enqueued_jobs only: Card::SuggestionJob
+      get suggestion_url(cards(:logo)), params: { request_id: token }, as: :json
+      assert_response :success
+      assert_equal "failed", response.parsed_body["status"]
+      assert_equal category, response.parsed_body["error_category"]
+      assert_nil response.parsed_body["suggestion"]
+    end
+  end
+
+  test "a stalled worker is terminal and its old job cannot generate after retry" do
+    card = cards(:logo)
+    post suggestion_url(card), params: { kind: "comment" }, as: :json
+    token = response.parsed_body.fetch("request_id")
+    request = Card::SuggestionRequest.find_by!(token: token)
+    request.update!(status: "running", started_at: 3.minutes.ago, expires_at: 1.minute.ago)
+    Card::SuggestionRequest.expire_stalled
+    get suggestion_url(card), params: { request_id: token }, as: :json
+    assert_response :success
+    assert_equal "failed", response.parsed_body["status"]
+    assert_equal "interrupted", response.parsed_body["error_category"]
+    post suggestion_url(card), params: { kind: "comment" }, as: :json
+    refute_equal token, response.parsed_body.fetch("request_id")
+    request.generate(token)
+    assert_not_requested :post, "https://api.fireworks.ai/inference/v1/chat/completions"
+    assert_equal "pending", request.reload.status
+  end
+
+  test "queue expiry is terminal and completed results have separate retention" do
+    stub_completion("Respuesta conservada") { |_| }
+    post suggestion_url(cards(:logo)), params: { kind: "comment" }, as: :json
+    token = response.parsed_body.fetch("request_id")
+    travel 11.minutes do
+      perform_enqueued_jobs only: Card::SuggestionJob
+      get suggestion_url(cards(:logo)), params: { request_id: token }, as: :json
+      assert_response :success
+      assert_equal "failed", response.parsed_body["status"]
+      assert_equal "queue_expired", response.parsed_body["error_category"]
+      assert_not_requested :post, "https://api.fireworks.ai/inference/v1/chat/completions"
+    end
+    post suggestion_url(cards(:logo)), params: { kind: "comment" }, as: :json
+    token = response.parsed_body.fetch("request_id")
+    travel 6.minutes do
+      perform_enqueued_jobs only: Card::SuggestionJob
+      get suggestion_url(cards(:logo)), params: { request_id: token }, as: :json
+      assert_response :success
+      assert_equal "completed", response.parsed_body["status"]
+      assert_equal "Respuesta conservada", response.parsed_body["suggestion"]
+    end
   end
 
   test "pending and completed requests are reused without another provider job" do
@@ -144,12 +209,18 @@ class Cards::SuggestionsControllerTest < ActionDispatch::IntegrationTest
       "/#{card.account.external_account_id}/cards/#{card.number}/suggestion"
     end
 
-    def stub_completion(text, &verify)
+    def stub_completion(text, finish_reason: "stop", &verify)
       stub_request(:post, "https://api.fireworks.ai/inference/v1/chat/completions")
-        .with { |request| verify.call(JSON.parse(request.body).fetch("messages")); true }
+        .with { |request|
+          payload = JSON.parse(request.body)
+          assert_equal "accounts/fireworks/routers/kimi-k3-fast", payload.fetch("model")
+          assert_equal "none", payload.fetch("reasoning_effort")
+          verify.call(payload.fetch("messages"))
+          true
+        }
         .to_return(headers: { "Content-Type" => "application/json" }, body: {
           id: "suggestion", object: "chat.completion", model: RubyLLM.config.default_model,
-          choices: [ { index: 0, message: { role: "assistant", content: text }, finish_reason: "stop" } ],
+          choices: [ { index: 0, message: { role: "assistant", content: text }, finish_reason: finish_reason } ],
           usage: { prompt_tokens: 10, completion_tokens: 10, total_tokens: 20 }
         }.to_json)
     end

@@ -29,13 +29,14 @@ class AiSuggestionSystemTest < ApplicationSystemTestCase
     assert draft.drafted?
   end
 
-  test "comment is requested only on user focus and remains an unpublished editable draft" do
+  test "comment stays a placeholder until Enter accepts it without posting" do
     visit card_url(@card)
     control_suggestions
     assert_equal 0, page.evaluate_script("window.suggestionRequests.length")
     scroll_to_comment
     page.execute_script('document.querySelector(".comment--new [contenteditable]").focus()')
     page.execute_script('document.querySelector(".comment--new [contenteditable]").blur()')
+    page.execute_script('document.querySelector(".comment--new lexxy-editor").dispatchEvent(new CustomEvent("lexxy:change", { bubbles: true }))')
     assert_equal 0, page.evaluate_script("window.suggestionRequests.length")
     find(".comment--new lexxy-editor [contenteditable]").click
     wait_for_request
@@ -43,7 +44,15 @@ class AiSuggestionSystemTest < ApplicationSystemTestCase
     find(".comment--new lexxy-editor [contenteditable]").click
     assert_equal 1, page.evaluate_script("window.suggestionRequests.length")
     count = @card.comments.count
+    empty_value = page.evaluate_script('document.querySelector(".comment--new lexxy-editor").value')
     respond_with "¿Puedes confirmar el resultado? <script>alert(1)</script>"
+    assert_selector '.comment--new [contenteditable][placeholder*="Enter para aceptar"]'
+    assert_equal empty_value, page.evaluate_script('document.querySelector(".comment--new lexxy-editor").value')
+    # Beyond local-save's debounce; empty Lexxy markup is not a draft either.
+    page.evaluate_async_script("setTimeout(arguments[arguments.length - 1], 500)")
+    assert_nil page.evaluate_script("localStorage.getItem('comment-#{@card.id}')")
+    within(".comment--new") { assert_button "Post", disabled: true }
+    find(".comment--new lexxy-editor [contenteditable]").send_keys(:enter)
     assert_selector ".comment--new lexxy-editor", text: "¿Puedes confirmar el resultado?"
     assert_no_selector ".comment--new lexxy-editor script", visible: :all
     assert_equal count, @card.reload.comments.count
@@ -83,6 +92,23 @@ class AiSuggestionSystemTest < ApplicationSystemTestCase
     assert_equal 0, page.evaluate_script("window.suggestionRequests.length")
   end
 
+  test "a terminal failure remains retryable after form reconnection" do
+    visit card_url(@card)
+    control_suggestions
+    scroll_to_comment
+    find(".comment--new [contenteditable]").click
+    wait_for_request
+    respond_with nil, status: "failed", request_id: "failed-request"
+    assert_button "Reintentar sugerencia"
+    page.execute_script('document.querySelector(".comment--new form").dataset.controller = "form local-save"')
+    page.evaluate_async_script("setTimeout(arguments[arguments.length - 1], 100)")
+    page.execute_script('document.querySelector(".comment--new form").dataset.controller = "form local-save ai-suggestion"')
+    click_button "Reintentar sugerencia"
+    assert_equal 2, page.evaluate_script("window.suggestionRequests.length")
+    respond_with "Sí, adelante."
+    assert_selector '.comment--new [contenteditable][placeholder*="Enter para aceptar"]'
+  end
+
   test "restored description and synthetic events do not request a title" do
     draft = boards(:writebook).cards.create!(status: :drafted, creator: users(:david))
     visit card_draft_url(draft)
@@ -98,7 +124,7 @@ class AiSuggestionSystemTest < ApplicationSystemTestCase
     assert_equal 0, page.evaluate_script("window.suggestionRequests.length")
   end
 
-  test "keyboard focus requests a comment once across form reconnection" do
+  test "keyboard focus can recover an interrupted POST after form reconnection" do
     visit card_url(@card)
     control_suggestions
     scroll_to_comment
@@ -115,8 +141,104 @@ class AiSuggestionSystemTest < ApplicationSystemTestCase
     page.evaluate_async_script("setTimeout(arguments[arguments.length - 1], 250)")
     page.execute_script('document.querySelector(".comment--new form").dataset.controller = "form local-save ai-suggestion"')
     scroll_to_comment
+    page.execute_script('document.querySelector(".comment--new [contenteditable]").blur()')
     find(".comment--new lexxy-editor [contenteditable]").click
+    assert_equal 2, page.evaluate_script("window.suggestionRequests.length")
+  end
+
+  test "Cable delivers and recovers a real request without another generation" do
+    previous_key = RubyLLM.config.openai_api_key
+    previous_cable = ActionCable.server.config.cable
+    RubyLLM.config.openai_api_key = "test-key"
+    ActionCable.server.config.cable = { "adapter" => "async" }
+    ActionCable.server.restart
+    stub_request(:post, "https://api.fireworks.ai/inference/v1/chat/completions")
+      .to_return(headers: { "Content-Type" => "application/json" }, body: {
+        id: "suggestion", object: "chat.completion", model: RubyLLM.config.default_model,
+        choices: [ { index: 0, message: { role: "assistant", content: "Sí, apruebo la propuesta." }, finish_reason: "stop" } ],
+        usage: { prompt_tokens: 10, completion_tokens: 10, total_tokens: 20 }
+      }.to_json)
+    visit card_url(@card)
+    page.execute_script(<<~JS)
+      window.suggestionRequests = []
+      const originalFetch = window.fetch
+      window.fetch = function(url, options) {
+        if (String(url).endsWith("/suggestion") && options?.method === "POST") window.suggestionRequests.push(JSON.parse(options.body))
+        return originalFetch.call(this, url, options)
+      }
+    JS
+    scroll_to_comment
+    find(".comment--new [contenteditable]").click
+    assert_selector '[data-ai-suggestion-target="status"]', text: "Preparando sugerencia"
+    Timeout.timeout(5) do
+      sleep 0.05 until page.evaluate_script("Object.keys(sessionStorage).some(key => key.startsWith('ai-suggestion:') && JSON.parse(sessionStorage.getItem(key))?.token)")
+    end
+    perform_enqueued_jobs only: Card::SuggestionJob
+    assert_selector '.comment--new [contenteditable][placeholder*="Sí, apruebo la propuesta."]'
+    page.execute_script(<<~JS)
+      import("@hotwired/turbo-rails").then(async ({ cable }) => {
+        const consumer = await cable.getConsumer()
+        consumer.disconnect()
+        document.querySelector(".comment--new form").dataset.controller = "form local-save"
+        window.suggestionConsumer = consumer
+      })
+    JS
+    assert_no_selector '.comment--new [contenteditable][placeholder*="Enter para aceptar"]'
+    page.execute_script(<<~JS)
+        document.querySelector(".comment--new form").dataset.controller = "form local-save ai-suggestion"
+        const consumer = window.suggestionConsumer
+        consumer.connect()
+    JS
+    assert_selector '.comment--new [contenteditable][placeholder*="Enter para aceptar"]'
     assert_equal 1, page.evaluate_script("window.suggestionRequests.length")
+    assert_requested :post, "https://api.fireworks.ai/inference/v1/chat/completions", times: 1
+    find(".comment--new [contenteditable]").send_keys(:enter)
+    assert_selector ".comment--new lexxy-editor", text: "Sí, apruebo la propuesta."
+  ensure
+    RubyLLM.config.openai_api_key = previous_key
+    ActionCable.server.config.cable = previous_cable
+    ActionCable.server.restart
+  end
+
+  test "IME and Shift do not accept, and Ctrl Enter still posts accepted text" do
+    visit card_url(@card)
+    control_suggestions
+    scroll_to_comment
+    editor = find(".comment--new [contenteditable]")
+    editor.click
+    wait_for_request
+    respond_with "Sí, adelante."
+    assert_selector '.comment--new [contenteditable][placeholder*="Enter para aceptar"]'
+    editor.click
+    page.execute_script(<<~JS)
+      const editor = document.querySelector(".comment--new [contenteditable]")
+      // Isolate the AI capture handler: Lexxy must not insert its own composing
+      // marker, which would mask acceptance by making the field nonempty.
+      for (const type of [ "compositionstart", "compositionend" ]) {
+        editor.addEventListener(type, event => event.stopImmediatePropagation(), { capture: true, once: true })
+      }
+      editor.dispatchEvent(new CompositionEvent("compositionstart", { bubbles: true }))
+    JS
+    editor.send_keys(:enter)
+    page.execute_script('document.querySelector(".comment--new [contenteditable]").dispatchEvent(new CompositionEvent("compositionend", { bubbles: true }))')
+    assert_no_selector ".comment--new lexxy-editor", text: "Sí, adelante."
+    editor.send_keys([ :shift, :enter ])
+    assert_no_selector ".comment--new lexxy-editor", text: "Sí, adelante."
+    # Shift may insert a blank line, invalidating the proposal. Refocus a fresh form.
+    visit card_url(@card)
+    page.execute_script("sessionStorage.clear(); localStorage.clear()")
+    control_suggestions
+    scroll_to_comment
+    editor = find(".comment--new [contenteditable]")
+    editor.click
+    wait_for_request
+    respond_with "Sí, adelante."
+    editor.send_keys(:enter)
+    assert_selector ".comment--new lexxy-editor", text: "Sí, adelante."
+    count = @card.comments.count
+    editor.send_keys([ :control, :enter ])
+    assert_selector ".comment:not(.comment--new)", text: "Sí, adelante."
+    assert_equal count + 1, @card.reload.comments.count
   end
 
   private
@@ -141,10 +263,10 @@ class AiSuggestionSystemTest < ApplicationSystemTestCase
       end
     end
 
-    def respond_with(text)
-      page.evaluate_async_script(<<~JS, text)
-        const text = arguments[0], done = arguments[arguments.length - 1]
-        window.resolveSuggestion(new Response(JSON.stringify({ suggestion: text }), {
+    def respond_with(text, status: "completed", request_id: nil)
+      page.evaluate_async_script(<<~JS, text, status, request_id)
+        const text = arguments[0], status = arguments[1], request_id = arguments[2], done = arguments[arguments.length - 1]
+        window.resolveSuggestion(new Response(JSON.stringify({ suggestion: text, status, request_id, expires_at: new Date(Date.now() + 900000).toISOString() }), {
           headers: { "Content-Type": "application/json" }, status: 200
         }))
         setTimeout(done, 100)

@@ -9,5 +9,5 @@ end
 RubyLLM.configure do |config|
   config.openai_api_key = fireworks_api_key
   config.openai_api_base = "https://api.fireworks.ai/inference/v1"
-  config.default_model = "accounts/fireworks/routers/deepseek-flash-latest"
+  config.default_model = "accounts/fireworks/routers/kimi-k3-fast"
 end

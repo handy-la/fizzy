@@ -8,6 +8,7 @@
       <%= form_with model: Comment.new, url: card_comments_path(card), class: "flex flex-column gap full-width",
             data: { controller: "form local-save ai-suggestion",
                   ai_suggestion_kind_value: "comment", ai_suggestion_url_value: card_suggestion_path(card),
+                  ai_suggestion_user_value: Current.user.id,
                   ai_suggestion_local_key_value: "comment-#{card.id}",
                   local_save_key_value: "comment-#{card.id}",
                   action: "keydown.tab@document->ai-suggestion#intent turbo:submit-end->local-save#submit turbo:submit-end->form#blurActiveInput keydown.ctrl+enter->form#debouncedSubmit:prevent keydown.meta+enter->form#debouncedSubmit:prevent keydown.esc->form#cancel:stop" } do |form| %>
@@ -15,6 +16,9 @@
               data: { local_save_target: "input", ai_suggestion_target: "input", action: "pointerdown->ai-suggestion#intent focusin->ai-suggestion#focus input->ai-suggestion#change lexxy:change->ai-suggestion#change lexxy:change->form#disableSubmitWhenInvalid lexxy:change->local-save#save turbo:morph-element->local-save#restoreContent" } do %>
           <%= general_prompts(@card.board) %>
         <% end %>
+
+        <span data-ai-suggestion-target="status" role="status" hidden></span>
+        <button type="button" class="btn" data-ai-suggestion-target="retry" data-action="ai-suggestion#retry" hidden>Reintentar sugerencia</button>
 
         <span class="flex-inline align-center gap">
           <%= form.button class: "comment__submit btn btn--reversed",

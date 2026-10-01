@@ -10,7 +10,7 @@
 #
 # It's strongly recommended that you check this file into your version control system.
 
-ActiveRecord::Schema[8.2].define(version: 2026_10_01_224000) do
+ActiveRecord::Schema[8.2].define(version: 2026_10_01_233000) do
   create_table "accesses", id: :uuid, force: :cascade do |t|
     t.datetime "accessed_at"
     t.uuid "account_id", null: false
@@ -227,7 +227,12 @@ ActiveRecord::Schema[8.2].define(version: 2026_10_01_224000) do
     t.datetime "expires_at", null: false
     t.datetime "created_at", null: false
     t.datetime "updated_at", null: false
+    t.datetime "requested_at"
+    t.datetime "started_at"
+    t.datetime "finished_at"
+    t.string "error_category"
     t.index ["card_id", "user_id", "kind"], name: "index_card_suggestion_requests_on_card_id_and_user_id_and_kind", unique: true
+    t.index ["status", "expires_at"], name: "index_card_suggestion_requests_on_status_and_expires_at"
   end
 
   create_table "cards", id: :uuid, force: :cascade do |t|

@@ -100,3 +100,12 @@ sus predecesoras pendientes de la misma tarjeta (incluidos sus comentarios).
 Un envío en progreso sin actualizarse por cinco minutos vuelve a la cola;
 un barrido cada minuto también lo recupera sin esperar otro evento. Antes del
 HTTP se guardan los bytes del mensaje. Evidencia y límites: `docs/test-audits/handy-545.md`.
+
+Las propuestas de comentario llegan por `CardSuggestionChannel`, privado por
+usuario, cuenta y token. El canal vuelve a comprobar acceso al recuperar o
+recibir una notificación; el broadcast no contiene texto. La huella del contexto
+usa UTC con microsegundos: un hilo de Cable puede tener otra zona horaria y una
+huella basada en `Time#to_s` descarta resultados válidos. El placeholder de Lexxy
+se copia al editable interior al crearlo; hay que actualizar ambos atributos e
+interceptar Enter en captura antes de Lexical. Guía y tiempos:
+`docs/ai-suggestions.md`.
