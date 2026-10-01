@@ -4,6 +4,7 @@ class Webhook::DeliveryTest < ActiveSupport::TestCase
   PUBLIC_TEST_IP = "93.184.216.34" # example.com's real IP, used as a public IP stand-in
 
   setup do
+    freeze_time
     stub_dns_resolution(PUBLIC_TEST_IP)
   end
 
@@ -135,11 +136,11 @@ class Webhook::DeliveryTest < ActiveSupport::TestCase
     stub_request(:post, delivery.webhook.url).to_timeout
 
     tracker = delivery.webhook.delinquency_tracker
-    assert_difference -> { tracker.reload.consecutive_failures_count }, 1 do
+    assert_no_difference -> { tracker.reload.consecutive_failures_count } do
       delivery.deliver
     end
 
-    assert_equal "completed", delivery.state
+    assert_equal "pending", delivery.state
     assert_equal "connection_timeout", delivery.response[:error]
     assert_not delivery.succeeded?
   end
@@ -150,7 +151,7 @@ class Webhook::DeliveryTest < ActiveSupport::TestCase
 
     delivery.deliver
 
-    assert_equal "completed", delivery.state
+    assert_equal "pending", delivery.state
     assert_equal "destination_unreachable", delivery.response[:error]
   end
 
@@ -160,7 +161,7 @@ class Webhook::DeliveryTest < ActiveSupport::TestCase
 
     delivery.deliver
 
-    assert_equal "completed", delivery.state
+    assert_equal "pending", delivery.state
     assert_equal "failed_tls", delivery.response[:error]
   end
 
@@ -264,6 +265,122 @@ class Webhook::DeliveryTest < ActiveSupport::TestCase
 
     assert_requested request_stub
     assert delivery.succeeded?
+  end
+
+  test "retry 530 and 500 without counting delinquency" do
+    [ 530, 500 ].each do |code|
+      webhook = Webhook.create!(board: boards(:writebook), name: "Retry", url: "https://example.com/retry")
+      delivery = Webhook::Delivery.create!(webhook: webhook, event: events(:shipping_closed))
+      stub_request(:post, delivery.webhook.url).to_return(status: code)
+      tracker = delivery.webhook.delinquency_tracker
+      tracker.update!(consecutive_failures_count: 9, first_failure_at: 2.hours.ago)
+
+      assert_enqueued_with(job: Webhook::DeliveryJob, args: [ delivery ], at: ->(time) { (59.seconds.from_now..61.seconds.from_now).cover?(time) }) do
+        delivery.deliver
+      end
+
+      assert delivery.reload.pending?
+      assert_equal 9, tracker.reload.consecutive_failures_count
+      assert delivery.webhook.reload.active?
+      delivery.destroy!
+    end
+  end
+
+  test "4xx is terminal without retry" do
+    delivery = webhook_deliveries(:pending)
+    stub_request(:post, delivery.webhook.url).to_return(status: 403)
+
+    assert_no_enqueued_jobs only: Webhook::DeliveryJob do
+      delivery.deliver
+    end
+
+    assert delivery.reload.completed?
+    assert_equal 403, delivery.response[:code]
+  end
+
+  test "retry succeeds with the same signed bytes and event id" do
+    delivery = webhook_deliveries(:pending)
+    bodies = []
+    signatures = []
+    stub_request(:post, delivery.webhook.url).to_return do |request|
+      bodies << request.body
+      signatures << request.headers["X-Webhook-Signature"]
+      { status: bodies.size == 1 ? 530 : 200 }
+    end
+
+    delivery.deliver
+    events(:shipping_closed).eventable.update_column(:title, "Changed after first attempt")
+    travel 1.minute do
+      Webhook::DeliveryJob.perform_now(delivery.reload)
+    end
+
+    assert delivery.reload.succeeded?
+    assert_equal 2, bodies.size
+    assert_equal bodies.first, bodies.last
+    assert_equal delivery.event_id, JSON.parse(bodies.last)["id"]
+    assert_equal signatures.first, signatures.last
+    assert_equal 0, delivery.webhook.delinquency_tracker.reload.consecutive_failures_count
+
+    Webhook::DeliveryJob.perform_now(delivery)
+    assert_equal 2, bodies.size, "a duplicate job must not resend a terminal delivery"
+  end
+
+  test "later delivery on the same card waits but another card proceeds" do
+    first = webhook_deliveries(:pending)
+    comment_event = Event.create!(eventable: comments(:shipping_1), board: first.event.board,
+      creator: first.event.creator, action: "comment_created")
+    second = Webhook::Delivery.create!(webhook: first.webhook, event: comment_event)
+    other = Webhook::Delivery.create!(webhook: first.webhook, event: events(:logo_published))
+    # Historical unfinished fixtures must not block the unrelated card.
+    webhook_deliveries(:in_progress).completed!
+    seen = []
+    stub_request(:post, first.webhook.url).to_return do |request|
+      seen << JSON.parse(request.body)["id"]
+      { status: seen.size == 1 ? 530 : 200 }
+    end
+
+    first.deliver
+    second.deliver
+    assert_equal [ first.event_id ], seen
+    other.deliver
+    assert_equal [ first.event_id, other.event_id ], seen
+    travel 1.minute do
+      first.reload.deliver
+      second.reload.deliver
+    end
+    assert first.reload.succeeded?
+    assert second.reload.succeeded?
+    assert_equal [ first.event_id, other.event_id, first.event_id, second.event_id ], seen
+  end
+
+  test "retry delay increases and is capped at thirty minutes" do
+    delivery = webhook_deliveries(:pending)
+    stub_request(:post, delivery.webhook.url).to_return(status: 503)
+
+    [ 1, 2, 4, 8, 16, 30, 30 ].each do |minutes|
+      assert_enqueued_with(job: Webhook::DeliveryJob, args: [ delivery ], at: minutes.minutes.from_now) do
+        delivery.reload.deliver
+      end
+      travel minutes.minutes
+    end
+    assert delivery.reload.pending?
+  end
+
+  test "retry window expires and counts one terminal failure" do
+    delivery = webhook_deliveries(:pending)
+    stub_request(:post, delivery.webhook.url).to_timeout
+    tracker = delivery.webhook.delinquency_tracker
+    delivery.deliver
+
+    travel 24.hours do
+      assert_difference -> { tracker.reload.consecutive_failures_count }, 1 do
+        assert_no_enqueued_jobs only: Webhook::DeliveryJob do
+          delivery.reload.deliver
+        end
+      end
+    end
+    assert delivery.reload.completed?
+    assert_equal "connection_timeout", delivery.response[:error]
   end
 
   test "cleanup" do
@@ -449,7 +566,7 @@ class Webhook::DeliveryTest < ActiveSupport::TestCase
 
     delivery.deliver
 
-    assert_equal "completed", delivery.state
+    assert_equal "pending", delivery.state
     assert_equal "dns_lookup_failed", delivery.response[:error]
     assert_not delivery.succeeded?
   end

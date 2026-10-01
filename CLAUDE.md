@@ -88,3 +88,13 @@ agrégala allí; `*` permitiría que sus workers esperen también al proveedor.
 El evento `lexxy:change` es sintético incluso al escribir: sólo un `beforeinput`
 real autoriza el debounce del título. En comentarios, un foco programático
 puede tener `isTrusted`: exige también la intención real de puntero o Tab.
+
+## Reintentos de webhooks
+
+Una entrega pendiente conserva el cuerpo y las cabeceras del primer intento en
+`request`; los reintentos usan esos mismos bytes. Dédalo deduplica por el `id`
+JSON del evento, no por una cabecera nueva. La espera crece de 1 a 30 minutos,
+durante 24 horas desde el primer intento. Los 4xx y los destinos privados son
+fallos terminales. La cola `webhooks` serializa por receptor; cada entrega espera
+sus predecesoras pendientes de la misma tarjeta (incluidos sus comentarios).
+Evidencia y límites: `docs/test-audits/handy-545.md`.

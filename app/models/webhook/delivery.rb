@@ -7,6 +7,8 @@ class Webhook::Delivery < ApplicationRecord
   USER_AGENT = "fizzy/1.0.0 Webhook"
   ENDPOINT_TIMEOUT = 7.seconds
   MAX_RESPONSE_SIZE = 100.kilobytes
+  RETRY_WINDOW = 24.hours
+  RETRY_ERRORS = %w[ dns_lookup_failed connection_timeout destination_unreachable failed_tls ].freeze
 
   belongs_to :account, default: -> { webhook.account }
   belongs_to :webhook
@@ -27,21 +29,50 @@ class Webhook::Delivery < ApplicationRecord
   end
 
   def deliver_later
-    Webhook::DeliveryJob.perform_later(self)
+    Webhook::DeliveryJob.set(wait_until: next_attempt_at || Time.current).perform_later(self)
   end
 
   def deliver
-    in_progress!
+    reload
+    return unless pending?
 
-    self.request[:headers] = headers
-    self.response = perform_request
-    self.state = :completed
-    save!
+    if next_attempt_at && next_attempt_at.future?
+      deliver_later
+    elsif earlier_delivery_pending?
+      self.request[:next_attempt_at] = 1.minute.from_now.iso8601(6)
+      save!
+      deliver_later
+    elsif self.class.where(id: id, state: :pending).update_all(state: :in_progress) == 1
+      begin
+        reload
+        self.request[:first_attempt_at] ||= Time.current.iso8601(6)
+        self.request[:attempts] = request[:attempts].to_i + 1
+        self.request[:payload] ||= payload
+        self.request[:headers] ||= headers
+        # A DNS failure must be resolved again on the next attempt.
+        remove_instance_variable(:@resolved_ip) if defined?(@resolved_ip)
+        self.response = perform_request
 
-    webhook.delinquency_tracker.record_delivery_of(self)
-  rescue
-    errored!
-    raise
+        if retryable_response? && Time.current < retry_deadline
+          self.state = :pending
+          delay = [ 1.minute * 2**[ request[:attempts] - 1, 5 ].min, 30.minutes ].min
+          self.request[:next_attempt_at] = [ Time.current + delay, retry_deadline ].min.iso8601(6)
+        else
+          self.state = :completed
+          self.request.delete(:next_attempt_at)
+        end
+        save!
+
+        if pending?
+          deliver_later
+        else
+          webhook.delinquency_tracker.record_delivery_of(self)
+        end
+      rescue
+        errored!
+        raise
+      end
+    end
   end
 
   def sanitized_request
@@ -65,11 +96,32 @@ class Webhook::Delivery < ApplicationRecord
   end
 
   private
+    def next_attempt_at
+      Time.iso8601(request[:next_attempt_at]) if request[:next_attempt_at]
+    end
+
+    def retry_deadline
+      Time.iso8601(request[:first_attempt_at]) + RETRY_WINDOW
+    end
+
+    def retryable_response?
+      RETRY_ERRORS.include?(response[:error].to_s) || response[:code].to_i.between?(500, 599)
+    end
+
+    def earlier_delivery_pending?
+      card = event.card
+      events_on_card = Event.where(eventable: card).or(
+        Event.where(eventable_type: "Comment", eventable_id: Comment.where(card_id: card.id).select(:id))
+      )
+      webhook.deliveries.where(state: [ :pending, :in_progress ], event_id: events_on_card.select(:id))
+        .where("created_at < :time OR (created_at = :time AND id < :id)", time: created_at, id: id).exists?
+    end
+
     def perform_request
       if resolved_ip.nil?
         { error: :private_uri }
       else
-        request = Net::HTTP::Post.new(uri, headers).tap { |request| request.body = payload }
+        request = Net::HTTP::Post.new(uri, self.request[:headers]).tap { |request| request.body = self.request[:payload] }
 
         response = http.request(request) do |net_http_response|
           stream_body_with_limit(net_http_response)

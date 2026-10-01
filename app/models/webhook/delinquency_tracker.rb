@@ -8,11 +8,11 @@ class Webhook::DelinquencyTracker < ApplicationRecord
   def record_delivery_of(delivery)
     if delivery.succeeded?
       reset
-    else
+    elsif delivery.failed?
       mark_first_failure_time if consecutive_failures_count.zero?
       increment!(:consecutive_failures_count, touch: true)
 
-      webhook.deactivate if delinquent?
+      webhook.deactivate if delinquent? && !webhook.deliveries.pending.where.not(response: nil).exists?
     end
   end
 
