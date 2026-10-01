@@ -97,4 +97,6 @@ JSON del evento, no por una cabecera nueva. La espera crece de 1 a 30 minutos,
 durante 24 horas desde el primer intento. Los 4xx y los destinos privados son
 fallos terminales. La cola `webhooks` serializa por receptor; cada entrega espera
 sus predecesoras pendientes de la misma tarjeta (incluidos sus comentarios).
-Evidencia y límites: `docs/test-audits/handy-545.md`.
+Un envío en progreso sin actualizarse por cinco minutos vuelve a la cola;
+un barrido cada minuto también lo recupera sin esperar otro evento. Antes del
+HTTP se guardan los bytes del mensaje. Evidencia y límites: `docs/test-audits/handy-545.md`.

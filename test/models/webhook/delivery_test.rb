@@ -353,6 +353,54 @@ class Webhook::DeliveryTest < ActiveSupport::TestCase
     assert_equal [ first.event_id, other.event_id, first.event_id, second.event_id ], seen
   end
 
+  test "a stale interrupted delivery recovers before its later comment" do
+    first = webhook_deliveries(:pending)
+    comment_event = Event.create!(eventable: comments(:shipping_1), board: first.event.board,
+      creator: first.event.creator, action: "comment_created")
+    second = Webhook::Delivery.create!(webhook: first.webhook, event: comment_event)
+    seen = []
+    stub_request(:post, first.webhook.url).to_return do |request|
+      seen << JSON.parse(request.body)["id"]
+      { status: 200 }
+    end
+    first.update!(state: :in_progress, updated_at: 6.minutes.ago)
+
+    Webhook::DeliveryJob.perform_now(second)
+    assert_empty seen
+    assert first.reload.pending?
+    assert_enqueued_with job: Webhook::DeliveryJob, args: [ first ]
+    Webhook::DeliveryJob.perform_now(first)
+    travel 1.minute do
+      Webhook::DeliveryJob.perform_now(second)
+    end
+    assert first.reload.succeeded?
+    assert second.reload.succeeded?
+    assert_equal [ first.event_id, second.event_id ], seen
+  end
+
+  test "an interrupted request preserves bytes and its active lease is respected" do
+    delivery = webhook_deliveries(:pending)
+    bodies = []
+    stub_request(:post, delivery.webhook.url).to_return do |request|
+      bodies << request.body
+      raise SystemExit if bodies.size == 1
+      { status: 200 }
+    end
+
+    assert_raises(SystemExit) { Webhook::DeliveryJob.perform_now(delivery) }
+    assert delivery.reload.in_progress?
+    Webhook::DeliveryJob.perform_now(delivery)
+    assert_equal 1, bodies.size, "an active request must not be reclaimed"
+    delivery.event.eventable.update_column(:title, "Changed while worker was stopped")
+
+    travel 6.minutes do
+      Webhook::DeliveryJob.perform_now(delivery)
+    end
+    assert delivery.reload.succeeded?
+    assert_equal 2, bodies.size
+    assert_equal bodies.first, bodies.last
+  end
+
   test "retry delay increases and is capped at thirty minutes" do
     delivery = webhook_deliveries(:pending)
     stub_request(:post, delivery.webhook.url).to_return(status: 503)

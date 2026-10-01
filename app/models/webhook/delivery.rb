@@ -7,6 +7,7 @@ class Webhook::Delivery < ApplicationRecord
   USER_AGENT = "fizzy/1.0.0 Webhook"
   ENDPOINT_TIMEOUT = 7.seconds
   MAX_RESPONSE_SIZE = 100.kilobytes
+  STALLED_AFTER = 5.minutes
   RETRY_WINDOW = 24.hours
   RETRY_ERRORS = %w[ dns_lookup_failed connection_timeout destination_unreachable failed_tls ].freeze
 
@@ -28,12 +29,25 @@ class Webhook::Delivery < ApplicationRecord
     sleep pause until stale.limit(batch_size).delete_all.zero?
   end
 
+  def self.recover_stalled
+    in_progress.where(updated_at: ..STALLED_AFTER.ago).find_each(&:recover)
+  end
+
+  def recover
+    if self.class.where(id: id, state: :in_progress, updated_at: ..STALLED_AFTER.ago)
+        .update_all(state: :pending, updated_at: Time.current) == 1
+      reload
+      Current.with_account(account) { deliver_later }
+    end
+  end
+
   def deliver_later
     Webhook::DeliveryJob.set(wait_until: next_attempt_at || Time.current).perform_later(self)
   end
 
   def deliver
     reload
+    recover if in_progress?
     return unless pending?
 
     if next_attempt_at && next_attempt_at.future?
@@ -42,13 +56,14 @@ class Webhook::Delivery < ApplicationRecord
       self.request[:next_attempt_at] = 1.minute.from_now.iso8601(6)
       save!
       deliver_later
-    elsif self.class.where(id: id, state: :pending).update_all(state: :in_progress) == 1
+    elsif self.class.where(id: id, state: :pending).update_all(state: :in_progress, updated_at: Time.current) == 1
       begin
         reload
         self.request[:first_attempt_at] ||= Time.current.iso8601(6)
         self.request[:attempts] = request[:attempts].to_i + 1
         self.request[:payload] ||= payload
         self.request[:headers] ||= headers
+        save!
         # A DNS failure must be resolved again on the next attempt.
         remove_instance_variable(:@resolved_ip) if defined?(@resolved_ip)
         self.response = perform_request
@@ -113,8 +128,10 @@ class Webhook::Delivery < ApplicationRecord
       events_on_card = Event.where(eventable: card).or(
         Event.where(eventable_type: "Comment", eventable_id: Comment.where(card_id: card.id).select(:id))
       )
-      webhook.deliveries.where(state: [ :pending, :in_progress ], event_id: events_on_card.select(:id))
-        .where("created_at < :time OR (created_at = :time AND id < :id)", time: created_at, id: id).exists?
+      predecessors = webhook.deliveries.where(state: [ :pending, :in_progress ], event_id: events_on_card.select(:id))
+        .where("created_at < :time OR (created_at = :time AND id < :id)", time: created_at, id: id)
+      predecessors.in_progress.where(updated_at: ..STALLED_AFTER.ago).find_each(&:recover)
+      predecessors.exists?
     end
 
     def perform_request
@@ -123,6 +140,7 @@ class Webhook::Delivery < ApplicationRecord
       else
         request = Net::HTTP::Post.new(uri, self.request[:headers]).tap { |request| request.body = self.request[:payload] }
 
+        @request_deadline = Process.clock_gettime(Process::CLOCK_MONOTONIC) + 2 * ENDPOINT_TIMEOUT
         response = http.request(request) do |net_http_response|
           stream_body_with_limit(net_http_response)
         end
@@ -144,6 +162,7 @@ class Webhook::Delivery < ApplicationRecord
     def stream_body_with_limit(response)
       bytes_read = 0
       response.read_body do |chunk|
+        raise Net::ReadTimeout if Process.clock_gettime(Process::CLOCK_MONOTONIC) > @request_deadline
         bytes_read += chunk.bytesize
         raise ResponseTooLarge if bytes_read > MAX_RESPONSE_SIZE
       end
