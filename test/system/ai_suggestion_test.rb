@@ -15,11 +15,15 @@ class AiSuggestionSystemTest < ApplicationSystemTestCase
     find("lexxy-editor [contenteditable]").send_keys("Corto")
     page.evaluate_async_script("setTimeout(arguments[arguments.length - 1], 1600)")
     assert_equal 0, page.evaluate_script("window.suggestionRequests.length")
+    assert_selector '#card_title[placeholder="Name it…"]'
     find("lexxy-editor [contenteditable]").send_keys(" El recibo no muestra el total.")
     wait_for_request
+    assert_selector '#card_title[placeholder="Sugiriendo título..."]'
+    assert_field "card_title", with: ""
     assert_equal "title", page.evaluate_script("window.suggestionRequests[0].kind")
     respond_with "Corregir total del recibo"
     assert_field "card_title", with: "Corregir total del recibo"
+    assert_selector '#card_title[placeholder="Name it…"]'
     find("#card_title").set("Mi título")
     find("lexxy-editor").click
     assert_field "card_title", with: "Mi título"
@@ -27,6 +31,80 @@ class AiSuggestionSystemTest < ApplicationSystemTestCase
       sleep 0.05 until draft.reload.title == "Mi título"
     end
     assert draft.drafted?
+  end
+
+  test "title waiting placeholder is restored on failure cancellation and disconnection" do
+    %w[ failed skipped title description disconnect ].each do |outcome|
+      draft = boards(:writebook).cards.create!(status: :drafted, creator: users(:david))
+      visit card_draft_url(draft)
+      control_suggestions
+      find("lexxy-editor [contenteditable]").click
+      find("lexxy-editor [contenteditable]").send_keys("El recibo no muestra el total de la venta.")
+      wait_for_request
+      assert_selector '#card_title[placeholder="Sugiriendo título..."]'
+
+      case outcome
+      when "failed"
+        respond_with nil, status: "failed"
+      when "skipped"
+        page.execute_script("window.resolveSuggestion(new Response(null, { status: 204 }))")
+      when "title"
+        find("#card_title").set("Mi título")
+      when "description"
+        find("lexxy-editor [contenteditable]").send_keys(" Otra observación.")
+      when "disconnect"
+        page.execute_script('document.querySelector("#card_form").dataset.controller = "autoresize auto-save"')
+      end
+
+      assert_selector '#card_title[placeholder="Name it…"]'
+    end
+  end
+
+  test "title waiting placeholder lasts through pending and running Cable states" do
+    previous_key = RubyLLM.config.openai_api_key
+    previous_cable = ActionCable.server.config.cable
+    RubyLLM.config.openai_api_key = "test-key"
+    ActionCable.server.config.cable = { "adapter" => "async" }
+    ActionCable.server.restart
+    draft = boards(:writebook).cards.create!(status: :drafted, creator: users(:david))
+    visit card_draft_url(draft)
+    page.evaluate_async_script(<<~JS)
+      const done = arguments[arguments.length - 1]
+      import("@hotwired/turbo-rails").then(({ cable }) => cable.getConsumer()).then(consumer => {
+        consumer.ensureActiveConnection()
+        window.titleSuggestionStates = []
+        consumer.connection.webSocket.addEventListener("message", event => {
+          const message = JSON.parse(event.data).message
+          if (message?.status) window.titleSuggestionStates.push(message.status)
+        })
+        done()
+      })
+    JS
+    find("lexxy-editor [contenteditable]").click
+    find("lexxy-editor [contenteditable]").send_keys("El recibo no muestra el total de la venta.")
+    request = nil
+    Timeout.timeout(5) do
+      sleep 0.05 until request = Card::SuggestionRequest.find_by(card: draft, kind: "title")
+    end
+    Timeout.timeout(5) do
+      sleep 0.05 until page.evaluate_script("window.titleSuggestionStates.includes('pending')")
+    end
+    assert_selector '#card_title[placeholder="Sugiriendo título..."]'
+    assert_field "card_title", with: ""
+    request.update!(status: "running", started_at: Time.current)
+    ActionCable.server.broadcast(request.stream_name, { request_id: request.token })
+    Timeout.timeout(5) do
+      sleep 0.05 until page.evaluate_script("window.titleSuggestionStates.includes('running')")
+    end
+    assert_selector '#card_title[placeholder="Sugiriendo título..."]'
+    request.update!(status: "failed", error_category: "provider")
+    ActionCable.server.broadcast(request.stream_name, { request_id: request.token })
+    assert_selector '#card_title[placeholder="Name it…"]'
+    assert_field "card_title", with: ""
+  ensure
+    RubyLLM.config.openai_api_key = previous_key
+    ActionCable.server.config.cable = previous_cable
+    ActionCable.server.restart
   end
 
   test "comment stays a placeholder until Enter accepts it without posting" do

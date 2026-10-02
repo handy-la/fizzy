@@ -24,9 +24,9 @@ export default class extends Controller {
 
   connect() {
     this.#input = this.inputTarget
+    this.#input.dataset.aiSuggestionPlaceholder ??= this.#input.getAttribute("placeholder") || ""
     document.addEventListener("turbo:before-stream-render", this.#refresh)
     if (this.kindValue === "comment") {
-      this.inputTarget.dataset.aiSuggestionPlaceholder ??= this.inputTarget.getAttribute("placeholder") || ""
       // Capture on the ancestor, before Lexical's listener on its editable root.
       this.element.addEventListener("keydown", this.#keydown, true)
       this.element.addEventListener("compositionstart", this.#compositionStart, true)
@@ -58,6 +58,7 @@ export default class extends Controller {
     document.removeEventListener("turbo:before-stream-render", this.#refresh)
     this.#proposal = null
     this.#renderPlaceholder()
+    this.#showStatus("")
   }
 
   intent(event) {
@@ -220,6 +221,9 @@ export default class extends Controller {
   }
 
   #showStatus(text, retry = false) {
+    if (this.kindValue === "title" && this.#input) {
+      this.#input.setAttribute("placeholder", text && !retry ? "Sugiriendo título..." : this.#input.dataset.aiSuggestionPlaceholder)
+    }
     if (this.hasStatusTarget) { this.statusTarget.textContent = text; this.statusTarget.hidden = !text }
     if (this.hasRetryTarget) this.retryTarget.hidden = !retry
   }
