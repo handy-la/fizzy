@@ -13,6 +13,7 @@ export default class extends Controller {
   #revision = 0
   #typed = false
   #focusIntent = false
+  #tapFocus = false
   #active
   #proposal
   #input
@@ -74,15 +75,21 @@ export default class extends Controller {
     } else if (event.type === "pointerdown" || event.key === "Tab") {
       this.#focusIntent = true
       setTimeout(() => { this.#focusIntent = false }, 0)
+    } else if (event.type === "click") {
+      // A touch tap focuses only after the finger lifts, when the pointerdown
+      // intent has expired. Its click, inside the focused editor, authorizes.
+      const authorized = this.#tapFocus && event.target.closest("[contenteditable]")?.contains(document.activeElement)
+      this.#tapFocus = false
+      if (authorized) this.#suggestComment()
     }
   }
 
   focus(event) {
-    const authorized = event.isTrusted && this.#focusIntent && event.target.closest("[contenteditable]")
+    const editable = event.isTrusted && event.target.closest("[contenteditable]")
+    const authorized = editable && this.#focusIntent
+    this.#tapFocus = !!editable && !this.#focusIntent
     this.#focusIntent = false
-    if (authorized && this.kindValue === "comment" && !this.#stored && !this.#request && !this.#active) {
-      this.#suggest()
-    }
+    if (authorized) this.#suggestComment()
   }
 
   change() {
@@ -102,6 +109,10 @@ export default class extends Controller {
       this.#active = null
       this.#suggest()
     }
+  }
+
+  #suggestComment() {
+    if (this.kindValue === "comment" && !this.#stored && !this.#request && !this.#active) this.#suggest()
   }
 
   async #suggest() {

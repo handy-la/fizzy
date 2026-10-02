@@ -151,6 +151,30 @@ class AiSuggestionSystemTest < ApplicationSystemTestCase
     within(".comment--new") { assert_button "Post", disabled: false }
   end
 
+  # Handy #571: on a phone, pointerdown fires on touchstart, but focus arrives
+  # only after the finger lifts. Contract and RED: docs/test-audits/handy-571.md.
+  test "a touch tap on the empty comment requests one suggestion" do
+    visit card_url(@card)
+    control_suggestions
+    scroll_to_comment
+    page.execute_script(<<~JS)
+      const editor = document.querySelector(".comment--new [contenteditable]")
+      editor.focus()
+      editor.dispatchEvent(new MouseEvent("click", { bubbles: true }))
+      editor.blur()
+    JS
+    assert_equal 0, page.evaluate_script("window.suggestionRequests.length")
+    editor = find(".comment--new lexxy-editor [contenteditable]").native
+    finger = Selenium::WebDriver::Interactions.pointer(:touch, name: "finger")
+    page.driver.browser.action(devices: [ finger ])
+      .move_to(editor, device: "finger").pointer_down(:left, device: "finger")
+      .pause(device: finger, duration: 0.15).pointer_up(:left, device: "finger").perform
+    wait_for_request
+    assert_selector '[data-ai-suggestion-target="status"]', text: "Preparando sugerencia"
+    page.evaluate_async_script("setTimeout(arguments[arguments.length - 1], 250)")
+    assert_equal 1, page.evaluate_script("window.suggestionRequests.length")
+  end
+
   test "a late reply cannot replace text typed and then cleared" do
     visit card_url(@card)
     control_suggestions

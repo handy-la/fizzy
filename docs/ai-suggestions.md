@@ -102,6 +102,12 @@ conservan el atajo existente de publicación. Turbo puede quitar la asociación
 Stimulus antes de ejecutar `disconnect`: se conserva la referencia del editor
 para restaurar ambos placeholders, y al reconectar se recupera el resultado.
 
+El comentario se pide al enfocar el editor con puntero o Tab. En un celular el
+foco llega al levantar el dedo, después de que la intención de `pointerdown`
+expiró: ese foco queda pendiente y el `click` confiable del mismo toque, dentro
+del editor enfocado, pide la sugerencia. Un foco autoriza un solo clic.
+Evidencia: `docs/test-audits/handy-571.md`.
+
 El título mantiene su inserción editable y su guardado actuales. El límite de
 255 caracteres sigue vigente. Los comentarios mayores de 8.000 caracteres se
 rechazan como incompletos, sin recortarlos.

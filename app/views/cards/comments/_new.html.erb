@@ -13,7 +13,7 @@
                   local_save_key_value: "comment-#{card.id}",
                   action: "keydown.tab@document->ai-suggestion#intent turbo:submit-end->local-save#submit turbo:submit-end->form#blurActiveInput keydown.ctrl+enter->form#debouncedSubmit:prevent keydown.meta+enter->form#debouncedSubmit:prevent keydown.esc->form#cancel:stop" } do |form| %>
         <%= form.rich_textarea :body, required: true, placeholder: new_comment_placeholder(card),
-              data: { local_save_target: "input", ai_suggestion_target: "input", action: "pointerdown->ai-suggestion#intent focusin->ai-suggestion#focus input->ai-suggestion#change lexxy:change->ai-suggestion#change lexxy:change->form#disableSubmitWhenInvalid lexxy:change->local-save#save turbo:morph-element->local-save#restoreContent" } do %>
+              data: { local_save_target: "input", ai_suggestion_target: "input", action: "pointerdown->ai-suggestion#intent click->ai-suggestion#intent focusin->ai-suggestion#focus input->ai-suggestion#change lexxy:change->ai-suggestion#change lexxy:change->form#disableSubmitWhenInvalid lexxy:change->local-save#save turbo:morph-element->local-save#restoreContent" } do %>
           <%= general_prompts(@card.board) %>
         <% end %>
 

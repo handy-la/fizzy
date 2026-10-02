@@ -97,6 +97,7 @@ agrégala allí; `*` permitiría que sus workers esperen también al proveedor.
 El evento `lexxy:change` es sintético incluso al escribir: sólo un `beforeinput`
 real autoriza el debounce del título. En comentarios, un foco programático
 puede tener `isTrusted`: exige también la intención real de puntero o Tab.
+En un celular el foco llega tras esa intención; lo autoriza el `click` del toque.
 
 ## Reintentos de webhooks
 
