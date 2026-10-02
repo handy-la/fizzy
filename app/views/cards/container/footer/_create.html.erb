@@ -1,19 +1,26 @@
 <div class="card-perma__notch card-perma__notch--bottom flex-column">
-  <div class="card-perma__notch-new-card-buttons">
-    <%= button_to card_publish_path(card), name: "creation_type", value: "add", class: "btn",
-          title: "Create card (#{ hotkey_label(["ctrl", "enter"]) })",
-          form: { data: { controller: "form bridge--form" } },
-          data: { form_target: "submit", bridge__form_target: "submit", controller: "clicker", action: "keydown.ctrl+enter@document->clicker#click keydown.meta+enter@document->clicker#click" } do %>
-      <span>Create card</span>
-    <% end %>
+  <%= form_with url: card_publish_path(card), class: "flex flex-column align-center gap-half", data: { controller: "form bridge--form" } do %>
+    <div class="card-perma__notch-new-card-buttons">
+      <%= button_tag name: "creation_type", value: "add", class: "btn",
+            title: "Create card (#{ hotkey_label(["ctrl", "enter"]) })",
+            data: { form_target: "submit", bridge__form_target: "submit", controller: "clicker", action: "keydown.ctrl+enter@document->clicker#click keydown.meta+enter@document->clicker#click" } do %>
+        <span>Create card</span>
+      <% end %>
 
-    <%= button_to card_publish_path(card), method: :post, class: "btn btn--reversed", name: "creation_type", value: "add_another",
-          title: "Create and add another (#{ hotkey_label(["ctrl", "shift", "enter"]) })", form: { data: { controller: "form" } },
-          data: { form_target: "submit", controller: "clicker", action: "keydown.ctrl+shift+enter@document->clicker#click keydown.meta+shift+enter@document->clicker#click" } do %>
-      <span>Create and add another</span>
+      <%= button_tag class: "btn btn--reversed", name: "creation_type", value: "add_another",
+            title: "Create and add another (#{ hotkey_label(["ctrl", "shift", "enter"]) })",
+            data: { form_target: "submit", controller: "clicker", action: "keydown.ctrl+shift+enter@document->clicker#click keydown.meta+shift+enter@document->clicker#click" } do %>
+        <span>Create and add another</span>
+      <% end %>
+    </div>
+
+    <% if column = card.board.columns.find { |column| column.name.casecmp?("To work") } %>
+      <label class="flex align-center gap-half cursor-pointer">
+        <%= check_box_tag :column_id, column.id, params[:column_id] == column.id, class: "checkbox" %>
+        <span>Create in To work</span>
+      </label>
     <% end %>
-  </div>
+  <% end %>
 
   <%= render "cards/container/footer/saas/storage_limit_notice" if Fizzy.saas? %>
 </div>
-

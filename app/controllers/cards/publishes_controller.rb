@@ -2,13 +2,18 @@ class Cards::PublishesController < ApplicationController
   include CardScoped
 
   def create
-    @card.publish
+    column = @board.columns.find(params[:column_id]) if params[:column_id].present?
+
+    @card.transaction do
+      @card.publish
+      @card.triage_into(column) if column
+    end
 
     respond_to do |format|
       format.html do
         if add_another_param?
           card = @board.cards.create!(status: :drafted)
-          redirect_to card_draft_path(card), notice: "Card added"
+          redirect_to card_draft_path(card, column_id: column&.id), notice: "Card added"
         else
           redirect_to @card.board
         end
