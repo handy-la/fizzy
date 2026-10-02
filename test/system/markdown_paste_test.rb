@@ -5,7 +5,6 @@ class MarkdownPasteTest < ApplicationSystemTestCase
     sign_in_as(users(:david))
 
     visit card_url(cards(:layout))
-    find("lexxy-editor").click
     paste_markdown("Hello\n\nWorld")
 
     within("lexxy-editor") do
@@ -19,7 +18,6 @@ class MarkdownPasteTest < ApplicationSystemTestCase
     sign_in_as(users(:david))
 
     visit card_url(cards(:layout))
-    find("lexxy-editor").click
     paste_markdown("Hello\nWorld")
 
     inner_html = find("lexxy-editor p", text: "Hello").native.property("innerHTML")
@@ -35,10 +33,16 @@ class MarkdownPasteTest < ApplicationSystemTestCase
 
   private
     def paste_markdown(markdown)
-      page.execute_script(<<~JS, markdown)
+      editor = find(".comment--new lexxy-editor [contenteditable='true']")
+      # The floating card dock can cover the center of the editor.
+      scroll_to editor, align: :center
+      editor.click(x: 10, y: 10)
+      assert_selector ".comment--new lexxy-editor [contenteditable='true']:focus"
+
+      page.execute_script(<<~JS, editor, markdown)
         const dt = new DataTransfer();
-        dt.setData("text/plain", arguments[0]);
-        document.activeElement.dispatchEvent(new ClipboardEvent("paste", { clipboardData: dt, bubbles: true }));
+        dt.setData("text/plain", arguments[1]);
+        arguments[0].dispatchEvent(new ClipboardEvent("paste", { clipboardData: dt, bubbles: true, cancelable: true }));
       JS
     end
 end

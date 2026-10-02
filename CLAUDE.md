@@ -72,6 +72,15 @@ file.
 
 Before editing or reviewing code, read STYLE.md.
 
+## Pegado en pruebas de sistema
+
+La barra flotante de una tarjeta puede cubrir el centro de `lexxy-editor`.
+Para pegar, haz clic cerca de la esquina superior del campo `contenteditable`,
+tras dejarlo completo dentro de la ventana. Comprueba su foco y envía el evento
+a ese campo. Un clic en el contenedor
+seguido de un pegado a `document.activeElement` puede enviarlo a `BODY`.
+Evidencia: `docs/test-audits/handy-568.md`.
+
 ## Fireworks y RubyLLM
 
 RubyLLM 2.0 usa Responses como protocolo OpenAI predeterminado. Para Fireworks,
