@@ -21,9 +21,17 @@
 
 ## Evidencia
 
+Antes de ampliar la prueba por el hallazgo de revisión: el contrato incluye
+la actualización Turbo del borrador. La regresión es perder el mensaje o el
+placeholder original cuando Turbo actualiza los atributos del título. El caso
+existente de inserción se amplía para esperar `turbo:morph-element` del campo;
+no requiere un seam productivo ni otro mock. La primera candidata sólo observaba
+el campo antes de una actualización Turbo y no detectaba este riesgo. Se envía
+el formulario real con `requestSubmit()`, sin publicar la tarjeta.
+
 Base: `e6f95af120ca3b82fe60700b58494d3e8ec561db` de `fizzy-custom/origin/main`.
 Candidata final de `test/system/ai_suggestion_test.rb`, SHA-256:
-`a80f421d8a74b51162c8f35315f443fc92bb70a201e3874660d1cf277cb40ccb`.
+`517020c7f1a36a5db4764b6b32f29649561cf3f74251503f234e73ccad9e6b10`.
 Entorno: Linux, Ruby 3.4.8 mediante mise, Chromium 152.0.7977.82.
 
 RED: desde `fizzy-custom/`, exporté `origin/main` con `git archive` a
@@ -49,8 +57,22 @@ SAAS=false BUNDLE_GEMFILE=Gemfile PARALLEL_WORKERS=1 CI_PROGRESS_BAR=false \
   mise exec -- bin/rails test test/system/ai_suggestion_test.rb -n /title/
 ```
 
-Resultado: exit 0; 4 casos, 35 aserciones, 0 fallos, errores ni omisiones.
+Resultado: exit 0; 4 casos, 36 aserciones, 0 fallos, errores ni omisiones.
 Salida de trabajo: `.context/565-green-final.log`.
+
+RED adicional contra la primera implementación
+`2842471fa06ad4e25c9c7f3f11b760a5c0d29a9e`, antes de corregir su controlador:
+el mismo entorno y `mise exec -- bin/rails test test/system/ai_suggestion_test.rb
+-n /title_is_suggested/` terminaron con exit 1, un caso, ocho aserciones y un
+fallo al buscar el mensaje después de recibir `turbo:morph-element`.
+Salida de trabajo: `.context/565-morph-red.log`. La candidata y el código final
+pasaron ese paso dentro del GREEN anterior.
+
+La revisión describió el morph como parte del autoguardado. La comprobación
+mostró que `helpers/form_helpers.js` pide JSON; el autoguardado actual no hace
+ese morph. El fallo sí se reprodujo en la respuesta Turbo de `CardsController#update`.
+El controlador final conserva el texto original y la espera en campos privados;
+un observador del atributo `placeholder` restaura su presentación tras el morph.
 
 La suite principal, con el mismo entorno y `mise exec -- bin/rails test`, pasó:
 1.757 casos, 6.786 aserciones, 0 fallos, 0 errores y 6 omisiones existentes.
@@ -63,7 +85,8 @@ y ningún error. Una exportación de la base también falló al pegar Markdown
 cambio pasó ambos casos. Este problema intermitente queda fuera de la tarjeta.
 Se registró como [Handy #568](https://hermes.tailbaa835.ts.net:43008/1/cards/568).
 La repetición completa de `bin/rails test:system --seed 39952` pasó: exit 0,
-33 casos, 183 aserciones, 0 fallos, 0 errores y 0 omisiones.
+33 casos, 184 aserciones, 0 fallos, 0 errores y 0 omisiones sobre el cambio final
+que conserva el placeholder tras una actualización Turbo.
 
 ## Comprobación visual y límites
 

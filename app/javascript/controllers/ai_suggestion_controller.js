@@ -16,6 +16,8 @@ export default class extends Controller {
   #active
   #proposal
   #input
+  #titlePlaceholder
+  #preparing = false
   #composing = false
   #keydown = event => this.#accept(event)
   #compositionStart = () => { this.#composing = true }
@@ -24,9 +26,13 @@ export default class extends Controller {
 
   connect() {
     this.#input = this.inputTarget
-    this.#input.dataset.aiSuggestionPlaceholder ??= this.#input.getAttribute("placeholder") || ""
     document.addEventListener("turbo:before-stream-render", this.#refresh)
-    if (this.kindValue === "comment") {
+    if (this.kindValue === "title") {
+      this.#titlePlaceholder = this.#input.getAttribute("placeholder") || ""
+      this.#observer = new MutationObserver(() => this.#renderPlaceholder())
+      this.#observer.observe(this.#input, { attributes: true, attributeFilter: [ "placeholder" ] })
+    } else if (this.kindValue === "comment") {
+      this.inputTarget.dataset.aiSuggestionPlaceholder ??= this.inputTarget.getAttribute("placeholder") || ""
       // Capture on the ancestor, before Lexical's listener on its editable root.
       this.element.addEventListener("keydown", this.#keydown, true)
       this.element.addEventListener("compositionstart", this.#compositionStart, true)
@@ -213,7 +219,13 @@ export default class extends Controller {
   }
 
   #renderPlaceholder() {
-    if (this.kindValue !== "comment" || !this.#input) return
+    if (!this.#input) return
+    if (this.kindValue === "title") {
+      const placeholder = this.#preparing ? "Sugiriendo título..." : this.#titlePlaceholder
+      if (this.#input.getAttribute("placeholder") !== placeholder) this.#input.setAttribute("placeholder", placeholder)
+      return
+    }
+    if (this.kindValue !== "comment") return
     const placeholder = this.#proposal && this.#empty ? `${this.#proposal.text}\nEnter para aceptar` : this.#input.dataset.aiSuggestionPlaceholder || ""
     for (const element of [ this.#input, this.#input.querySelector("[contenteditable]") ]) {
       if (element && element.getAttribute("placeholder") !== placeholder) element.setAttribute("placeholder", placeholder)
@@ -222,7 +234,8 @@ export default class extends Controller {
 
   #showStatus(text, retry = false) {
     if (this.kindValue === "title" && this.#input) {
-      this.#input.setAttribute("placeholder", text && !retry ? "Sugiriendo título..." : this.#input.dataset.aiSuggestionPlaceholder)
+      this.#preparing = !!text && !retry
+      this.#renderPlaceholder()
     }
     if (this.hasStatusTarget) { this.statusTarget.textContent = text; this.statusTarget.hidden = !text }
     if (this.hasRetryTarget) this.retryTarget.hidden = !retry

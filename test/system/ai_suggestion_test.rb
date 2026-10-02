@@ -11,6 +11,12 @@ class AiSuggestionSystemTest < ApplicationSystemTestCase
     draft = boards(:writebook).cards.create!(status: :drafted, creator: users(:david))
     visit card_draft_url(draft)
     control_suggestions
+    page.execute_script(<<~JS)
+      window.titleMorphs = 0
+      document.addEventListener("turbo:morph-element", event => {
+        if (event.target.id === "card_title") window.titleMorphs++
+      })
+    JS
     find("lexxy-editor [contenteditable]").click
     find("lexxy-editor [contenteditable]").send_keys("Corto")
     page.evaluate_async_script("setTimeout(arguments[arguments.length - 1], 1600)")
@@ -21,6 +27,11 @@ class AiSuggestionSystemTest < ApplicationSystemTestCase
     assert_selector '#card_title[placeholder="Sugiriendo título..."]'
     assert_field "card_title", with: ""
     assert_equal "title", page.evaluate_script("window.suggestionRequests[0].kind")
+    page.execute_script('document.querySelector("#card_form").requestSubmit()')
+    Timeout.timeout(5) do
+      sleep 0.05 until page.evaluate_script("window.titleMorphs > 0")
+    end
+    assert_selector '#card_title[placeholder="Sugiriendo título..."]'
     respond_with "Corregir total del recibo"
     assert_field "card_title", with: "Corregir total del recibo"
     assert_selector '#card_title[placeholder="Name it…"]'
