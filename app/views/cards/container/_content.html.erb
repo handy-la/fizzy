@@ -20,7 +20,7 @@
 
     <%= form.rich_textarea :description, class: "card__description lexxy-content",
           placeholder: "Add some notes, context, pictures, or video about this…",
-          data: { ai_suggestion_target: "description", action: "beforeinput->ai-suggestion#intent input->ai-suggestion#change lexxy:change->ai-suggestion#change lexxy:change->auto-save#change focusout->auto-save#submit" } do %>
+          data: { ai_suggestion_target: "description", action: "beforeinput->ai-suggestion#intent paste->ai-suggestion#intent:capture input->ai-suggestion#change lexxy:change->ai-suggestion#change lexxy:change->auto-save#change focusout->auto-save#submit" } do %>
       <%= general_prompts(card.board) %>
     <% end %>
   <% end %>

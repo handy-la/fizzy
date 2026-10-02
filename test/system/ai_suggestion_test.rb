@@ -44,6 +44,27 @@ class AiSuggestionSystemTest < ApplicationSystemTestCase
     assert draft.drafted?
   end
 
+  # Handy #588: dictation apps paste the description. Lexical consumes the
+  # paste event, so no beforeinput reaches the controller. Contract and RED:
+  # docs/test-audits/handy-588.md.
+  test "pasting a long description suggests the title" do
+    draft = boards(:writebook).cards.create!(status: :drafted, creator: users(:david))
+    visit card_draft_url(draft)
+    control_suggestions
+    page.driver.browser.execute_cdp("Browser.grantPermissions", permissions: %w[ clipboardReadWrite clipboardSanitizedWrite ])
+    editor = find("lexxy-editor [contenteditable]")
+    editor.click
+    page.evaluate_async_script(<<~JS, "El recibo de la venta no muestra el total cuando hay descuento.")
+      navigator.clipboard.writeText(arguments[0]).then(arguments[arguments.length - 1])
+    JS
+    editor.send_keys([ :control, "v" ])
+    assert_selector "lexxy-editor", text: "El recibo de la venta no muestra el total"
+    wait_for_request
+    assert_equal "title", page.evaluate_script("window.suggestionRequests[0].kind")
+    respond_with "Mostrar total con descuento en el recibo"
+    assert_field "card_title", with: "Mostrar total con descuento en el recibo"
+  end
+
   test "title waiting placeholder is restored on failure cancellation and disconnection" do
     %w[ failed skipped title description disconnect ].each do |outcome|
       draft = boards(:writebook).cards.create!(status: :drafted, creator: users(:david))
@@ -232,6 +253,15 @@ class AiSuggestionSystemTest < ApplicationSystemTestCase
       editor.dispatchEvent(new CustomEvent("lexxy:change", { bubbles: true }))
       editor.dispatchEvent(new Event("input", { bubbles: true }))
     JS
+    # A scripted paste is inserted by Lexical but is not the person's intent.
+    find("lexxy-editor [contenteditable]").click(x: 10, y: 10)
+    page.execute_script(<<~JS)
+      const editable = document.querySelector("lexxy-editor [contenteditable]")
+      const data = new DataTransfer()
+      data.setData("text/plain", " Texto pegado por un script.")
+      editable.dispatchEvent(new ClipboardEvent("paste", { clipboardData: data, bubbles: true, cancelable: true }))
+    JS
+    assert_selector "lexxy-editor", text: "Texto pegado por un script."
     # Beyond the production debounce: absence of requests is the contract.
     page.evaluate_async_script("setTimeout(arguments[arguments.length - 1], 1600)")
     assert_equal 0, page.evaluate_script("window.suggestionRequests.length")

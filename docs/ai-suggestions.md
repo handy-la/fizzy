@@ -108,6 +108,12 @@ expiró: ese foco queda pendiente y el `click` confiable del mismo toque, dentro
 del editor enfocado, pide la sugerencia. Un foco autoriza un solo clic.
 Evidencia: `docs/test-audits/handy-571.md`.
 
+El título se pide 1,2 s después de una edición real de la descripción: un
+`beforeinput` confiable o un `paste` confiable. Lexical cancela el pegado
+antes de que el navegador emita `beforeinput`, y las apps de dictado pegan su
+texto: por eso el `paste` cuenta como edición. Un pegado por script no cuenta.
+Evidencia: `docs/test-audits/handy-588.md`.
+
 El título mantiene su inserción editable y su guardado actuales. El límite de
 255 caracteres sigue vigente. Los comentarios mayores de 8.000 caracteres se
 rechazan como incompletos, sin recortarlos.

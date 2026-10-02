@@ -70,7 +70,10 @@ export default class extends Controller {
 
   intent(event) {
     if (!event.isTrusted) return
-    if (event.type === "beforeinput" && /^(insert|delete)/.test(event.inputType) && this.kindValue === "title" && this.descriptionTarget.contains(event.target)) {
+    // Lexical cancels a paste before the browser fires beforeinput, so the
+    // trusted paste itself is the intent (dictation apps paste their text).
+    const edit = event.type === "paste" || (event.type === "beforeinput" && /^(insert|delete)/.test(event.inputType))
+    if (edit && this.kindValue === "title" && this.descriptionTarget.contains(event.target)) {
       this.#typed = true
     } else if (event.type === "pointerdown" || event.key === "Tab") {
       this.#focusIntent = true
