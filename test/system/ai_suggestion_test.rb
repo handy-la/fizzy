@@ -184,6 +184,7 @@ class AiSuggestionSystemTest < ApplicationSystemTestCase
       control_suggestions
       scroll_to_comment
       original = find(".comment--new lexxy-editor")["placeholder"]
+      assert_live_region_ready_off_screen
       find(".comment--new [contenteditable]").click
       wait_for_request
       assert_selector '.comment--new [contenteditable][placeholder="Preparando sugerencia…"]'
@@ -442,8 +443,17 @@ class AiSuggestionSystemTest < ApplicationSystemTestCase
     # lives in the placeholder on screen, while the live region keeps the text
     # for screen readers without adding a visible line.
     def assert_waiting_announced_off_screen
+      assert_status_off_screen "Preparando sugerencia…"
+    end
+
+    # A live region only announces changes made while it is already exposed.
+    def assert_live_region_ready_off_screen
+      assert_status_off_screen ""
+    end
+
+    def assert_status_off_screen(text)
       status = comment_status
-      assert_equal [ false, "status", "Preparando sugerencia…" ], status.values_at(:hidden, :role, :text)
+      assert_equal [ false, "status", text ], status.values_at(:hidden, :role, :text)
       assert_operator status[:width], :<=, 1
       assert_operator status[:height], :<=, 1
     end

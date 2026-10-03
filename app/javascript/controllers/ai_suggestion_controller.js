@@ -252,12 +252,12 @@ export default class extends Controller {
   #showStatus(text, retry = false) {
     this.#preparing = !!text && !retry
     this.#renderPlaceholder()
-    // The wait shows in the placeholder; the live region still announces it.
+    // The live region is never hidden: it only announces changes made while
+    // exposed. Off screen when empty or waiting (the placeholder shows the wait).
     // Kept from connect: disconnect clears it after its targets are unreachable.
     if (this.#status) {
       this.#status.textContent = text
-      this.#status.hidden = !text
-      this.#status.classList.toggle("for-screen-reader", this.#preparing)
+      this.#status.classList.toggle("for-screen-reader", !text || this.#preparing)
     }
     if (this.hasRetryTarget) this.retryTarget.hidden = !retry
   }

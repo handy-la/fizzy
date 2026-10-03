@@ -17,7 +17,7 @@
           <%= general_prompts(@card.board) %>
         <% end %>
 
-        <span data-ai-suggestion-target="status" role="status" hidden></span>
+        <span data-ai-suggestion-target="status" role="status" class="for-screen-reader"></span>
         <button type="button" class="btn" data-ai-suggestion-target="retry" data-action="ai-suggestion#retry" hidden>Reintentar sugerencia</button>
 
         <span class="flex-inline align-center gap">
