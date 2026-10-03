@@ -1,14 +1,14 @@
 class Cards::TriagesController < ApplicationController
-  include CardScoped
+  include CardScoped, CardStageNavigation
 
   def create
     column = @card.board.columns.find(params[:column_id])
-    source_column = @card.column
+    capture_navigation_stage
     @card.triage_into(column)
 
     respond_to do |format|
       format.html do
-        offer_next_card_awaiting_approval(from: source_column, to: column)
+        offer_next_card_after_move(to: column.id)
         redirect_to @card
       end
       format.json { head :no_content }
@@ -16,20 +16,15 @@ class Cards::TriagesController < ApplicationController
   end
 
   def destroy
+    capture_navigation_stage
     @card.send_back_to_triage
 
     respond_to do |format|
-      format.html { redirect_to @card }
+      format.html do
+        offer_next_card_after_move(to: "maybe")
+        redirect_to @card
+      end
       format.json { head :no_content }
     end
   end
-
-  private
-    # Handy: moving a card forward out of AWAITING APPROVAL from the card dock
-    # offers the next card still waiting there, to approve one after another.
-    def offer_next_card_awaiting_approval(from:, to:)
-      if params[:from] == "dock" && from&.awaiting_approval? && to.position > from.position
-        flash[:approved_from_column_id] = from.id
-      end
-    end
 end

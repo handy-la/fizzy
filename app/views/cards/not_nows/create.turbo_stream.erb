@@ -7,3 +7,9 @@
 <% end %>
 
 <%= turbo_stream.replace([ @card, :card_container ], partial: "cards/container", method: :morph, locals: { card: @card.reload }) %>
+
+<%= turbo_stream.update [ @card, :stage_navigation ] do %>
+  <% if @source_stage_id %>
+    <%= render "cards/next_in_stage", stage: card_navigation_stage(@source_stage_id), message: "Moved!" %>
+  <% end %>
+<% end %>

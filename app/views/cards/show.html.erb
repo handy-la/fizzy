@@ -14,9 +14,12 @@
 <%= turbo_stream_from @card %>
 <%= turbo_stream_from @card, :activity %>
 
-<% if flash[:approved_from_column_id] && (approved_column = @card.board.columns.find_by(id: flash[:approved_from_column_id])) %>
-  <%= render "cards/next_awaiting_approval", column: approved_column %>
-<% end %>
+<div id="<%= dom_id(@card, :stage_navigation) %>" data-controller="card-stage-navigation"
+    data-action="turbo:before-morph-element->card-stage-navigation#preserveNotice">
+  <% if flash[:next_card_from_stage] %>
+    <%= render "cards/next_in_stage", stage: card_navigation_stage(flash[:next_card_from_stage]), message: "Moved!" %>
+  <% end %>
+</div>
 
 <div data-controller="beacon lightbox" data-beacon-url-value="<%= card_reading_path(@card) %>">
   <%= render "cards/container", card: @card %>

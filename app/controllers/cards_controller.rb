@@ -2,6 +2,7 @@ class CardsController < ApplicationController
   wrap_parameters :card, include: %i[ title description image created_at last_active_at ]
 
   include FilterScoped
+  include CardStageNavigation
 
   before_action :set_board, only: %i[ create ]
   before_action :set_card, only: %i[ show edit update destroy ]

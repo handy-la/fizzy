@@ -1,8 +1,9 @@
 class Cards::ClosuresController < ApplicationController
-  include CardScoped
+  include CardScoped, CardStageNavigation
 
   def create
     capture_card_location
+    capture_navigation_stage unless @card.closed?
     @card.close
     refresh_stream_if_needed
 

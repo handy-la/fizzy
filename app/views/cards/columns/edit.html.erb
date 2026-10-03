@@ -17,7 +17,7 @@
         disabled: @card.awaiting_triage?,
         role: "radio",
         aria: { checked: @card.awaiting_triage? },
-        data: { scroll_to_target: @card.awaiting_triage? ? "target" : nil },
+        data: { turbo_frame: "_top", scroll_to_target: @card.awaiting_triage? ? "target" : nil },
         form_class: "flex gap-half" %>
 
     <% @columns.each do |column| %>

@@ -78,6 +78,25 @@ file.
 
 Before editing or reviewing code, read STYLE.md.
 
+## Aviso de siguiente tarjeta
+
+Captura la etapa antes de mover o cerrar: una tarjeta cerrada conserva
+`column_id`, pero ya pertenece a Done. El aviso se actualiza fuera del
+contenedor de tarjeta para que Turbo Stream pueda mostrarlo después de Done.
+Una transición por HTML desde el selector debe usar `turbo_frame: "_top"`;
+de otro modo, Turbo extrae sólo el frame de etapas y pierde el aviso.
+El contenedor lleva un id propio de la tarjeta. Su controlador conserva el
+aviso sólo cuando un morph del mismo contenedor llega vacío: el refresco de
+Cable no debe quitarlo, pero otro movimiento debe sustituirlo. No uses
+`data-turbo-permanent` en el aviso: conserva texto anterior o duplica avisos
+al mover de nuevo. `data-turbo-temporary` evita guardarlo al volver por el
+historial; el contenedor de destino del stream sí permanece.
+Evidencia: `docs/test-audits/handy-628.md`.
+
+Una prueba de sistema que cambia el tamaño de la ventana debe restaurarlo
+en `ensure`. Capybara reutiliza el navegador: dejarlo en tamaño móvil oculta
+elementos y rompe pruebas de navegación o notificaciones posteriores.
+
 ## Pegado en pruebas de sistema
 
 La barra flotante de una tarjeta puede cubrir el centro de `lexxy-editor`.

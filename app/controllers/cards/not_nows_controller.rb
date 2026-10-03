@@ -1,8 +1,9 @@
 class Cards::NotNowsController < ApplicationController
-  include CardScoped
+  include CardScoped, CardStageNavigation
 
   def create
     capture_card_location
+    capture_navigation_stage unless @card.postponed?
     @card.postpone
     refresh_stream_if_needed
 

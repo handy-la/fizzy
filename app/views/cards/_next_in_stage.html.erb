@@ -1,0 +1,25 @@
+<%# Handy: after leaving a stage, offer another card from that same stage. %>
+<% if stage %>
+  <% next_card = stage.cards.where.not(id: @card.id).latest.with_golden_first.first %>
+  <div class="approval-toast" role="status" data-controller="element-removal"
+      data-turbo-temporary style="--card-color: <%= stage.color %>;">
+    <div class="approval-toast__inner shadow">
+      <% if next_card %>
+        <span class="approval-toast__text">
+          <strong><%= message %></strong> Next in <%= stage.name %>:
+          <span class="approval-toast__title overflow-ellipsis"><%= next_card.title %></span>
+        </span>
+        <%= link_to card_path(next_card), class: "approval-toast__next btn", data: { turbo_frame: "_top" } do %>
+          <span>Continue</span>
+          <%= icon_tag "arrow-right" %>
+        <% end %>
+      <% else %>
+        <span class="approval-toast__text"><strong>All caught up!</strong> No more cards in <%= stage.name %> 🎉</span>
+      <% end %>
+      <button type="button" class="approval-toast__close btn btn--circle borderless" data-action="element-removal#remove">
+        <%= icon_tag "close" %>
+        <span class="for-screen-reader">Dismiss</span>
+      </button>
+    </div>
+  </div>
+<% end %>

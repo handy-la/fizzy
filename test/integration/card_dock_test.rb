@@ -2,7 +2,7 @@ require "test_helper"
 
 # Handy: the floating dock of a card page (Done plus previous and next stage),
 # the Done button at the top of the card on a phone, and the toast that offers
-# the next card awaiting approval.
+# the next card in the source stage.
 class CardDockTest < ActionDispatch::IntegrationTest
   setup do
     sign_in_as :kevin
@@ -77,14 +77,100 @@ class CardDockTest < ActionDispatch::IntegrationTest
     assert_select ".approval-toast", text: /All caught up/
   end
 
-  test "no toast when moving back, or when the move did not come from the dock" do
+  test "moving back and moving through the stage selector offer the next source card" do
     post card_triage_path(cards(:logo), column_id: columns(:writebook_in_progress), from: "dock")
     follow_redirect!
-    assert_select ".approval-toast", count: 0
+    assert_select ".approval-toast a[href=?]", card_path(cards(:layout))
 
     cards(:logo).update_columns(column_id: @approval.id)
     post card_triage_path(cards(:logo), column_id: columns(:writebook_review))
     follow_redirect!
+    assert_select ".approval-toast a[href=?]", card_path(cards(:layout))
+  end
+  test "moving out of every named column offers the next card in that column" do
+    cards(:text).update_columns(column_id: nil)
+    cards(:shipping).update_columns(column_id: nil)
+
+    cards(:logo).board.columns.each do |source|
+      cards(:logo).update_columns(column_id: source.id)
+      cards(:layout).update_columns(column_id: source.id)
+      destination = cards(:logo).board.columns.where.not(id: source.id).first
+
+      post card_triage_path(cards(:logo), column_id: destination, from: "dock")
+      follow_redirect!
+
+      assert_select ".approval-toast a[href=?]", card_path(cards(:layout))
+      assert_select ".approval-toast", text: /#{Regexp.escape(source.name)}/
+    end
+  end
+
+  test "Done offers an active source card and does not offer the closed card" do
+    post card_closure_path(cards(:logo)), as: :turbo_stream
+    assert_response :success
+    assert_select "turbo-stream[action=update][target=?]", ActionView::RecordIdentifier.dom_id(cards(:logo), :stage_navigation) do
+      assert_select ".approval-toast a[href=?]", card_path(cards(:layout))
+      assert_select "a[href=?]", card_path(cards(:logo)), count: 0
+    end
+    assert cards(:logo).reload.closed?
+  end
+
+  test "Done reports an empty source column when only closed cards remain" do
+    cards(:layout).update_columns(column_id: nil)
+    cards(:shipping).update_columns(column_id: @approval.id)
+
+    post card_closure_path(cards(:logo)), as: :turbo_stream
+
+    assert_select ".approval-toast", text: /All caught up/
+    assert_select ".approval-toast a", count: 0
+  end
+
+  test "moving to Maybe or Not now offers the next source card" do
+    delete card_triage_path(cards(:logo), from: "dock")
+    follow_redirect!
+    assert_select ".approval-toast a[href=?]", card_path(cards(:layout))
+
+    cards(:logo).update_columns(column_id: @approval.id)
+    post card_not_now_path(cards(:logo)), as: :turbo_stream
+    assert_select ".approval-toast a[href=?]", card_path(cards(:layout))
+  end
+
+  test "moving from Maybe offers the next card in Maybe" do
+    cards(:logo).update_columns(column_id: nil)
+    cards(:layout).update_columns(column_id: nil)
+    cards(:layout).gild
+
+    post card_triage_path(cards(:logo), column_id: @approval)
+    follow_redirect!
+
+    assert_select ".approval-toast", text: /Maybe\?/
+    assert_select ".approval-toast a[href=?]", card_path(cards(:layout))
+  end
+
+  test "moving from Not now or Done offers a card from that same special stage" do
+    cards(:logo).postpone(user: users(:kevin))
+    cards(:layout).postpone(user: users(:kevin))
+    post card_triage_path(cards(:logo), column_id: @approval)
+    follow_redirect!
+    assert_select ".approval-toast", text: /Not now/
+    assert_select ".approval-toast a[href=?]", card_path(cards(:layout))
+
+    cards(:logo).close(user: users(:kevin))
+    post card_triage_path(cards(:logo), column_id: @approval)
+    follow_redirect!
+    assert_select ".approval-toast", text: /Done/
+    assert_select ".approval-toast a[href=?]", card_path(cards(:shipping))
+  end
+
+  test "moving into the same stage does not offer the current card" do
+    post card_triage_path(cards(:logo), column_id: @approval)
+    follow_redirect!
+    assert_select ".approval-toast", count: 0
+  end
+
+  test "JSON movement does not leave a navigation notice on a later page" do
+    post card_triage_path(cards(:logo), column_id: columns(:writebook_review)), as: :json
+    assert_response :no_content
+    get card_path(cards(:logo))
     assert_select ".approval-toast", count: 0
   end
 end
