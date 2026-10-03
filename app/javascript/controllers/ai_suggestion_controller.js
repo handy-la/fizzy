@@ -240,18 +240,17 @@ export default class extends Controller {
       return
     }
     if (this.kindValue !== "comment") return
-    const placeholder = this.#proposal && this.#empty ? `${this.#proposal.text}\nEnter para aceptar` : this.#input.dataset.aiSuggestionPlaceholder || ""
+    const placeholder = this.#preparing ? "Preparando sugerencia…" :
+      this.#proposal && this.#empty ? `${this.#proposal.text}\nEnter para aceptar` : this.#input.dataset.aiSuggestionPlaceholder || ""
     for (const element of [ this.#input, this.#input.querySelector("[contenteditable]") ]) {
       if (element && element.getAttribute("placeholder") !== placeholder) element.setAttribute("placeholder", placeholder)
     }
   }
 
   #showStatus(text, retry = false) {
-    if (this.kindValue === "title" && this.#input) {
-      this.#preparing = !!text && !retry
-      this.#renderPlaceholder()
-    }
-    if (this.hasStatusTarget) { this.statusTarget.textContent = text; this.statusTarget.hidden = !text }
+    this.#preparing = !!text && !retry
+    this.#renderPlaceholder()
+    if (this.hasStatusTarget) { this.statusTarget.textContent = text; this.statusTarget.hidden = !text || this.#preparing }
     if (this.hasRetryTarget) this.retryTarget.hidden = !retry
   }
 

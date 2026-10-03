@@ -95,7 +95,10 @@ trabajo pendiente. Una edición, aceptación o resultado obsoleto invalida la
 propuesta en el cliente. Los streams de la página vuelven a comprobar contexto.
 
 Sólo comentarios: se cambian los placeholders del contenedor y del editable
-interior, con el texto exacto «Enter para aceptar». No cambia el valor ni
+interior. Durante la espera muestran «Preparando sugerencia…», sin una línea
+de estado visible aparte. Al llegar la propuesta muestran su texto y
+«Enter para aceptar». Los errores y el botón de reintento siguen debajo del
+campo. No cambia el valor ni
 habilita publicación. Lexxy puede representar vacío como `<p><br></p>`; su
 `isEmpty` evita que ese marcado se guarde como borrador. Enter simple se captura
 antes del procesamiento de Lexical, copia texto mediante `textContent` y permite

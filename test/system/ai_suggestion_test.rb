@@ -150,6 +150,10 @@ class AiSuggestionSystemTest < ApplicationSystemTestCase
     assert_equal 0, page.evaluate_script("window.suggestionRequests.length")
     find(".comment--new lexxy-editor [contenteditable]").click
     wait_for_request
+    assert_selector '.comment--new lexxy-editor[placeholder="Preparando sugerencia…"]'
+    assert_selector '.comment--new [contenteditable][placeholder="Preparando sugerencia…"]'
+    assert_no_selector '[data-ai-suggestion-target="status"]', text: "Preparando sugerencia"
+    within(".comment--new") { assert_button "Post", disabled: true }
     find(".comment--new button[title=Bold]").click
     find(".comment--new lexxy-editor [contenteditable]").click
     assert_equal 1, page.evaluate_script("window.suggestionRequests.length")
@@ -172,6 +176,39 @@ class AiSuggestionSystemTest < ApplicationSystemTestCase
     within(".comment--new") { assert_button "Post", disabled: false }
   end
 
+  # Contrato y evidencia RED: docs/test-audits/handy-631.md.
+  test "comment waiting placeholder is restored on failure cancellation and disconnection" do
+    %w[ failed skipped typing disconnect ].each do |outcome|
+      visit card_url(@card)
+      page.execute_script("sessionStorage.clear(); localStorage.clear()")
+      control_suggestions
+      scroll_to_comment
+      original = find(".comment--new lexxy-editor")["placeholder"]
+      find(".comment--new [contenteditable]").click
+      wait_for_request
+      assert_selector '.comment--new [contenteditable][placeholder="Preparando sugerencia…"]'
+
+      case outcome
+      when "failed"
+        respond_with nil, status: "failed"
+        assert_selector '[data-ai-suggestion-target="status"]', text: "No se pudo obtener la sugerencia."
+        assert_button "Reintentar sugerencia"
+      when "skipped"
+        page.execute_script("window.resolveSuggestion(new Response(null, { status: 204 }))")
+      when "typing"
+        find(".comment--new [contenteditable]").send_keys("Mi respuesta")
+        respond_with "Respuesta tardía"
+        assert_selector ".comment--new lexxy-editor", text: "Mi respuesta"
+      when "disconnect"
+        page.execute_script('document.querySelector(".comment--new form").dataset.controller = "form local-save"')
+      end
+
+      assert_selector ".comment--new lexxy-editor[placeholder=#{original.to_json}]"
+      assert_selector ".comment--new [contenteditable][placeholder=#{original.to_json}]"
+      assert_no_selector '[data-ai-suggestion-target="status"]', text: "Preparando sugerencia"
+    end
+  end
+
   # Handy #571: on a phone, pointerdown fires on touchstart, but focus arrives
   # only after the finger lifts. Contract and RED: docs/test-audits/handy-571.md.
   test "a touch tap on the empty comment requests one suggestion" do
@@ -191,7 +228,7 @@ class AiSuggestionSystemTest < ApplicationSystemTestCase
       .move_to(editor, device: "finger").pointer_down(:left, device: "finger")
       .pause(device: finger, duration: 0.15).pointer_up(:left, device: "finger").perform
     wait_for_request
-    assert_selector '[data-ai-suggestion-target="status"]', text: "Preparando sugerencia"
+    assert_selector '.comment--new [contenteditable][placeholder="Preparando sugerencia…"]'
     page.evaluate_async_script("setTimeout(arguments[arguments.length - 1], 250)")
     assert_equal 1, page.evaluate_script("window.suggestionRequests.length")
   end
@@ -312,7 +349,7 @@ class AiSuggestionSystemTest < ApplicationSystemTestCase
     JS
     scroll_to_comment
     find(".comment--new [contenteditable]").click
-    assert_selector '[data-ai-suggestion-target="status"]', text: "Preparando sugerencia"
+    assert_selector '.comment--new [contenteditable][placeholder="Preparando sugerencia…"]'
     Timeout.timeout(5) do
       sleep 0.05 until page.evaluate_script("Object.keys(sessionStorage).some(key => key.startsWith('ai-suggestion:') && JSON.parse(sessionStorage.getItem(key))?.token)")
     end
