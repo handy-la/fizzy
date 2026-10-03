@@ -17,6 +17,7 @@ export default class extends Controller {
   #active
   #proposal
   #input
+  #status
   #titlePlaceholder
   #preparing = false
   #composing = false
@@ -27,6 +28,7 @@ export default class extends Controller {
 
   connect() {
     this.#input = this.inputTarget
+    this.#status = this.hasStatusTarget ? this.statusTarget : null
     document.addEventListener("turbo:before-stream-render", this.#refresh)
     if (this.kindValue === "title") {
       this.#titlePlaceholder = this.#input.getAttribute("placeholder") || ""
@@ -250,7 +252,13 @@ export default class extends Controller {
   #showStatus(text, retry = false) {
     this.#preparing = !!text && !retry
     this.#renderPlaceholder()
-    if (this.hasStatusTarget) { this.statusTarget.textContent = text; this.statusTarget.hidden = !text || this.#preparing }
+    // The wait shows in the placeholder; the live region still announces it.
+    // Kept from connect: disconnect clears it after its targets are unreachable.
+    if (this.#status) {
+      this.#status.textContent = text
+      this.#status.hidden = !text
+      this.#status.classList.toggle("for-screen-reader", this.#preparing)
+    }
     if (this.hasRetryTarget) this.retryTarget.hidden = !retry
   }
 

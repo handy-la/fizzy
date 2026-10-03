@@ -152,7 +152,7 @@ class AiSuggestionSystemTest < ApplicationSystemTestCase
     wait_for_request
     assert_selector '.comment--new lexxy-editor[placeholder="Preparando sugerencia…"]'
     assert_selector '.comment--new [contenteditable][placeholder="Preparando sugerencia…"]'
-    assert_no_selector '[data-ai-suggestion-target="status"]', text: "Preparando sugerencia"
+    assert_waiting_announced_off_screen
     within(".comment--new") { assert_button "Post", disabled: true }
     find(".comment--new button[title=Bold]").click
     find(".comment--new lexxy-editor [contenteditable]").click
@@ -187,11 +187,13 @@ class AiSuggestionSystemTest < ApplicationSystemTestCase
       find(".comment--new [contenteditable]").click
       wait_for_request
       assert_selector '.comment--new [contenteditable][placeholder="Preparando sugerencia…"]'
+      assert_waiting_announced_off_screen
 
       case outcome
       when "failed"
         respond_with nil, status: "failed"
         assert_selector '[data-ai-suggestion-target="status"]', text: "No se pudo obtener la sugerencia."
+        assert_operator comment_status[:width], :>, 1
         assert_button "Reintentar sugerencia"
       when "skipped"
         page.execute_script("window.resolveSuggestion(new Response(null, { status: 204 }))")
@@ -205,7 +207,7 @@ class AiSuggestionSystemTest < ApplicationSystemTestCase
 
       assert_selector ".comment--new lexxy-editor[placeholder=#{original.to_json}]"
       assert_selector ".comment--new [contenteditable][placeholder=#{original.to_json}]"
-      assert_no_selector '[data-ai-suggestion-target="status"]', text: "Preparando sugerencia"
+      assert_not_includes comment_status[:text], "Preparando sugerencia", outcome
     end
   end
 
@@ -433,6 +435,26 @@ class AiSuggestionSystemTest < ApplicationSystemTestCase
           }
           return originalFetch.call(this, url, options)
         }
+      JS
+    end
+
+    # Handy #634 (contract and RED: docs/test-audits/handy-634.md): the wait
+    # lives in the placeholder on screen, while the live region keeps the text
+    # for screen readers without adding a visible line.
+    def assert_waiting_announced_off_screen
+      status = comment_status
+      assert_equal [ false, "status", "Preparando sugerencia…" ], status.values_at(:hidden, :role, :text)
+      assert_operator status[:width], :<=, 1
+      assert_operator status[:height], :<=, 1
+    end
+
+    def comment_status
+      page.evaluate_script(<<~JS).symbolize_keys
+        (() => {
+          const status = document.querySelector('.comment--new [data-ai-suggestion-target="status"]')
+          const box = status.getBoundingClientRect()
+          return { hidden: status.hidden, role: status.getAttribute("role"), text: status.textContent, width: box.width, height: box.height }
+        })()
       JS
     end
 
