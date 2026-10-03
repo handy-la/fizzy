@@ -23,6 +23,12 @@ clears inherited Ruby/Bundler variables and `bin/dev` re-enters through the Ruby
 pinned by mise. Do not remove that boundary: mixing RVM native extensions with
 the mise Ruby fails later as an unrelated OpenSSL or psych activation error.
 
+Run tests through `mise exec` too, after clearing inherited Ruby/Bundler
+variables. For `test/dev-port-test`, select Ruby before entering its temporary
+sandboxes: a Ruby shim resolves configuration from the sandbox's directory,
+which can change the selected Ruby or fail its trust check. Evidence and commands:
+`docs/test-audits/handy-610.md`.
+
 ## SaaS mode
 
 For local agent work, `tmp/saas.txt` is the checkout-level SaaS switch used by `bin/setup`. When present, read `saas/AGENTS.md` before continuing. Otherwise, do not apply its instructions.
