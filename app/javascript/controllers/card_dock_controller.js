@@ -45,9 +45,11 @@ export default class extends Controller {
     }
   }
 
-  // Older system comments stay hidden until the history is expanded: skip them.
+  // Each comment sits in its own frame; a highlighted code comment inside one also has
+  // the class "comment". Older system comments stay hidden until the history is
+  // expanded: skip them.
   get #lastVisibleComment() {
-    const comments = document.querySelectorAll(".comments .comment:not(.comment--new)")
+    const comments = document.querySelectorAll(".comments > turbo-frame > .comment")
     return Array.from(comments).findLast(comment => comment.getClientRects().length > 0)
   }
 

@@ -39,12 +39,15 @@ class CardDockSystemTest < ApplicationSystemTestCase
   end
 
   # Handy #627: a long last comment is read from its start, so the jump lands on
-  # its top, not on the end of the page.
+  # its top, not on the end of the page. Its code block ends in a highlighted
+  # code comment, which also carries the class "comment".
   test "the dock goes to the start of the last comment and back to the board" do
     comment = @card.comments.create!(creator: users(:david),
-      body: Array.new(40) { |line| "Line #{line} of a long last comment." }.join("<br>"))
+      body: Array.new(40) { |line| "Line #{line} of a long last comment." }.join("<br>") +
+        %(<pre data-language="ruby">puts 1 # a code comment</pre>))
 
     visit card_url(@card)
+    assert_selector "##{ActionView::RecordIdentifier.dom_id(comment)} pre .token.comment"
     page.execute_script(%(window.scrollBy(0, document.querySelector(".card__header").getBoundingClientRect().bottom + 20)))
     assert_selector ".card-dock--visible", wait: 5
 

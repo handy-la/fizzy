@@ -23,9 +23,18 @@ del último comentario. Sustituye el contrato «al final de la página» de
   `Timeout::Error` en «the dock goes to the start of the last comment»; la
   ventana termina al final de la página y el comentario no queda arriba. El
   caso sin comentarios pasa en la base: conserva el comportamiento anterior.
+- **RED 3, código resaltado (exit 1):** la primera versión del arreglo
+  elegía `.comments .comment`, y Prism marca un comentario de código con la
+  clase `comment`. Con la prueba de sistema actual (el último comentario
+  termina en `<pre data-language="ruby">… # a code comment</pre>`) en una
+  copia aislada con esa versión del controlador: `Timeout::Error`; la ventana
+  queda en el código y no en el inicio del comentario. La prueba afirma
+  primero que existe `pre .token.comment`, así que el RED no viene de un
+  resaltado ausente.
 - **GREEN:** el mismo comando en el checkout de la tarjeta: 12 tests, 0
-  failures. Suite completa `bin/rails test`: 1762 tests, 0 failures;
-  `bin/rails test:system`: 39 tests, 0 failures.
+  failures. Suite completa `bin/rails test`: 1762 tests, 0 failures (antes de la corrección
+  del selector; esa corrección sólo toca JavaScript);
+  `bin/rails test:system`: 39 tests, 0 failures (con la corrección).
 
 ## Las cuatro respuestas
 
@@ -47,9 +56,10 @@ del último comentario. Sustituye el contrato «al final de la página» de
    comentario sea más alto que la ventana. Dueño:
    `card_dock_controller.js#scrollToLastComment`. Frontera: la posición del
    comentario en la ventana del navegador.
-2. **Regresión:** volver a desplazar al final de la página (RED 2), elegir el
-   formulario de comentario nuevo como «último comentario», o un comentario de
-   sistema oculto (su posición es 0 y la ventana subiría al principio).
+2. **Regresión:** volver a desplazar al final de la página (RED 2), elegir un
+   comentario de código resaltado dentro del comentario (RED 3), el formulario
+   de comentario nuevo, o un comentario de sistema oculto (su posición es 0 y
+   la ventana subiría al principio).
 3. **Cobertura:** la integración no ejecuta JavaScript. El caso de Handy #422
    afirmaba el final de la página, que ya no es el contrato; se modifica ese
    caso en vez de agregar otro.
