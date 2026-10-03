@@ -25,11 +25,11 @@ class CardDockTest < ActionDispatch::IntegrationTest
     end
   end
 
-  test "the dock goes back to the board at the far left and scrolls to the bottom at the far right" do
+  test "the dock goes back to the board at the far left and goes to the last comment at the far right" do
     get card_path(cards(:logo))
 
     assert_select ".card-dock > .card-dock__edge--start:first-child a[href=?]", board_path(cards(:logo).board)
-    assert_select ".card-dock > .card-dock__edge--end:last-child button[data-action=?]", "card-dock#scrollToBottom"
+    assert_select ".card-dock > .card-dock__edge--end:last-child button[data-action=?]", "card-dock#scrollToLastComment"
 
     get card_path(cards(:shipping))
     assert_select ".card-dock .card-dock__edge", count: 2

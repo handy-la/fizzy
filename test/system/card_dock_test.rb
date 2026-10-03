@@ -38,18 +38,36 @@ class CardDockSystemTest < ApplicationSystemTestCase
     assert @card.reload.closed?
   end
 
-  test "the dock scrolls to the bottom of the page and goes back to the board" do
+  # Handy #627: a long last comment is read from its start, so the jump lands on
+  # its top, not on the end of the page.
+  test "the dock goes to the start of the last comment and back to the board" do
+    comment = @card.comments.create!(creator: users(:david),
+      body: Array.new(40) { |line| "Line #{line} of a long last comment." }.join("<br>"))
+
     visit card_url(@card)
     page.execute_script(%(window.scrollBy(0, document.querySelector(".card__header").getBoundingClientRect().bottom + 20)))
     assert_selector ".card-dock--visible", wait: 5
 
-    within(".card-dock") { click_on "Scroll to bottom" }
+    within(".card-dock") { click_on "Go to the last comment" }
     assert_selector ".card-dock--visible", wait: 5
     Timeout.timeout(5) do
-      sleep 0.1 until page.evaluate_script("Math.ceil(window.scrollY + window.innerHeight) >= document.documentElement.scrollHeight")
+      sleep 0.1 until page.evaluate_script(%(Math.abs(document.getElementById("#{ActionView::RecordIdentifier.dom_id(comment)}").getBoundingClientRect().top - 16) <= 1))
     end
 
     within(".card-dock") { click_on "Back to #{@card.board.name}" }
     assert_current_path board_path(@card.board)
+  end
+
+  test "the dock goes to the bottom of the page when the card has no comment" do
+    @card.comments.destroy_all
+
+    visit card_url(@card)
+    page.execute_script(%(window.scrollBy(0, document.querySelector(".card__header").getBoundingClientRect().bottom + 20)))
+    assert_selector ".card-dock--visible", wait: 5
+
+    within(".card-dock") { click_on "Go to the last comment" }
+    Timeout.timeout(5) do
+      sleep 0.1 until page.evaluate_script("Math.ceil(window.scrollY + window.innerHeight) >= document.documentElement.scrollHeight")
+    end
   end
 end

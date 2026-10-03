@@ -2,7 +2,11 @@ import { Controller } from "@hotwired/stimulus"
 
 // Handy: shows the card dock once the top of the card (its header) has scrolled
 // off screen, so Done, the stage arrows, the way back to the board and the jump to the
-// bottom stay at hand while reading on.
+// last comment stay at hand while reading on.
+
+// Room left above the last comment, so its author line is not flush with the top edge.
+const LAST_COMMENT_MARGIN = 16
+
 export default class extends Controller {
   connect() {
     this.observer = new IntersectionObserver(([ entry ]) => this.#update(entry))
@@ -23,8 +27,15 @@ export default class extends Controller {
     if (sentinel) this.observer.observe(sentinel)
   }
 
-  scrollToBottom() {
-    window.scrollTo({ top: document.documentElement.scrollHeight, behavior: "smooth" })
+  // Lands on the start of the last comment, not the end of the page: a long comment
+  // is read from its top. A card with no comment on show goes to the bottom.
+  scrollToLastComment() {
+    const comment = this.#lastVisibleComment
+    const top = comment
+      ? comment.getBoundingClientRect().top + window.scrollY - LAST_COMMENT_MARGIN
+      : document.documentElement.scrollHeight
+
+    window.scrollTo({ top, behavior: "smooth" })
   }
 
   // A morph copies the server's class list; keep what the scroll decided.
@@ -32,6 +43,12 @@ export default class extends Controller {
     if (event.target === this.element && event.detail.attributeName === "class") {
       event.preventDefault()
     }
+  }
+
+  // Older system comments stay hidden until the history is expanded: skip them.
+  get #lastVisibleComment() {
+    const comments = document.querySelectorAll(".comments .comment:not(.comment--new)")
+    return Array.from(comments).findLast(comment => comment.getClientRects().length > 0)
   }
 
   #update(entry) {

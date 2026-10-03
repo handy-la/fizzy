@@ -1,5 +1,5 @@
 <%# Handy: floating dock that follows the scroll once the card's top is off screen. Back to the board at
-    the far left, scroll to the bottom at the far right. %>
+    the far left, the jump to the start of the last comment at the far right. %>
 <% previous_stage, next_stage = card_dock_stages(card) %>
 <div class="card-dock hide-on-native" id="<%= dom_id(card, :dock) %>" role="toolbar" aria-label="Card actions"
     data-controller="card-dock"
@@ -52,9 +52,9 @@
   </div>
 
   <div class="card-dock__edge card-dock__edge--end">
-    <button type="button" class="card-dock__button btn btn--circle" title="Scroll to bottom" data-action="card-dock#scrollToBottom">
+    <button type="button" class="card-dock__button btn btn--circle" title="Go to the last comment" data-action="card-dock#scrollToLastComment">
       <%= icon_tag "arrow-down" %>
-      <span class="for-screen-reader">Scroll to bottom</span>
+      <span class="for-screen-reader">Go to the last comment</span>
     </button>
   </div>
 </div>

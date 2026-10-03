@@ -1,8 +1,8 @@
 /* Handy: floating dock at the bottom of a card page. It appears once the top
  * of the card scrolls off screen, and carries Done plus the previous and next
  * stage, each labelled by an arc of text around its button. It spans the width
- * of the card: back to the board sits at the far left, scroll to the bottom at
- * the far right, and the stages and Done stay centred between them. */
+ * of the card: back to the board sits at the far left, the jump to the last
+ * comment at the far right, and the stages and Done stay centred between them. */
 @layer components {
   .card-dock {
     --dock-stage-size: 5.75rem;
