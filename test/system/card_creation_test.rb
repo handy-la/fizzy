@@ -25,4 +25,31 @@ class CardCreationTest < ApplicationSystemTestCase
     assert new_card.reload.published?
     assert_equal column, new_card.column
   end
+
+  test "the To work checkbox remembers the last choice in this browser" do
+    user = users(:kevin)
+    board = boards(:writebook)
+    column = board.columns.create!(name: "To work", color: "var(--color-card-2)")
+    first = board.cards.create!(creator: user, status: :drafted, title: "First card")
+    sign_in_as user
+
+    visit card_draft_path(first)
+    assert_no_checked_field "Create in To work"
+    check "Create in To work"
+    click_button "Create card", exact: true
+    assert_current_path board_path(board)
+    assert_equal column, first.reload.column
+
+    second = board.cards.create!(creator: user, status: :drafted, title: "Second card")
+    visit card_draft_path(second)
+    assert_checked_field "Create in To work"
+    uncheck "Create in To work"
+    click_button "Create card", exact: true
+    assert_current_path board_path(board)
+    assert_nil second.reload.column
+
+    third = board.cards.create!(creator: user, status: :drafted, title: "Third card")
+    visit card_draft_path(third)
+    assert_no_checked_field "Create in To work"
+  end
 end

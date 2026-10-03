@@ -16,7 +16,8 @@
 
     <% if column = card.board.columns.find { |column| column.name.casecmp?("To work") } %>
       <label class="flex align-center gap-half cursor-pointer">
-        <%= check_box_tag :column_id, column.id, params[:column_id] == column.id, class: "checkbox" %>
+        <%= check_box_tag :column_id, column.id, params[:column_id] == column.id, class: "checkbox",
+              data: { controller: "remembered-checkbox", remembered_checkbox_key_value: "create-in-to-work", action: "change->remembered-checkbox#save" } %>
         <span>Create in To work</span>
       </label>
     <% end %>
