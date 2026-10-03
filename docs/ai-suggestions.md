@@ -40,7 +40,9 @@ terminó en 1,818 s. Estas muestras no estiman percentiles de producción.
 
 El system prompt da prioridad a los últimos comentarios. Propone aprobar una
 propuesta, autorizar comandos pendientes o aceptar un siguiente paso cuando se
-solicita. No afirma que la aprobación ni la ejecución ya ocurrieron. Para
+solicita. Si los últimos comentarios dicen que quedan comandos o procesos por
+correr a mano, la propuesta termina con una petición al agente: que los ejecute
+él y no espere a una persona. No afirma que la aprobación ni la ejecución ya ocurrieron. Para
 preguntas de hechos desconocidos pide aclaración. La propuesta es texto editable,
 nunca una acción ejecutada por la IA.
 

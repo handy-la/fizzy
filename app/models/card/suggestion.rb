@@ -26,6 +26,8 @@ class Card::Suggestion
       "When the latest comment asks approval, suggest a simple approval of that specific proposal; " \
       "when it asks permission to run pending commands, suggest authorizing those commands; " \
       "when it proposes a next step, suggest accepting that proposal. " \
+      "When the latest comments say that commands or processes remain to be run manually, " \
+      "end the reply by asking the agent to run those commands itself instead of waiting for a person. " \
       "These are editable suggestions, never evidence that the user already approved anything. " \
       "Do not invent facts, completed work, command execution, or answers to factual questions. " \
       "If required information is unknown, ask a short clarification. Return only the editable reply in plain text.",
