@@ -30,6 +30,12 @@ class Card::SuggestionRequest < ApplicationRecord
     where(status: %w[ pending running completed ], expires_at: ..Time.current).find_each(&:expire)
   end
 
+  def self.revoke_for_account(account)
+    where(card_id: account.cards.select(:id), status: %w[ pending running completed ])
+      .update_all(status: "failed", error_category: "access_revoked", suggestion: nil, description: nil,
+        finished_at: Time.current, expires_at: RESULT_RETENTION.from_now, updated_at: Time.current)
+  end
+
   def generate(token)
     reload
     return unless self.token == token
@@ -40,10 +46,12 @@ class Card::SuggestionRequest < ApplicationRecord
         .update_all(status: "running", started_at: Time.current, expires_at: GENERATION_WAIT.from_now, updated_at: Time.current) == 1
       reload
       broadcast_state
-      if user.active? && user.accessible_cards.exists?(id: card_id)
+      if access_allowed?
         generator = Card::Suggestion.new(card, user: user)
         result = kind == "title" ? generator.title(description) : generator.comment
-        if kind == "comment" && fingerprint != self.class.fingerprint_for(card.reload, kind)
+        if !access_allowed?
+          finish(token, "failed", error_category: "access_revoked")
+        elsif kind == "comment" && fingerprint != self.class.fingerprint_for(card.reload, kind)
           finish(token, "failed", error_category: "superseded")
         else
           finish(token, "completed", result)
@@ -92,6 +100,13 @@ class Card::SuggestionRequest < ApplicationRecord
   end
 
   private
+    def access_allowed?
+      user.reload
+      user.active? && user.account.reload.active? && user.accessible_cards.where(account_id: user.account_id).exists?(id: card_id)
+    rescue ActiveRecord::RecordNotFound
+      false
+    end
+
     def finish(token, status, suggestion = nil, error_category: nil, expired: false)
       scope = self.class.where(id: id, token: token, status: %w[ pending running completed ])
       scope = scope.where(expires_at: ..Time.current) if expired

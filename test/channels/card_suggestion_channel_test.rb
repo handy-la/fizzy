@@ -47,4 +47,42 @@ class CardSuggestionChannelTest < ActionCable::Channel::TestCase
     assert_equal "failed", transmissions.last["status"]
     assert_no_streams
   end
+
+  test "a cancelled account cannot subscribe with a valid token" do
+    accounts(:'37s').cancel(initiated_by: users(:kevin))
+    assert accounts(:'37s').cancelled?
+
+    subscribe token: @request.token, revision: 5
+    assert subscription.rejected?
+    assert_empty subscription.stream_names
+  end
+
+  test "recover after cancellation never sends completed text" do
+    @request.update!(status: "completed", suggestion: "Texto reservado")
+    subscribe token: @request.token, revision: 6
+    perform :recover
+    assert_equal "Texto reservado", transmissions.last["suggestion"]
+
+    accounts(:'37s').cancel(initiated_by: users(:kevin))
+    perform :recover
+
+    assert_equal "access_revoked", transmissions.last["error_category"]
+    assert_nil transmissions.last["suggestion"]
+    assert_no_streams
+  end
+
+  test "recover rechecks account activity immediately before transmission" do
+    @request.update!(status: "completed", suggestion: "Texto reservado")
+    subscribe token: @request.token, revision: 7
+    Card::SuggestionRequest.any_instance.expects(:state).with {
+      accounts(:'37s').cancel(initiated_by: users(:kevin))
+      true
+    }.returns({ status: "completed", suggestion: "Texto reservado" })
+
+    perform :recover
+
+    assert_equal "access_revoked", transmissions.last["error_category"]
+    assert_nil transmissions.last["suggestion"]
+    assert_no_streams
+  end
 end

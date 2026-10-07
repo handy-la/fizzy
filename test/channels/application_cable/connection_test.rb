@@ -32,5 +32,26 @@ module ApplicationCable
         connect "/cable", env: { "fizzy.external_account_id" => -1 }
       end
     end
+
+    test "rejects a cancelled account on connect and reconnect" do
+      cookies.signed[:session_token] = @session.signed_id
+      @account.cancel(initiated_by: users(:mike))
+      assert @account.cancelled?
+
+      2.times do
+        assert_reject_connection do
+          connect "/cable", env: { "fizzy.external_account_id" => @account.external_account_id }
+        end
+      end
+    end
+
+    test "rejects an importing account" do
+      cookies.signed[:session_token] = @session.signed_id
+      @account.imports.create!(identity: identities(:mike), status: :pending)
+
+      assert_reject_connection do
+        connect "/cable", env: { "fizzy.external_account_id" => @account.external_account_id }
+      end
+    end
   end
 end

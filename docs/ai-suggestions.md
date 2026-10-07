@@ -88,6 +88,25 @@ la suscripción o reconectar, el navegador recupera el estado, cubriendo tambié
 un resultado anterior a la suscripción. Un único GET al vencimiento es respaldo
 ante pérdida de conexión; no existe un bucle de polling del navegador.
 
+La cuenta debe estar activa al abrir Cable, al suscribirse, antes de llamar al
+proveedor y antes de transmitir el estado. Los controles recargan la cuenta:
+una asociación ya cargada puede conservar el estado previo a una cancelación.
+El canal vuelve a comprobar acceso después de leer el estado, antes de enviar
+texto. Una cuenta en importación tampoco está activa.
+
+`Account::Cancellation` revoca las solicitudes `pending`, `running` y
+`completed` dentro de la transacción de cancelación. Guarda `access_revoked`
+y borra descripción y propuesta. Un job tardío no puede sustituir ese estado;
+reactivar la cuenta tampoco recupera las propuestas revocadas. El cierre de
+Cable ocurre en `after_create_commit`, por los usuarios de esa cuenta, sin
+reconexión automática. No se cierran todas las conexiones de la identidad:
+puede tener membresías en otras cuentas activas.
+
+Una llamada HTTP que ya comenzó antes de cancelar no se puede retirar del
+proveedor. El worker comprueba acceso al volver y descarta su resultado. No
+mantiene un bloqueo de cuenta durante la llamada HTTP. Las pruebas usan HTTP
+controlado; no afirman cancelar una petición externa en curso.
+
 SessionStorage conserva sólo token, vigencia y descarte, bajo una clave por
 usuario y URL de cuenta. No guarda propuestas. Un fallo visible permite
 reintentar. Un POST interrumpido puede repetirse; el servidor reutiliza el

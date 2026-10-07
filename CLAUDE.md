@@ -145,3 +145,9 @@ huella basada en `Time#to_s` descarta resultados válidos. El placeholder de Lex
 se copia al editable interior al crearlo; hay que actualizar ambos atributos e
 interceptar Enter en captura antes de Lexical. Guía y tiempos:
 `docs/ai-suggestions.md`.
+
+Una cancelación revoca las sugerencias dentro de su transacción y cierra Cable
+en `after_create_commit`. Cierra por `account.users`, nunca por `Identity`: una
+identidad puede tener otra cuenta activa. Recarga la cuenta antes de generar
+o transmitir; una asociación cargada conserva el estado anterior. Contrato y
+límites: `docs/ai-suggestions.md`; evidencia: `docs/test-audits/handy-783.md`.

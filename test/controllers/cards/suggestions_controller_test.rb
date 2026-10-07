@@ -86,6 +86,73 @@ class Cards::SuggestionsControllerTest < ActionDispatch::IntegrationTest
     assert_response :no_content
   end
 
+  test "cancellation between enqueue and execution prevents the provider call" do
+    stub_completion("Respuesta que no debe generarse") { |_| }
+    post suggestion_url(cards(:logo)), params: { kind: "comment" }, as: :json
+    assert_response :accepted
+    request = Card::SuggestionRequest.find_by!(token: response.parsed_body.fetch("request_id"))
+    accounts(:'37s').cancel(initiated_by: users(:kevin))
+    assert accounts(:'37s').cancelled?
+
+    perform_enqueued_jobs only: Card::SuggestionJob
+
+    assert_not_requested :post, "https://api.fireworks.ai/inference/v1/chat/completions"
+    assert_equal "failed", request.reload.status
+    assert_equal "access_revoked", request.error_category
+    assert_nil request.suggestion
+  end
+
+  test "a worker with cached active account checks activity before calling the provider" do
+    stub_completion("Respuesta que no debe generarse") { |_| }
+    post suggestion_url(cards(:logo)), params: { kind: "comment" }, as: :json
+    request = Card::SuggestionRequest.find_by!(token: response.parsed_body.fetch("request_id"))
+    assert request.user.account.active?
+    # Simulate a cancellation committed by another process, before its cleanup.
+    Account::Cancellation.insert_all!([ { id: SecureRandom.uuid_v7, account_id: request.user.account_id, initiated_by_id: users(:kevin).id } ])
+
+    request.generate(request.token)
+
+    assert_not_requested :post, "https://api.fireworks.ai/inference/v1/chat/completions"
+    assert_equal "access_revoked", request.reload.error_category
+  end
+
+  test "cancellation during generation discards the late provider result" do
+    stub_completion("Respuesta tardía") do |_|
+      accounts(:'37s').cancel(initiated_by: users(:kevin))
+    end
+    post suggestion_url(cards(:logo)), params: { kind: "comment" }, as: :json
+    request = Card::SuggestionRequest.find_by!(token: response.parsed_body.fetch("request_id"))
+
+    perform_enqueued_jobs only: Card::SuggestionJob
+
+    assert_requested :post, "https://api.fireworks.ai/inference/v1/chat/completions", times: 1
+    assert_equal "failed", request.reload.status
+    assert_equal "access_revoked", request.error_category
+    assert_nil request.suggestion
+    accounts(:'37s').reactivate
+    get suggestion_url(cards(:logo)), params: { request_id: request.token }, as: :json
+    assert_response :success
+    assert_nil response.parsed_body["suggestion"]
+    assert_equal "access_revoked", response.parsed_body["error_category"]
+  end
+
+  test "a worker rechecks account activity after the provider even before cancellation cleanup" do
+    stub_completion("Respuesta tardía") do |_|
+      unless Account::Cancellation.exists?(account_id: accounts(:'37s').id)
+        Account::Cancellation.insert_all!([ { id: SecureRandom.uuid_v7, account_id: accounts(:'37s').id, initiated_by_id: users(:kevin).id } ])
+      end
+    end
+    post suggestion_url(cards(:logo)), params: { kind: "comment" }, as: :json
+    request = Card::SuggestionRequest.find_by!(token: response.parsed_body.fetch("request_id"))
+
+    perform_enqueued_jobs only: Card::SuggestionJob
+
+    assert_requested :post, "https://api.fireworks.ai/inference/v1/chat/completions", times: 1
+    assert_equal "failed", request.reload.status
+    assert_equal "access_revoked", request.error_category
+    assert_nil request.suggestion
+  end
+
   test "provider failure leaves the card unchanged" do
     stub_request(:post, "https://api.fireworks.ai/inference/v1/chat/completions").to_timeout
     assert_no_difference -> { Comment.count } do
