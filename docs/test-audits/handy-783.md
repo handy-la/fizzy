@@ -33,6 +33,17 @@ estado anterior y cancela antes de `transmit`: detecta la entrega de texto ya
 leído. El caso de rollback protege la atomicidad y el orden del cierre;
 es cobertura preventiva y puede pasar sobre la base.
 
+### Corrección tras la primera revisión
+
+`Account#active?` también excluye cuentas en importación. La pantalla
+`account/imports/show` usa Cable para mostrar su progreso: rechazar esa
+conexión rompe un consumidor productivo. Para Cable general, el contrato es
+cuenta existente y sin cancelación; la IA mantiene el requisito `active?`.
+La prueba de conexión en importación conserva sesión, usuario y contexto de
+cuenta válidos. Debe pasar en la base y fallar si se usa `active?` en la
+conexión general. No agrega un seam. Se corrige la expectativa anterior y no
+se retira cobertura de seguridad: la prueba de cuenta cancelada permanece.
+
 ## Evidencia
 
 Se exportó la base con `git archive` a `.context/handy-783-base`. Se copiaron
@@ -45,7 +56,7 @@ SHA-256 de los candidatos, idénticos en ambas ejecuciones:
 |---|---|
 | `controllers/cards/suggestions_controller_test.rb` | `24d98e8defd8f172c6088bd7dd8358c4b98cc7363cbc240d14854c982428116c` |
 | `channels/card_suggestion_channel_test.rb` | `9a1da21368a2ff12e6be7b4ff6e74786380b6fee596fa319783f2afc7bde8830` |
-| `channels/application_cable/connection_test.rb` | `79e57b92900332d458f099dc3aa23a18da61dc66f2538f58e587c72fa206d771` |
+| `channels/application_cable/connection_test.rb` | `0845c8ce90569ca0d43e5c6d5e4df2405530e95fb1eb8ec3754be3d0dab0335c` |
 | `models/account/cancellable_test.rb` | `6806c061407f9ccad7dc5f95053163782e832e1473677a67f848f9ef6914e768` |
 
 Comando RED exacto, desde `fizzy-custom/`, con Ruby 3.4.8 de mise y SQLite:
@@ -57,11 +68,12 @@ env -u GEM_HOME -u GEM_PATH -u MY_RUBY_HOME -u RUBY_VERSION \
   mise exec -- ruby -e 'Dir.chdir("../.context/handy-783-base"); exec("./bin/rails", "test", "test/controllers/cards/suggestions_controller_test.rb", "test/channels/card_suggestion_channel_test.rb", "test/channels/application_cable/connection_test.rb", "test/models/account/cancellable_test.rb")'
 ```
 
-RED: salida 1; 36 casos, 263 aserciones, 11 fallos, cero errores y omisiones.
+RED: salida 1; 36 casos, 264 aserciones, 10 fallos, cero errores y omisiones.
 Los cuatro casos del worker llaman al proveedor o guardan un resultado después
-de cancelar. Los tres del canal entregan texto o permiten suscripción. Los dos
-de conexión admiten cuentas canceladas o en importación. Los dos de cancelación
-conservan solicitudes o no cierran conexiones. El rollback pasa sobre la base.
+de cancelar. Los tres del canal entregan texto o permiten suscripción. La
+conexión admite una cuenta cancelada. Los dos de cancelación conservan
+solicitudes o no cierran conexiones. El rollback y la conexión de importación
+pasan sobre la base.
 Evidencia local: `.context/handy-783-red.log`.
 
 GREEN: mismo entorno y archivos, ejecutados en `fizzy-custom/` con:
@@ -76,8 +88,24 @@ env -u GEM_HOME -u GEM_PATH -u MY_RUBY_HOME -u RUBY_VERSION \
   test/models/account/cancellable_test.rb
 ```
 
-Salida 0; 36 casos, 296 aserciones, cero fallos, errores y omisiones.
+Salida 0; 36 casos, 297 aserciones, cero fallos, errores y omisiones.
 Evidencia local: `.context/handy-783-green.log`.
+
+### Sensibilidad del flujo de importación
+
+Se exportó el primer arreglo `cc55c151a93630ba8814abcfef0e07477e26903f`
+a `.context/handy-783-first-fix`, que usaba `Account#active?` en la conexión.
+Se copió sólo el archivo final `connection_test.rb`. Con el mismo entorno
+del comando RED, se ejecutó desde `fizzy-custom/`:
+
+```bash
+mise exec -- ruby -e 'Dir.chdir("../.context/handy-783-first-fix"); exec("./bin/rails", "test", "test/channels/application_cable/connection_test.rb")'
+```
+
+Salida 1; 5 casos, 7 aserciones y un error de autorización: la conexión del
+importador válido fue rechazada por `connect`. Es el defecto del primer
+arreglo, no un error de entorno. El mismo caso pasa en la base original y
+en el GREEN final. Evidencia: `.context/handy-783-import-red.log`.
 
 ## Validación del repo
 
@@ -86,7 +114,7 @@ y `CI_PROGRESS_BAR=false`.
 
 | Comando en `fizzy-custom/` | Resultado |
 |---|---|
-| `PARALLEL_WORKERS=4 mise exec -- bin/rails test` | Salida 0; 1.782 casos, 6.979 aserciones, 6 omisiones, sin fallos ni errores |
+| `PARALLEL_WORKERS=4 mise exec -- bin/rails test` | Salida 0; 1.782 casos, 6.980 aserciones, 6 omisiones, sin fallos ni errores |
 | `PARALLEL_WORKERS=1 mise exec -- bin/rails test:system` | Salida 0; 43 casos, 322 aserciones, sin fallos, errores ni omisiones |
 | `mise exec -- bin/rubocop -f simple` sobre los ocho archivos Ruby del diff | Salida 0; sin infracciones |
 | `mise exec -- ruby script/check_agents_docs` | Salida 0; cuatro documentos |

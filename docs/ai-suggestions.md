@@ -88,11 +88,13 @@ la suscripción o reconectar, el navegador recupera el estado, cubriendo tambié
 un resultado anterior a la suscripción. Un único GET al vencimiento es respaldo
 ante pérdida de conexión; no existe un bucle de polling del navegador.
 
-La cuenta debe estar activa al abrir Cable, al suscribirse, antes de llamar al
-proveedor y antes de transmitir el estado. Los controles recargan la cuenta:
+Cable rechaza cuentas canceladas. Las sugerencias exigen una cuenta activa al
+suscribirse, antes de llamar al proveedor y antes de transmitir el estado.
+Los controles recargan la cuenta:
 una asociación ya cargada puede conservar el estado previo a una cancelación.
 El canal vuelve a comprobar acceso después de leer el estado, antes de enviar
-texto. Una cuenta en importación tampoco está activa.
+texto. Una cuenta en importación tampoco puede usar IA; su conexión general
+de Cable se conserva para mostrar el progreso en `account/imports/show`.
 
 `Account::Cancellation` revoca las solicitudes `pending`, `running` y
 `completed` dentro de la transacción de cancelación. Guarda `access_revoked`

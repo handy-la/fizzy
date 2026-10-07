@@ -45,13 +45,14 @@ module ApplicationCable
       end
     end
 
-    test "rejects an importing account" do
+    test "connects an importing account to preserve live import status" do
       cookies.signed[:session_token] = @session.signed_id
       @account.imports.create!(identity: identities(:mike), status: :pending)
 
-      assert_reject_connection do
-        connect "/cable", env: { "fizzy.external_account_id" => @account.external_account_id }
-      end
+      connect "/cable", env: { "fizzy.external_account_id" => @account.external_account_id }
+
+      assert_equal users(:mike), connection.current_user
+      assert_equal @account, Current.account
     end
   end
 end
