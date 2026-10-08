@@ -802,6 +802,20 @@ ActiveRecord::Schema[8.2].define(version: 2026_10_08_130000) do
     t.index ["owner_type", "owner_id"], name: "index_storage_totals_on_owner_type_and_owner_id", unique: true
   end
 
+  create_table "storage_upload_reservations", id: :uuid, charset: "utf8mb4", collation: "utf8mb4_0900_ai_ci", force: :cascade do |t|
+    t.uuid "account_id", null: false
+    t.uuid "identity_id", null: false
+    t.uuid "blob_id", null: false
+    t.bigint "byte_size", null: false
+    t.datetime "expires_at", null: false
+    t.datetime "created_at", null: false
+    t.datetime "updated_at", null: false
+    t.index ["account_id"], name: "index_storage_upload_reservations_on_account_id"
+    t.index ["blob_id"], name: "index_storage_upload_reservations_on_blob_id", unique: true
+    t.index ["expires_at"], name: "index_storage_upload_reservations_on_expires_at"
+    t.index ["identity_id"], name: "index_storage_upload_reservations_on_identity_id"
+  end
+
   create_table "taggings", id: :uuid, charset: "utf8mb4", collation: "utf8mb4_0900_ai_ci", force: :cascade do |t|
     t.uuid "account_id", null: false
     t.uuid "card_id", null: false

@@ -187,3 +187,20 @@ su challenge ya venció, y por eso `consume!` comprueba el vencimiento después
 de insertar: una petición detenida hasta después de la limpieza no reutiliza
 el challenge. Los campos WebAuthn y `passkey.id` se filtran en
 `filter_parameter_logging.rb`. Evidencia: `docs/test-audits/handy-778.md`.
+
+## Cuota y borrado de cargas directas
+
+Una carga directa reserva espacio antes de emitir la URL: máximo 100 MiB por
+objeto, 20 pendientes por identidad global y 100 por cuenta. El servidor propio
+limita cada cuenta a 10 GiB; SaaS usa `storage_limit`. La cuota usa el consumo
+exacto, incluidas las reservas, bajo locks de identidad y cuenta, en ese orden.
+Un UPDATE antes de leer obtiene el lock también en SQLite.
+
+Los callbacks de adjuntos transfieren el cargo dentro de la transacción. Los
+avatares cargados por esta vía también cuentan. Al quitar el último adjunto se
+restaura la reserva: una URL PUT de S3 puede recrear el objeto tras borrarlo.
+No liberes espacio ni pierdas la clave antes de borrar el objeto con éxito,
+después del vencimiento de la URL (una hora) y su margen (una hora).
+`Storage::CleanupUploadsJob` reintenta cada 15 minutos. Los blobs antiguos sin
+reserva esperan 49 horas por sus URLs anteriores. Evidencia y límites:
+`docs/test-audits/handy-779.md`.

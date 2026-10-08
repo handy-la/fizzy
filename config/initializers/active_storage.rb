@@ -56,7 +56,18 @@ module ActiveStorageDirectUploadsControllerExtensions
   end
 end
 
+module ActiveStorageDirectUploadReservations
+  def create
+    Storage::UploadReservation.reserve(account: Current.account, identity: Current.identity, attributes: blob_args) do |blob|
+      render json: direct_upload_json(blob)
+    end
+  rescue Storage::UploadReservation::Rejected => error
+    head error.status
+  end
+end
+
 Rails.application.config.to_prepare do
   ActiveStorage::BaseController.include ActiveStorageControllerExtensions
   ActiveStorage::DirectUploadsController.include ActiveStorageDirectUploadsControllerExtensions
+  ActiveStorage::DirectUploadsController.prepend ActiveStorageDirectUploadReservations
 end

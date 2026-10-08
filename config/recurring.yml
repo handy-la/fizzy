@@ -15,6 +15,9 @@ production: &production
     schedule: every day at 04:02
 
   # Operations cleanup and backups
+  cleanup_pending_uploads:
+    class: "Storage::CleanupUploadsJob"
+    schedule: every 15 minutes
   clear_solid_queue_finished_jobs:
     command: "SolidQueue::Job.clear_finished_in_batches(sleep_between_batches: 0.3)"
     schedule: every hour at minute 12
@@ -55,6 +58,9 @@ production: &production
 
 beta: &beta
   # Only Solid Queue maintenance
+  cleanup_pending_uploads:
+    class: "Storage::CleanupUploadsJob"
+    schedule: every 15 minutes
   clear_solid_queue_finished_jobs:
     command: "SolidQueue::Job.clear_finished_in_batches(sleep_between_batches: 0.3)"
     schedule: every hour at minute 12

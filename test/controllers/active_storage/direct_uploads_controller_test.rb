@@ -116,6 +116,79 @@ class ActiveStorage::DirectUploadsControllerTest < ActionDispatch::IntegrationTe
     assert_response :forbidden
   end
 
+  test "oversized upload does not create a blob" do
+    sign_in_as :david
+    @blob_params[:blob][:byte_size] = 100.megabytes + 1
+
+    assert_no_difference "ActiveStorage::Blob.count" do
+      post rails_direct_uploads_path, params: @blob_params, as: :json
+      assert_response :content_too_large
+    end
+  end
+
+  test "remaining quota includes unmaterialized attachments" do
+    sign_in_as :david
+    Storage::Entry.record(account: accounts("37s"), delta: 10.gigabytes - 12344, operation: "attach")
+
+    assert_no_difference "ActiveStorage::Blob.count" do
+      post rails_direct_uploads_path, params: @blob_params, as: :json
+      assert_response :unprocessable_entity
+    end
+  end
+
+  test "pending upload immediately consumes account storage" do
+    sign_in_as :david
+    account = accounts("37s")
+    before = account.bytes_used
+    post rails_direct_uploads_path, params: @blob_params, as: :json
+    assert_response :success
+
+    assert_equal before + 12345, account.reload.bytes_used
+    assert_equal 12345, account.bytes_used_exact
+  end
+
+  test "identity cannot accumulate more than twenty pending uploads" do
+    sign_in_as :david
+    20.times do
+      post rails_direct_uploads_path, params: @blob_params, as: :json
+      assert_response :success
+    end
+
+    assert_no_difference "ActiveStorage::Blob.count" do
+      post rails_direct_uploads_path, params: @blob_params, as: :json
+      assert_response :too_many_requests
+    end
+  end
+
+  test "zero and fractional sizes do not create blobs" do
+    sign_in_as :david
+    [ 0, -1, "1.5" ].each do |size|
+      @blob_params[:blob][:byte_size] = size
+      assert_no_difference "ActiveStorage::Blob.count" do
+        post rails_direct_uploads_path, params: @blob_params, as: :json
+        assert_response :unprocessable_entity
+      end
+    end
+  end
+
+  test "disk URL enforces the reserved length and expires within one hour" do
+    sign_in_as :david
+    @blob_params[:blob].merge!(byte_size: 1, checksum: Digest::MD5.base64digest("h"), content_type: "text/plain")
+    post rails_direct_uploads_path, params: @blob_params, as: :json
+    assert_response :success
+    url = response.parsed_body.fetch("direct_upload").fetch("url")
+
+    put url, params: "hello", headers: { "Content-Type" => "text/plain" }
+    assert_response :unprocessable_entity
+    put url, params: "h", headers: { "Content-Type" => "text/plain" }
+    assert_response :no_content
+
+    travel 2.hours do
+      put url, params: "h", headers: { "Content-Type" => "text/plain" }
+      assert_response :not_found
+    end
+  end
+
   private
     def bearer_token_header(token)
       { "Authorization" => "Bearer #{token}" }

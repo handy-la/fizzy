@@ -4,22 +4,45 @@ module Storage::AttachmentTracking
   included do
     # Snapshot IDs in before_destroy since parent record may be deleted
     # by the time after_destroy_commit runs
-    before_destroy :snapshot_storage_context
-    after_create_commit :record_storage_attach
-    after_destroy_commit :record_storage_detach
+    before_destroy :lock_storage_account, :snapshot_storage_context
+    before_create :lock_storage_account
+    validate :pending_upload_not_expired, on: :create
+    after_create :record_storage_attach
+    after_destroy :record_storage_detach
   end
 
   private
+    def lock_storage_account
+      return unless blob
+
+      Account.where(id: blob.account_id).update_all("updated_at = updated_at")
+      unless ActiveStorage::Blob.lock.find_by(id: blob_id)
+        errors.add(:blob_id, "upload no longer exists")
+      end
+      pending_upload_not_expired(lock: true) if new_record?
+      throw :abort if errors.any?
+    end
+
+    def pending_upload_not_expired(lock: false)
+      reservation = Storage::UploadReservation.lock(lock).find_by(blob_id: blob_id)
+      if reservation && reservation.expires_at <= Time.current
+        errors.add(:blob_id, "upload reservation has expired")
+      end
+    end
+
     def record_storage_attach
-      return unless storage_tracked_record
+      tracked = storage_tracked_record
+      return unless tracked || blob.metadata["quota_upload"]
 
       Storage::Entry.record \
-        account: storage_tracked_record.account,
-        board: storage_tracked_record.board_for_storage_tracking,
-        recordable: storage_tracked_record,
+        account: tracked&.account || blob.account,
+        board: tracked&.board_for_storage_tracking,
+        recordable: tracked || record,
         blob: blob,
         delta: blob.byte_size,
         operation: "attach"
+
+      Storage::UploadReservation.where(blob_id: blob_id).destroy_all
     end
 
     def record_storage_detach
@@ -32,17 +55,29 @@ module Storage::AttachmentTracking
         blob: blob,
         delta: -blob.byte_size,
         operation: "detach"
+
+      if blob.metadata["quota_upload"] && !blob.attachments.exists?
+        Storage::UploadReservation.create_or_find_by!(blob_id: blob_id) do |reservation|
+          reservation.account = blob.account
+          reservation.identity_id = blob.metadata["quota_identity_id"]
+          reservation.byte_size = blob.byte_size
+          reservation.expires_at = Time.iso8601(blob.metadata["quota_expires_at"])
+        end
+      end
     end
 
     # Snapshot records in before_destroy since parent may be deleted by the time
     # after_destroy_commit runs. The records may be destroyed but .id still works.
     def snapshot_storage_context
-      return unless storage_tracked_record
+      return unless blob
+
+      tracked = storage_tracked_record
+      return unless tracked || blob.metadata["quota_upload"]
 
       @storage_snapshot = {
-        account: storage_tracked_record.account,
-        board: storage_tracked_record.board_for_storage_tracking,
-        recordable: storage_tracked_record
+        account: tracked&.account || blob.account,
+        board: tracked&.board_for_storage_tracking,
+        recordable: tracked || record
       }
     end
 
