@@ -226,3 +226,53 @@ La tercera revisión de signoff usa `CHANGE_REVIEW_ALLOW_NON_CONVERGING=1`:
 la segunda encontró un único defecto nuevo en el contador de cupos. Se conserva
 la misma descripción de serie. La excepción permite una tercera ronda en el
 registro; no cambia el presupuesto ni sustituye la aprobación de la persona.
+
+
+## Estabilización de la comprobación del cursor
+
+Antes de editar `Storage::TotaledTest#test_materialize_storage_updates_cursor_to_latest_entry`:
+
+- **Contrato:** el cursor de materialización es el mayor UUID del conjunto
+  incluido en el snapshot; `pending_entries` usa ese límite para seleccionar
+  registros posteriores. Dueños: `Storage::Totaled#materialize_storage` y
+  `Storage::Total#pending_entries`. Frontera: filas reales y snapshot persistido.
+- **Regresión:** seleccionar el último registro insertado en vez del mayor UUID
+  debe fallar con dos filas insertadas en orden inverso a sus UUID. Se fija el
+  UUID esperado en los datos, sin calcularlo con la consulta productiva.
+- **Cobertura:** se conserva el caso existente. Era aleatorio porque suponía que
+  el segundo `SecureRandom.uuid_v7` siempre supera al primero. El productor
+  instalado sólo usa `SecureRandom.uuid_v7`; dentro del mismo milisegundo sus
+  bits aleatorios pueden invertir ese orden. Los demás casos de materialización
+  cubren sumas, idempotencia y pendientes, pero no fijan ese cursor.
+- **Seam:** ninguno. `Storage::Entry.create!` crea las filas de prueba con UUIDs
+  conocidos. Es la misma operación productiva que usa `Storage::Entry.record`.
+  No se cambia el productor de UUID ni se agrega una API para pruebas.
+
+Dos suites sobre la base actualizada `637bf8bfb71127b3687decafeccbef87684e8318`
+fallaron sólo en esta aserción: 1.854 casos, 7.320 aserciones, un fallo, cero
+errores, seis omisiones. El UUID esperado era menor que el cursor recibido en
+ambas ejecuciones. La ejecución enfocada sin cambio pasó (26 casos, 47
+aserciones), lo que confirma que el dato depende del tiempo y del azar.
+
+**Excepción RED para esta estabilización:** no hay arreglo productivo que la
+prueba candidata deba detectar en la base; materialización y `Storage::Entry`
+son idénticos a `origin/main`. El fallo RED es el dato aleatorio del caso
+anterior, no una cuota incorrecta. El caso conserva la comprobación y agrega
+orden de inserción inverso, sin asumir monotonía del generador. No verifica
+inserciones posteriores con UUID inferior a un cursor ya materializado.
+
+
+La primera versión de estos datos fijos usó UUIDs con guiones. El tipo custom
+espera base36 y `cast` no convierte el valor; ambos se truncaron al mismo ID.
+Ese error de construcción de datos **no se considera RED válido**. Los datos
+finales son UUIDv7 codificados en base36, distintos y con orden fijo.
+
+La prueba estable se aplicó también a una exportación limpia de la base:
+`mise exec -- bin/rails test test/models/storage/totaled_test.rb --name "/largest/"`,
+con el entorno anterior y cwd `.context/fizzy-779-cursor-base`: salida 0; un
+caso, una aserción. Confirma que el comportamiento productivo ya era el esperado.
+
+GREEN final sobre `637bf8bfb71127b3687decafeccbef87684e8318` más la tarjeta:
+`PARALLEL_WORKERS=4 mise exec -- bin/rails test`, con el entorno completo indicado
+antes: salida 0; **1.854 casos, 7.320 aserciones, cero fallos, cero errores,
+seis omisiones**. RuboCop del caso estabilizado y `git diff --check`: salida 0.

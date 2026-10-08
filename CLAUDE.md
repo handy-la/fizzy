@@ -54,6 +54,12 @@ are generated to sort older than any runtime record, so `.first`/`.last`
 stay deterministic in tests — don't "fix" ordering by comparing insertion
 order to id order.
 
+Los UUIDv7 de ejecución pueden invertir el orden dentro del mismo milisegundo.
+Una prueba de cursor debe usar IDs con orden explícito. Este tipo `Uuid` espera
+25 caracteres base36; `cast` no convierte un UUID con guiones. Usa datos base36
+o `ActiveRecord::Type::Uuid.hex_to_base36` sobre los dígitos hexadecimales.
+Pasar UUIDs con guiones puede truncarlos al mismo valor al guardar.
+
 ## Search is sharded on MySQL, single-index on SQLite
 
 Full-text search runs in the database through ActiveSearch, not Elasticsearch.

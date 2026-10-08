@@ -85,13 +85,15 @@ class Storage::TotaledTest < ActiveSupport::TestCase
     assert_equal 0, @account.storage_total.pending_entries.count
   end
 
-  test "materialize_storage updates cursor to latest entry" do
-    entry1 = Storage::Entry.record(account: @account, delta: 1000, operation: "attach")
-    entry2 = Storage::Entry.record(account: @account, delta: 500, operation: "attach")
+  test "materialize_storage uses the largest entry ID regardless of insertion order" do
+    newest = Storage::Entry.create!(id: "000000000dbusxw91d5l59lvm",
+      account: @account, delta: 500, operation: "attach")
+    Storage::Entry.create!(id: "0000000007uzq69yz64nvs4ch",
+      account: @account, delta: 1000, operation: "attach")
 
     @account.materialize_storage
 
-    assert_equal entry2.id, @account.storage_total.last_entry_id
+    assert_equal newest.id, @account.storage_total.last_entry_id
   end
 
   test "materialize_storage is idempotent when no new entries" do
