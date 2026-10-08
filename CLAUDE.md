@@ -157,3 +157,13 @@ de cuenta activa en `ensure_can_access_account` no los alcanza. Repite el
 estado de cuenta y usuario en `lib/rails_ext/active_storage_authorization.rb`;
 un blob público también exige que la cuenta del adjunto siga activa.
 Evidencia: `docs/test-audits/handy-784.md`.
+
+## Passkeys: un challenge autentica una vez
+
+El challenge sigue firmado y sin estado, pero `ActionPack::Passkey#authenticate`
+lo consume en `action_pack_passkey_consumed_challenges` (índice único) en la
+misma transacción que avanza `sign_count` con un `UPDATE` condicionado. No
+vuelvas a `update!`: con contador cero, sólo el consumo detiene un replay. El
+mensaje firmado es `<nonce>:<vence en>`; `cleanup` borra una fila sólo cuando
+su challenge ya venció. Los campos WebAuthn y `passkey.id` se filtran en
+`filter_parameter_logging.rb`. Evidencia: `docs/test-audits/handy-778.md`.

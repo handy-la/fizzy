@@ -30,6 +30,9 @@ production: &production
   cleanup_magic_links:
     command: "MagicLink.cleanup"
     schedule: every 4 hours
+  cleanup_passkey_challenges:
+    command: "ActionPack::Passkey::ConsumedChallenge.cleanup"
+    schedule: every 4 hours
   cleanup_transfers:
     command: "Identity::Transfer.cleanup"
     schedule: every 4 hours

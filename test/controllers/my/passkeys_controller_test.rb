@@ -24,6 +24,16 @@ class My::PasskeysControllerTest < ActionDispatch::IntegrationTest
     assert_equal [ "internal" ], passkey.transports
   end
 
+  test "filters WebAuthn attestation fields from logged parameters" do
+    challenge = request_webauthn_challenge(purpose: "registration")
+
+    post my_passkeys_path, params: build_attestation_params(challenge: challenge)
+
+    %w[ client_data_json attestation_object ].each do |field|
+      assert_equal "[FILTERED]", request.filtered_parameters.dig("passkey", field), "#{field} reached the log"
+    end
+  end
+
   test "malformed attestation is rejected with a redirect, not a 500" do
     challenge = request_webauthn_challenge(purpose: "registration")
     params = build_attestation_params(challenge: challenge)

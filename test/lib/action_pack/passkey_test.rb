@@ -43,6 +43,62 @@ class ActionPack::PasskeyTest < ActiveSupport::TestCase
     assert @passkey.backed_up?
   end
 
+  test "authenticates a replayed zero-counter assertion only once, even from two loaded copies" do
+    # Two requests that race read the same passkey row before either writes.
+    first, second = ActionPack::Passkey.find(@passkey.id), ActionPack::Passkey.find(@passkey.id)
+    challenge = ActionPack::Passkey.authentication_options(credentials: [ @passkey ]).challenge
+    assertion = build_assertion(challenge: challenge, sign_count: 0)
+
+    assert_equal first, first.authenticate(assertion)
+    assert_nil second.authenticate(assertion)
+    assert_nil ActionPack::Passkey.authenticate(assertion)
+  end
+
+  test "updates the sign count only once when two assertions race on a stale counter" do
+    first, second = ActionPack::Passkey.find(@passkey.id), ActionPack::Passkey.find(@passkey.id)
+    first_assertion = build_assertion(challenge: ActionPack::Passkey.authentication_options.challenge, sign_count: 5)
+    second_assertion = build_assertion(challenge: ActionPack::Passkey.authentication_options.challenge, sign_count: 5)
+
+    assert_equal first, first.authenticate(first_assertion)
+    assert_nil second.authenticate(second_assertion)
+    assert_equal 5, @passkey.reload.sign_count
+  end
+
+  test "a failed assertion does not consume its challenge" do
+    challenge = ActionPack::Passkey.authentication_options.challenge
+    assertion = build_assertion(challenge: challenge)
+    forged = assertion.merge(signature: Base64.urlsafe_encode64("invalid", padding: false))
+
+    assert_nil @passkey.authenticate(forged)
+    assert_equal @passkey, @passkey.authenticate(assertion)
+  end
+
+  test "rejects an expired challenge" do
+    challenge = ActionPack::Passkey.authentication_options.challenge
+    assertion = build_assertion(challenge: challenge)
+
+    travel Rails.configuration.action_pack.web_authn.request_challenge_expiration + 1.second
+
+    assert_nil @passkey.authenticate(assertion)
+  end
+
+  test "rejects a challenge issued for another purpose" do
+    challenge = ActionPack::Passkey.registration_options(holder: @identity).challenge
+
+    assert_nil @passkey.authenticate(build_assertion(challenge: challenge))
+  end
+
+  test "cleanup forgets consumed challenges only once they have expired" do
+    @passkey.authenticate(build_assertion(challenge: ActionPack::Passkey.authentication_options.challenge))
+
+    ActionPack::Passkey::ConsumedChallenge.cleanup
+    assert_equal 1, ActionPack::Passkey::ConsumedChallenge.count
+
+    travel Rails.configuration.action_pack.web_authn.request_challenge_expiration + 1.second
+    ActionPack::Passkey::ConsumedChallenge.cleanup
+    assert_equal 0, ActionPack::Passkey::ConsumedChallenge.count
+  end
+
   test "persists a spec-legal uint32-max sign count" do
     # WebAuthn sign counts are unsigned 32-bit; the column must hold the full
     # range. A signed INT4 column overflowed at 2147483647 with a RangeError.

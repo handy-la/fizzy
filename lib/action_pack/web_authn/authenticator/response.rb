@@ -32,7 +32,7 @@
 class ActionPack::WebAuthn::Authenticator::Response
   include ActiveModel::Validations
 
-  attr_reader :client_data_json
+  attr_reader :client_data_json, :verified_challenge
   attr_accessor :origin, :user_verification
 
   validate :challenge_must_be_present
@@ -86,6 +86,13 @@ class ActionPack::WebAuthn::Authenticator::Response
     nil
   end
 
+  # Returns when the verified challenge stops verifying, or +nil+ when it never
+  # does (or was issued before the expiry was embedded in it).
+  def challenge_expires_at
+    _nonce, separator, expires_at = verified_challenge.to_s.rpartition(":")
+    Time.at(Integer(expires_at)) if separator.present? && expires_at.present?
+  end
+
   private
     def challenge_must_be_present
       if client_data["challenge"].blank?
@@ -107,7 +114,9 @@ class ActionPack::WebAuthn::Authenticator::Response
 
       signed_message = Base64.urlsafe_decode64(challenge)
 
-      unless ActionPack::WebAuthn.challenge_verifier.verified(signed_message, purpose: challenge_purpose)
+      @verified_challenge = ActionPack::WebAuthn.challenge_verifier.verified(signed_message, purpose: challenge_purpose)
+
+      unless verified_challenge
         errors.add(:base, "Challenge has expired")
       end
     rescue ArgumentError

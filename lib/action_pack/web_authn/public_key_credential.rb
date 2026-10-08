@@ -121,7 +121,8 @@ class ActionPack::WebAuthn::PublicKeyCredential
   end
 
   # Verifies an assertion response against this credential's public key.
-  # Updates +sign_count+ and +backed_up+ on success.
+  # Updates +sign_count+ and +backed_up+ and returns the validated
+  # AssertionResponse on success.
   #
   # Raises +InvalidResponseError+ if the assertion is invalid.
   def authenticate(params, origin: ActionPack::WebAuthn::Current.origin)
@@ -137,6 +138,8 @@ class ActionPack::WebAuthn::PublicKeyCredential
 
     @sign_count = response.authenticator_data.sign_count
     @backed_up = response.authenticator_data.backed_up?
+
+    response
   end
 
   # Returns a Hash of the credential data suitable for persisting.

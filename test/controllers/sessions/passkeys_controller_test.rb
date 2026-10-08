@@ -27,6 +27,36 @@ class Sessions::PasskeysControllerTest < ActionDispatch::IntegrationTest
     end
   end
 
+  test "accepts a zero-counter assertion once and rejects its exact replay" do
+    untenanted do
+      challenge = request_webauthn_challenge
+      params = build_assertion_params(challenge: challenge, credential: @credential, sign_count: 0)
+
+      assert_difference -> { Session.count }, 1 do
+        post session_passkey_url, params: params
+        assert_redirected_to landing_path
+
+        # A log reader replays the same POST from another client, with no cookies.
+        replay = open_session
+        replay.post session_passkey_url, params: params
+        assert_equal new_session_url, replay.response.location
+        assert_not replay.cookies[:session_token].present?
+      end
+    end
+  end
+
+  test "filters WebAuthn assertion fields from logged parameters" do
+    untenanted do
+      challenge = request_webauthn_challenge
+
+      post session_passkey_url, params: build_assertion_params(challenge: challenge, credential: @credential)
+
+      %w[ id client_data_json authenticator_data signature ].each do |field|
+        assert_equal "[FILTERED]", request.filtered_parameters.dig("passkey", field), "#{field} reached the log"
+      end
+    end
+  end
+
   test "updates sign count" do
     untenanted do
       challenge = request_webauthn_challenge

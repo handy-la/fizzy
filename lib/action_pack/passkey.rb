@@ -81,10 +81,20 @@ class ActionPack::Passkey < Rails.configuration.action_pack.passkey.parent_class
   # Verifies the assertion response against this passkey's stored credential and updates the
   # +sign_count+ and +backed_up+ attributes. Returns +self+ on success, or +nil+ if the
   # response is invalid.
+  #
+  # Each challenge authenticates once: it is consumed in the same transaction that advances the
+  # sign count, so an exact replay fails even for authenticators whose counter stays at zero. The
+  # counter is updated only if it still holds the value this record was loaded with, so two
+  # concurrent assertions cannot both advance it.
   def authenticate(passkey)
     credential = to_public_key_credential
-    credential.authenticate(passkey)
-    update!(sign_count: credential.sign_count, backed_up: credential.backed_up)
+    response = credential.authenticate(passkey)
+
+    transaction do
+      ConsumedChallenge.consume!(response.verified_challenge, expires_at: response.challenge_expires_at)
+      advance_sign_count_from(sign_count, to: credential.sign_count, backed_up: credential.backed_up)
+    end
+
     self
   rescue ActionPack::WebAuthn::Error
     nil
@@ -100,4 +110,17 @@ class ActionPack::Passkey < Rails.configuration.action_pack.passkey.parent_class
       transports: transports
     )
   end
+
+  private
+    def advance_sign_count_from(loaded_sign_count, to:, backed_up:)
+      updated = self.class.where(id: id, sign_count: loaded_sign_count)
+        .update_all(sign_count: to, backed_up: backed_up, updated_at: Time.current)
+
+      if updated == 1
+        self.sign_count, self.backed_up = to, backed_up
+        clear_attribute_changes %i[ sign_count backed_up ]
+      else
+        raise ActionPack::WebAuthn::InvalidResponseError, "Sign count changed concurrently"
+      end
+    end
 end

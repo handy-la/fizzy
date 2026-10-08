@@ -10,7 +10,7 @@
 #
 # It's strongly recommended that you check this file into your version control system.
 
-ActiveRecord::Schema[8.2].define(version: 2026_10_01_233000) do
+ActiveRecord::Schema[8.2].define(version: 2026_10_08_120000) do
   create_table "accesses", id: :uuid, force: :cascade do |t|
     t.datetime "accessed_at"
     t.uuid "account_id", null: false
@@ -67,6 +67,14 @@ ActiveRecord::Schema[8.2].define(version: 2026_10_01_233000) do
     t.string "name", limit: 255, null: false
     t.datetime "updated_at", null: false
     t.index ["external_account_id"], name: "index_accounts_on_external_account_id", unique: true
+  end
+
+  create_table "action_pack_passkey_consumed_challenges", id: :uuid, force: :cascade do |t|
+    t.datetime "created_at", null: false
+    t.string "digest", limit: 255, null: false
+    t.datetime "expires_at"
+    t.index ["digest"], name: "index_action_pack_passkey_consumed_challenges_on_digest", unique: true
+    t.index ["expires_at"], name: "index_action_pack_passkey_consumed_challenges_on_expires_at"
   end
 
   create_table "action_pack_passkeys", id: :uuid, force: :cascade do |t|
