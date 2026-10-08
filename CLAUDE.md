@@ -151,3 +151,9 @@ en `after_create_commit`. Cierra por `account.users`, nunca por `Identity`: una
 identidad puede tener otra cuenta activa. Recarga la cuenta antes de generar
 o transmitir; una asociación cargada conserva el estado anterior. Contrato y
 límites: `docs/ai-suggestions.md`; evidencia: `docs/test-audits/handy-783.md`.
+
+Los controladores de Active Storage no incluyen `Authorization`: un control
+de cuenta activa en `ensure_can_access_account` no los alcanza. Repite el
+estado de cuenta y usuario en `lib/rails_ext/active_storage_authorization.rb`;
+un blob público también exige que la cuenta del adjunto siga activa.
+Evidencia: `docs/test-audits/handy-784.md`.

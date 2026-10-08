@@ -272,7 +272,97 @@ class ActiveStorageAuthorizationTest < ActionDispatch::IntegrationTest
     assert_match %r{/session/new}, response.location
   end
 
+  # Cancelled accounts (Handy #784). Normal controllers reject a cancelled
+  # account through Authorization#ensure_can_access_account; Active Storage
+  # controllers must apply the same state. Authoring record:
+  # docs/test-audits/handy-784.md.
+
+  test "member of a cancelled account cannot redirect or proxy a private attachment" do
+    sign_in_as :david
+    cancel_account
+
+    get rails_blob_path(@blob, disposition: :inline)
+    assert_response :forbidden
+
+    get rails_storage_proxy_path(@blob)
+    assert_response :forbidden
+  end
+
+  test "bearer token of a cancelled account cannot view a private attachment" do
+    bearer_token = { "HTTP_AUTHORIZATION" => "Bearer #{identity_access_tokens(:davids_api_token).token}" }
+    cancel_account
+
+    get rails_blob_path(@blob, disposition: :inline), env: bearer_token
+    assert_response :forbidden
+  end
+
+  test "member of a cancelled account cannot view variants or representations" do
+    sign_in_as :david
+    cancel_account
+
+    representation = @blob.representation(resize_to_limit: [ 100, 100 ])
+    ActiveStorage::Blob.any_instance.expects(:representation).never
+
+    get rails_representation_path(representation)
+    assert_response :forbidden
+
+    get rails_storage_proxy_path(representation)
+    assert_response :forbidden
+  end
+
+  test "deactivated member cannot view a private attachment" do
+    sign_in_as :david
+    users(:david).update_column :active, false
+
+    get rails_blob_path(@blob, disposition: :inline)
+    assert_response :forbidden
+  end
+
+  test "attachment of a previously published board is not public after cancellation" do
+    @board.publish
+    representation = @blob.representation(resize_to_limit: [ 100, 100 ])
+    cancel_account
+
+    get rails_blob_path(@blob, disposition: :inline)
+    assert_response :redirect
+    assert_match %r{/session/new}, response.location
+
+    get rails_storage_proxy_path(@blob)
+    assert_response :redirect
+    assert_match %r{/session/new}, response.location
+
+    get rails_representation_path(representation)
+    assert_response :redirect
+    assert_match %r{/session/new}, response.location
+  end
+
+  test "export owner cannot download the export after cancellation" do
+    sign_in_as :david
+    blob = create_export_blob_for(users(:david))
+    cancel_account
+
+    get rails_blob_path(blob, disposition: :attachment)
+    assert_response :forbidden
+
+    get rails_storage_proxy_path(blob, disposition: :attachment)
+    assert_response :forbidden
+  end
+
+  test "access is bound to the attachment's account, not only to the user" do
+    mike = users(:mike)
+    Access.insert_all [ { id: ActiveRecord::Type::Uuid.generate, board_id: @board.id, user_id: mike.id, account_id: @account.id } ]
+    sign_in_as :mike
+
+    get rails_blob_path(@blob, disposition: :inline, script_name: accounts(:initech).slug)
+    assert_response :forbidden
+  end
+
   private
+    def cancel_account
+      @account.cancel(initiated_by: users(:david))
+      assert @account.reload.cancelled?
+    end
+
     def attach_blob_to_card(card)
       Current.with(session: sessions(:david)) do
         card.image.attach io: file_fixture("moon.jpg").open, filename: "test.jpg", content_type: "image/jpeg"

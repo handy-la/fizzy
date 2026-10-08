@@ -32,7 +32,7 @@ ActiveSupport.on_load :active_storage_blob do
   end
 
   def publicly_accessible?
-    attachments.includes(:record).any? { |attachment| attachment.publicly_accessible? }
+    attachments.includes(:record, :account).any? { |attachment| attachment.publicly_accessible? }
   end
 
   private
@@ -62,12 +62,16 @@ ActiveSupport.on_load :active_storage_blob do
 end
 
 ActiveSupport.on_load :active_storage_attachment do
+  # Bind the record to the user's account: a user can only reach attachments
+  # of the account it belongs to, whatever the record's own check says.
   def accessible_to?(user)
-    record.try(:accessible_to?, user)
+    user.present? && account_id == user.account_id && record.try(:accessible_to?, user)
   end
 
+  # A public record stops being public when its account is cancelled
+  # (Handy #784): a link to a previously published board must not outlive it.
   def publicly_accessible?
-    record.try(:publicly_accessible?)
+    account&.active? && record.try(:publicly_accessible?)
   end
 end
 
@@ -92,10 +96,17 @@ Rails.application.config.to_prepare do
         @blob.publicly_accessible?
       end
 
+      # Mirrors Authorization#ensure_can_access_account, which these
+      # controllers do not include: a cancelled account or a deactivated user
+      # must not keep downloading attachments or exports (Handy #784).
       def ensure_accessible
-        unless @blob.accessible_to?(Current.user)
+        unless active_account_access? && @blob.accessible_to?(Current.user)
           head :forbidden
         end
+      end
+
+      def active_account_access?
+        Current.account&.active? && Current.user&.active?
       end
 
       def http_cache_forever(public: false, **options, &block)
