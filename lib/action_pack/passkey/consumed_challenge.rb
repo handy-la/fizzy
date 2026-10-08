@@ -14,9 +14,22 @@ class ActionPack::Passkey::ConsumedChallenge < Rails.configuration.action_pack.p
 
   class << self
     # Records +challenge+ (the verified challenge payload) as used. Raises
-    # ActionPack::WebAuthn::InvalidResponseError when it was used before.
+    # ActionPack::WebAuthn::InvalidResponseError when it was used before or has
+    # expired by now.
+    #
+    # The expiry is checked after the insert: +cleanup+ deletes a row only once
+    # its challenge has expired, so a request that validated in time but stalled
+    # until after that deletion inserts a fresh row and must still be refused.
+    # Call it inside the transaction that acts on the challenge, so the refusal
+    # rolls the insert back.
     def consume!(challenge, expires_at:)
-      create!(digest: Digest::SHA256.hexdigest(challenge), expires_at: expires_at)
+      transaction do
+        create!(digest: Digest::SHA256.hexdigest(challenge), expires_at: expires_at)
+
+        if expires_at&.<=(Time.current)
+          raise ActionPack::WebAuthn::InvalidResponseError, "Challenge has expired"
+        end
+      end
     rescue ActiveRecord::RecordNotUnique
       raise ActionPack::WebAuthn::InvalidResponseError, "Challenge was already used"
     end

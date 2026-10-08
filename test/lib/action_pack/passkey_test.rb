@@ -88,6 +88,20 @@ class ActionPack::PasskeyTest < ActiveSupport::TestCase
     assert_nil @passkey.authenticate(build_assertion(challenge: challenge))
   end
 
+  test "a request that stalls past the expiry cannot consume a challenge that cleanup forgot" do
+    # A request validates the challenge, then stalls; another consumes it and cleanup later
+    # deletes that row. The stalled request reaches consume! with the challenge already expired.
+    expires_at = 5.minutes.from_now
+    ActionPack::Passkey::ConsumedChallenge.consume!("nonce:#{expires_at.to_i}", expires_at: expires_at)
+
+    travel 5.minutes + 1.second
+    ActionPack::Passkey::ConsumedChallenge.cleanup
+
+    assert_raises ActionPack::WebAuthn::InvalidResponseError do
+      ActionPack::Passkey::ConsumedChallenge.consume!("nonce:#{expires_at.to_i}", expires_at: expires_at)
+    end
+  end
+
   test "cleanup forgets consumed challenges only once they have expired" do
     @passkey.authenticate(build_assertion(challenge: ActionPack::Passkey.authentication_options.challenge))
 

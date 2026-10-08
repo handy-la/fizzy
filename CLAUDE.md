@@ -165,5 +165,7 @@ lo consume en `action_pack_passkey_consumed_challenges` (índice único) en la
 misma transacción que avanza `sign_count` con un `UPDATE` condicionado. No
 vuelvas a `update!`: con contador cero, sólo el consumo detiene un replay. El
 mensaje firmado es `<nonce>:<vence en>`; `cleanup` borra una fila sólo cuando
-su challenge ya venció. Los campos WebAuthn y `passkey.id` se filtran en
+su challenge ya venció, y por eso `consume!` comprueba el vencimiento después
+de insertar: una petición detenida hasta después de la limpieza no reutiliza
+el challenge. Los campos WebAuthn y `passkey.id` se filtran en
 `filter_parameter_logging.rb`. Evidencia: `docs/test-audits/handy-778.md`.
