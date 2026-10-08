@@ -53,7 +53,13 @@ else
   end
 
   # Seed accounts
-  seed_account "cleanslate"
-  seed_account "37signals"
-  seed_account "honcho"
+  multi_tenant = Account.multi_tenant
+  begin
+    Account.multi_tenant = true
+    seed_account "cleanslate"
+    seed_account "37signals"
+    seed_account "honcho"
+  ensure
+    Account.multi_tenant = multi_tenant
+  end
 end

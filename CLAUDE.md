@@ -79,6 +79,8 @@ controla la admisión. Crea el tenant remoto dentro de su bloque de atributos:
 crearlo antes permite recursos remotos cuando el registro se rechaza.
 `Account::SignupLock` toma un bloqueo de escritura antes de consultar las
 cuentas; bloquear una cuenta existente no protege el primer registro.
+El seed de desarrollo activa varias cuentas sólo en su proceso y restaura la
+configuración al terminar. No agregues una excepción al registro público.
 Evidencia y límites: `docs/test-audits/handy-781.md`.
 
 ## Coding style

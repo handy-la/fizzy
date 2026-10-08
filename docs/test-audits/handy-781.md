@@ -104,3 +104,46 @@ SHA-256 idénticos en RED y GREEN:
 | `test/models/single_tenant_signup_concurrency_test.rb` | `1f5fa809f25707608ff02a89b9da78838aab7e012ac6bea34082d50032e15d43` |
 | `test/controllers/signups/completions_controller_test.rb` | `24f21947bcd04e6ffa213b1c9262f50cf8f29b8a6a86d14fca3565b88d2e5bcd` |
 | `test/controllers/account/imports_controller_test.rb` | `dd193353a5c1b0e7eba9219a87b6d49974a53172b8ba5bc4abadded818c280b9` |
+
+## Corrección de la primera revisión: seed de desarrollo
+
+Los dos controles encontraron que el seed OSS crea tres cuentas mediante
+`create_with_owner`; el primer arreglo detenía la segunda. El seed ahora
+activa `multi_tenant` sólo durante su ejecución en desarrollo, con restauración
+en `ensure`. No hay parámetro nuevo de excepción en el registro público.
+
+Validación manual, sin agregar API de prueba. Contrato: `db:reset` prepara
+las tres cuentas de desarrollo y restaura la política del proceso.
+Regresión: retirar el bloque de modo temporal detiene la segunda cuenta.
+Cobertura anterior: la suite ejecuta con multi-tenant activo y no ejecuta el
+seed de desarrollo; `test/setup-phases-test` sustituye el comando Rails.
+
+Base de este defecto introducido: `84ef40721` (exportación aislada a
+`.context/handy-781-seed-base`). Comando desde `fizzy-custom/`:
+
+```bash
+env -u GEM_HOME -u GEM_PATH -u MY_RUBY_HOME -u RUBY_VERSION \
+  -u RUBYOPT -u RUBYLIB -u BUNDLE_PATH -u BUNDLE_WITH -u BUNDLE_WITHOUT \
+  SAAS=false BUNDLE_GEMFILE=Gemfile RAILS_ENV=development MULTI_TENANT=false \
+  mise exec -- ruby -C ../.context/handy-781-seed-base bin/rails db:reset
+```
+
+Antes: salida 1, `Account::MultiTenantable::SignupsClosed` al crear `37signals`,
+después de `cleanslate`. Después de copiar sólo `db/seeds.rb` corregido:
+salida 0, `cleanslate`, `37signals` y `honcho` completos. `db:prepare` también
+reprodujo el fallo anterior en la base nueva.
+
+Mismo entorno, validación de la restauración dentro del proceso:
+
+```bash
+mise exec -- ruby -C ../.context/handy-781-seed-base bin/rails runner \
+  'Rails.application.load_seed; raise "account count" unless Account.count == 3; raise "mode leaked" if Account.multi_tenant; Current.reset; signup = Signup.new(full_name: "Extra", identity: Identity.first); raise "signup accepted" if signup.complete; puts "3 accounts; single tenant mode restored; public signup rejected"'
+```
+
+Salida 0: tres cuentas, configuración restaurada y registro público rechazado.
+RuboCop sobre `db/seeds.rb`: salida 0, sin infracciones. Las pruebas de
+registro y los modelos de producción no cambiaron en esta ronda.
+
+Tras el rebase sobre `bd1bc8875c6aec4e15f0f1159f13693073aa460c`, la suite
+completa se repitió con el mismo comando: salida 0, 1815 casos, 7125 aserciones,
+0 fallos, 0 errores y 6 omitidos.
