@@ -11,6 +11,7 @@ class ZipFile::LimitsTest < ActiveSupport::TestCase
 
   test "rejects too many entries" do
     zip = create_test_zip("a" => "1", "b" => "2", "c" => "3")
+    ZipKit::FileReader.any_instance.expects(:read_cdir_entry).never
 
     error = assert_raises(ZipFile::LimitExceededError) { ZipFile::Reader.new(zip, limits: limits(max_entries: 2)) }
     assert_match(/3 entries, the limit is 2/, error.message)

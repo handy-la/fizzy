@@ -31,9 +31,9 @@ class ZipFile::Reader
 
   private
     def read_structure(limits)
-      file_reader = ZipKit::FileReader.new
+      file_reader = ZipFile::Reader::Structure.new
 
-      file_reader.read_zip_structure(io: @io, read_local_headers: false).tap do |entries|
+      file_reader.read_zip_structure(io: @io, limits: limits).tap do |entries|
         limits&.validate!(entries)
 
         entries.each do |entry|

@@ -98,6 +98,13 @@ ese contador e infla un trozo completo de una vez. Un límite en `process` borra
 las filas y archivos importados (`Manifest#discard_records`).
 Evidencia: `docs/test-audits/handy-782.md`.
 
+`ZipKit::FileReader#read_zip_structure` lee todo el tramo final y confía en el
+tamaño del EOCD ZIP64. Usa `ZipFile::Reader::Structure`: valida los metadatos
+antes de crear entradas y lee sólo `cdir_size`. `ZipFile::Limits` limita el
+directorio a 256 MiB por defecto. Un tamaño declarado incorrecto se rechaza;
+no agregues una lectura hasta EOF como recuperación.
+Evidencia: `docs/test-audits/handy-829.md`.
+
 ## Coding style
 
 Before editing or reviewing code, read STYLE.md.
