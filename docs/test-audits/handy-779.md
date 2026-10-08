@@ -167,3 +167,9 @@ ronda y `git diff --check`: salida 0.
 El mismo selector `--name "/draft|imported/"` en el checkout corregido devuelve
 salida 0: cuatro casos y 14 aserciones. Son los tres casos del RED más el nuevo
 caso de vencimiento del borrador a los 30 días.
+
+
+Tras actualizar la rama con `origin/main` (`91dcbf749`), el mismo comando de
+suite completa volvió a pasar: salida 0; **1.839 casos, 7.259 aserciones, cero
+fallos, cero errores y seis omisiones**. No se cambiaron pruebas ni código
+productivo entre esa ejecución y la documentación de su resultado.
