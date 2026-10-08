@@ -86,3 +86,30 @@ class SignupTest < ActiveSupport::TestCase
     end
   end
 end
+
+class SingleTenantSignupTest < ActiveSupport::TestCase
+  test "completion rejects a second account before creating a tenant" do
+    with_multi_tenant_mode(false) do
+      signup = Signup.new(full_name: "Kevin", identity: identities(:kevin))
+      signup.expects(:create_tenant).never
+
+      assert_no_difference [ "Account.count", "User.count", "Account::JoinCode.count" ] do
+        assert_not signup.complete
+      end
+      assert_not_empty signup.errors[:base]
+      assert_nil signup.account
+      assert_nil signup.user
+    end
+  end
+
+  test "account creation with owner enforces the single tenant policy" do
+    with_multi_tenant_mode(false) do
+      assert_no_difference [ "Account.count", "User.count" ] do
+        error = assert_raises(StandardError) do
+          Account.create_with_owner(account: { name: "Extra" }, owner: { name: "Kevin", identity: identities(:kevin) })
+        end
+        assert_kind_of Account::SignupsClosed, error
+      end
+    end
+  end
+end

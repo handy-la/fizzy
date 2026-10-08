@@ -24,9 +24,11 @@ class Signup
   def complete
     if valid?(:completion)
       begin
-        @tenant = create_tenant
         create_account
         true
+      rescue Account::SignupsClosed
+        errors.add(:base, "This instance is not accepting new accounts.")
+        false
       rescue => error
         destroy_account
         handle_account_creation_error(error)
@@ -56,14 +58,15 @@ class Signup
     def create_account
       @account = Account.create_with_owner(
         account: {
-          external_account_id: @tenant,
           name: generate_account_name
         },
         owner: {
           name: full_name,
           identity: identity
         }
-      )
+      ) do
+        { external_account_id: @tenant = create_tenant }
+      end
       @user = @account.users.find_by!(role: :owner)
       @account.setup_customer_template unless skip_account_seeding
     end

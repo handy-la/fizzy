@@ -74,6 +74,13 @@ Data transfer between instances (`app/models/account/data_transfer/`,
 archives can exceed hundreds of gigabytes — stream, never buffer a whole
 file.
 
+En modo de cuenta única, `Account.create_with_owner` es la operación que
+controla la admisión. Crea el tenant remoto dentro de su bloque de atributos:
+crearlo antes permite recursos remotos cuando el registro se rechaza.
+`Account::SignupLock` toma un bloqueo de escritura antes de consultar las
+cuentas; bloquear una cuenta existente no protege el primer registro.
+Evidencia y límites: `docs/test-audits/handy-781.md`.
+
 ## Coding style
 
 Before editing or reviewing code, read STYLE.md.

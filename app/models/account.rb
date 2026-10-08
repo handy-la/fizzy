@@ -22,9 +22,13 @@ class Account < ApplicationRecord
 
   class << self
     def create_with_owner(account:, owner:)
-      create!(**account).tap do |account|
-        account.users.create!(role: :system, name: "System")
-        account.users.create!(**owner.with_defaults(role: :owner, verified_at: Time.current))
+      with_signup_permission do
+        account = account.merge(yield) if block_given?
+
+        create!(**account).tap do |account|
+          account.users.create!(role: :system, name: "System")
+          account.users.create!(**owner.with_defaults(role: :owner, verified_at: Time.current))
+        end
       end
     end
   end
