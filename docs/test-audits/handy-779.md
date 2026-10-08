@@ -7,7 +7,7 @@ Base: `f25c72da9ba17a7f184fa2c29673ad3670ff0546`.
 - **Contrato:** antes de emitir una URL, una carga debe reservar su tamaño en
   la cuenta. El máximo por objeto es 100 MiB; la cuota predeterminada del
   servidor propio es 10 GiB. SaaS conserva su cuota y sus excepciones.
-  Se permiten 20 cargas pendientes por identidad y 100 por cuenta. El consumo
+  Se permiten 20 cargas en curso por identidad y 100 por cuenta. El consumo
   incluye reservas. Al adjuntar, el cargo pasa al registro de adjuntos en la
   misma transacción. La limpieza borra objetos vencidos antes de liberar el
   cargo. Tras quitar el último adjunto, el cargo vuelve a una reserva hasta
@@ -81,8 +81,9 @@ de SaaS en una cuenta del entorno OSS; no agrega una API para pruebas.
 
 - `bytes_used` suma reservas al snapshot; `bytes_used_exact` suma reservas al
   ledger exacto. La autorización usa el segundo bajo el lock de cuenta.
-- Los límites de pendientes también incluyen objetos en espera de borrado.
-  Los metadatos de identidad y vencimiento se fijan en el servidor.
+- Los cupos 20/100 cuentan reservas recientes durante la URL y su margen.
+  Los borradores retenidos por más tiempo dejan de ocupar un cupo, pero sus
+  bytes siguen contando en la cuota. Los metadatos se fijan en el servidor.
 - Un fallo al emitir la URL revierte blob y reserva. S3 no notifica a Rails
   cada PUT fallido; una URL ya emitida permanece reservada hasta vencer y
   completar el borrado. Liberarla antes permitiría reutilizarla sin cargo.
@@ -173,3 +174,55 @@ Tras actualizar la rama con `origin/main` (`91dcbf749`), el mismo comando de
 suite completa volvió a pasar: salida 0; **1.839 casos, 7.259 aserciones, cero
 fallos, cero errores y seis omisiones**. No se cambiaron pruebas ni código
 productivo entre esa ejecución y la documentación de su resultado.
+
+
+## Autoría de la corrección de cupos tras la segunda revisión
+
+Antes de editar se agregan tres casos: un borrador retenido deja libre el cupo
+por identidad; varios dejan libre el cupo por cuenta; sus bytes siguen impidiendo
+una nueva carga si no queda espacio. Dueño: `Storage::UploadReservation.reserve`.
+Frontera: petición de reserva bajo locks y limpieza de objetos reales.
+
+- **Contrato:** los límites 20/100 restringen cargas en curso durante la URL y
+  su margen. Un borrador retenido sigue consumiendo cuota en bytes, pero después
+  de esa ventana deja de ocupar un cupo de carga en curso.
+- **Regresión:** contar todas las reservas convierte 20 imágenes descartadas
+  en un bloqueo de 30 días; excluir también los bytes permite exceder la cuota.
+- **Cobertura:** los casos anteriores usan reservas recién creadas y no prueban
+  la admisión de nuevas cargas después de la ventana, con borradores retenidos.
+- **Seam:** ninguno. La consulta de cupos se usa en la admisión productiva; las
+  pruebas usan el modelo, el almacenamiento y el tiempo, sin reemplazar locks.
+
+Base: `884a4584b12e1a81c265adc212ac5c4e25ac52cf` (segunda revisión, antes de corregir los contadores).
+
+El caso del cupo de cuenta usa una identidad nueva después de crear los 100
+borradores. Así, el rechazo RED proviene de la cuenta y no del cupo de identidad.
+
+
+### RED y GREEN de los cupos
+
+La base se exportó con `git archive` a `.context/fizzy-779-slots-red`. Sólo se
+copió la prueba candidata. SHA-256 de esa prueba, igual en RED y GREEN:
+`475bde46881957e78bc07b3654e7bbff03ceffe51d27464f79cec927a37a1f5d`.
+
+Con el entorno Ruby/mise/OSS de las ejecuciones anteriores:
+
+```bash
+mise exec -- bash -c 'cd ../.context/fizzy-779-slots-red && bin/rails test test/models/storage/upload_reservation_test.rb --name "/retained/"'
+```
+
+RED: salida 1; tres casos, tres aserciones, dos errores por `Rejected`. El caso
+de identidad falla en el contador de identidad; el caso de cuenta, con una
+identidad nueva, falla en el contador de cuenta. La prueba de bytes ya pasa.
+
+GREEN: mismo selector `--name "/retained/"` en el checkout de la tarjeta:
+salida 0; tres casos, siete aserciones. Los 21 y 101 borradores siguen cobrando
+105 y 505 bytes, respectivamente. Una reserva adicional sigue rechazada cuando
+la cuota en bytes está llena. Suite completa: salida 0, **1.842 casos, 7.266
+aserciones, cero fallos, cero errores y seis omisiones**. RuboCop y
+`git diff --check`: salida 0.
+
+La tercera revisión de signoff usa `CHANGE_REVIEW_ALLOW_NON_CONVERGING=1`:
+la segunda encontró un único defecto nuevo en el contador de cupos. Se conserva
+la misma descripción de serie. La excepción permite una tercera ronda en el
+registro; no cambia el presupuesto ni sustituye la aprobación de la persona.

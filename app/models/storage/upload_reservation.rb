@@ -20,6 +20,8 @@ class Storage::UploadReservation < ApplicationRecord
   belongs_to :identity, optional: true
   belongs_to :blob, class_name: "ActiveStorage::Blob"
 
+  scope :in_flight, -> { where(created_at: (ActiveStorage.service_urls_for_direct_uploads_expire_in + PURGE_GRACE).ago..) }
+
   def self.reserve(account:, identity:, attributes:)
     size = Integer(attributes[:byte_size].to_s, 10) rescue nil
     raise Rejected.new(:unprocessable_entity) unless size && size.positive?
@@ -30,8 +32,8 @@ class Storage::UploadReservation < ApplicationRecord
       # Lock the global identity before the account, before any quota reads.
       Identity.where(id: identity.id).update_all("updated_at = updated_at")
       serialize_account(account) do
-        raise Rejected.new(:too_many_requests) if where(identity: identity).count >= MAX_IDENTITY_UPLOADS
-        raise Rejected.new(:too_many_requests) if where(account: account).count >= MAX_ACCOUNT_UPLOADS
+        raise Rejected.new(:too_many_requests) if in_flight.where(identity: identity).count >= MAX_IDENTITY_UPLOADS
+        raise Rejected.new(:too_many_requests) if in_flight.where(account: account).count >= MAX_ACCOUNT_UPLOADS
         limit = account.respond_to?(:storage_limit) ? account.storage_limit : DEFAULT_ACCOUNT_BYTES
         raise Rejected.new(:unprocessable_entity) if account.bytes_used_exact + size > limit
 

@@ -233,6 +233,45 @@ class Storage::UploadReservationTest < ActiveSupport::TestCase
     end
   end
 
+  test "retained drafts release identity slots without releasing their bytes" do
+    20.times { reserve.upload(StringIO.new("hello")) }
+
+    travel 3.hours do
+      Storage::UploadReservation.cleanup
+      reserve.upload(StringIO.new("hello"))
+      assert_equal 21, Storage::UploadReservation.where(identity: @identity).count
+      assert_equal 105, @account.bytes_used_exact
+    end
+  end
+
+  test "retained drafts release account slots without releasing their bytes" do
+    [ :david, :jason, :kevin, :mike, :jz ].each do |name|
+      @identity = identities(name)
+      20.times { reserve.upload(StringIO.new("hello")) }
+    end
+
+    @identity = Identity.create!(email_address: "fresh-upload@example.test")
+    @account.users.create!(name: "New uploader", identity: @identity)
+    travel 3.hours do
+      Storage::UploadReservation.cleanup
+      reserve.upload(StringIO.new("hello"))
+      assert_equal 101, Storage::UploadReservation.where(account: @account).count
+      assert_equal 505, @account.bytes_used_exact
+    end
+  end
+
+  test "retained draft bytes still reject a reservation when the quota is full" do
+    Storage::Entry.record(account: @account, delta: 10.gigabytes - 5, operation: "attach")
+    reserve.upload(StringIO.new("hello"))
+
+    travel 3.hours do
+      Storage::UploadReservation.cleanup
+      error = assert_raises(Storage::UploadReservation::Rejected) { reserve }
+      assert_equal :unprocessable_entity, error.status
+      assert_equal 10.gigabytes, @account.bytes_used_exact
+    end
+  end
+
   private
     def reserve(account: @account, data: "hello", content_type: "text/plain", &block)
       Current.with_account(account) do

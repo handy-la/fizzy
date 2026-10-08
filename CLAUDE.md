@@ -191,7 +191,9 @@ el challenge. Los campos WebAuthn y `passkey.id` se filtran en
 ## Cuota y borrado de cargas directas
 
 Una carga directa reserva espacio antes de emitir la URL: máximo 100 MiB por
-objeto, 20 pendientes por identidad global y 100 por cuenta. El servidor propio
+objeto, 20 cargas en curso por identidad global y 100 por cuenta durante la URL
+y su margen. Los borradores retenidos ya no ocupan esos cupos después de esa
+ventana, pero siguen consumiendo bytes. El servidor propio
 limita cada cuenta a 10 GiB; SaaS usa `storage_limit`. La cuota usa el consumo
 exacto, incluidas las reservas, bajo locks de identidad y cuenta, en ese orden.
 Un UPDATE antes de leer obtiene el lock también en SQLite.
