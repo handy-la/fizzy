@@ -3,6 +3,8 @@ class FiltersController < ApplicationController
 
   def create
     @filter = Current.user.filters.remember filter_params
+  rescue ActiveRecord::RecordInvalid
+    head :unprocessable_entity
   end
 
   def destroy

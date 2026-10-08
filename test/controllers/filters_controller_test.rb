@@ -24,6 +24,13 @@ class FiltersControllerTest < ActionDispatch::IntegrationTest
     assert_equal [ boards(:writebook) ], filter.boards
   end
 
+  test "create rejects too many terms" do
+    assert_no_difference "users(:david).filters.count" do
+      post filters_path, params: { terms: (1..11).map { "term#{it}" } }, as: :turbo_stream
+    end
+    assert_response :unprocessable_entity
+  end
+
   test "destroy" do
     filter = filters(:jz_assignments)
     expected_params = filter.as_params

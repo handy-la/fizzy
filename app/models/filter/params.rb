@@ -31,10 +31,22 @@ module Filter::Params
         .to_h
         .compact_blank
         .reject(&method(:default_value?))
-        .collect { |name, value| [ name, value.is_a?(Array) ? value.collect(&:to_s) : value.to_s ] }
+        .to_h { |name, value| [ name, normalize_param(name, value) ] }
+        .compact_blank
         .sort_by { |name, _| name.to_s }
         .to_h
     end
+
+    private
+      def normalize_param(name, value)
+        if name.to_s == "terms"
+          normalize_terms(value)
+        elsif value.is_a?(Array)
+          value.collect(&:to_s)
+        else
+          value.to_s
+        end
+      end
   end
 
   included do

@@ -4,6 +4,8 @@ class Filter < ApplicationRecord
   belongs_to :creator, class_name: "User", default: -> { Current.user }
   belongs_to :account, default: -> { creator.account }
 
+  validate :terms_must_be_within_limits, if: :fields_changed?
+
   class << self
     def from_params(params)
       find_by_params(params) || build(params)
@@ -32,9 +34,7 @@ class Filter < ApplicationRecord
       result = result.where(cards: { created_at: creation_window }) if creation_window
       result = result.closed_at_window(closure_window) if closure_window
       result = result.closed_by(closers) if closers.present?
-      result = terms.reduce(result) do |result, term|
-        result.mentioning(term, user: creator)
-      end
+      result = filter_terms(result)
       result = result.where(column_id: column_ids) if column_ids.present?
 
       result.distinct
@@ -66,6 +66,22 @@ class Filter < ApplicationRecord
   end
 
   private
+    # Only when the fields change, so removing a tag or board still saves an
+    # older filter; reading it is bounded by #filter_terms.
+    def terms_must_be_within_limits
+      errors.add(:terms, :invalid) unless terms_within_limits?
+    end
+
+    # A filter saved before the limits existed may carry more terms; it matches
+    # nothing rather than build one full-text predicate per term.
+    def filter_terms(relation)
+      if terms_within_limits?
+        terms.reduce(relation) { |relation, term| relation.mentioning(term, user: creator) }
+      else
+        relation.none
+      end
+    end
+
     def filter_boards(relation)
       relation = relation.where(cards: { account_id: creator.account_id }).where(board: boards.ids)
       if joins_has_many?

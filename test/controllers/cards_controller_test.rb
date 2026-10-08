@@ -15,6 +15,19 @@ class CardsControllerTest < ActionDispatch::IntegrationTest
     assert_response :success
   end
 
+  test "index rejects too many terms" do
+    get cards_path, params: { terms: (1..11).map { "term#{it}" } }
+    assert_response :unprocessable_entity
+  end
+
+  test "index rejects a persisted filter over the limit" do
+    filter = users(:kevin).filters.create!(terms: [ "haggis" ])
+    filter.update_columns(fields: filter.fields.merge("terms" => (1..500).map { "term#{it}" }))
+
+    get cards_path(filter_id: filter.id)
+    assert_response :unprocessable_entity
+  end
+
   test "index as JSON can filter by workflow column id" do
     get cards_path(format: :json), params: { column_ids: [ columns(:writebook_in_progress).id ] }
     assert_response :success

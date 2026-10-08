@@ -90,6 +90,53 @@ class FilterTest < ActiveSupport::TestCase
     assert_equal [ "haggis" ], users(:david).filters.new(terms: [ "haggis" ]).terms
   end
 
+  test "terms are normalized and deduplicated" do
+    filter = users(:david).filters.new(terms: [ "  haggis  ", "haggis", "neeps\n tatties", "", nil ])
+
+    assert_equal [ "haggis", "neeps tatties" ], filter.terms
+  end
+
+  test "rejects too many terms" do
+    filter = users(:david).filters.new(terms: (1..11).map { "term#{it}" })
+
+    assert_not filter.valid?
+    assert_raises(ActiveRecord::RecordInvalid) { filter.save! }
+  end
+
+  test "rejects a term or a total of terms that is too long" do
+    long_term = users(:david).filters.new(terms: [ "a" * 101 ])
+    assert_not long_term.valid?
+
+    long_total = users(:david).filters.new(terms: 10.times.map { |i| "#{i}" * 100 })
+    assert_not long_total.valid?
+
+    assert users(:david).filters.new(terms: 10.times.map { "term#{it}" }).valid?
+  end
+
+  test "a persisted filter over the limit matches no cards and builds no search predicate" do
+    filter = users(:david).filters.create!(terms: [ "haggis" ])
+    filter.update_columns(fields: filter.fields.merge("terms" => (1..500).map { "term#{it}" }))
+    filter = Filter.find(filter.id)
+
+    assert_empty filter.cards
+    assert_equal 0, search_predicates(filter.cards)
+  end
+
+  test "a persisted filter over the limit still saves when a resource is removed" do
+    filter = users(:david).filters.create!(terms: [ "haggis" ], tag_ids: [ tags(:mobile).id, tags(:web).id ])
+    filter.update_columns(fields: filter.fields.merge("terms" => (1..500).map { "term#{it}" }))
+
+    tags(:mobile).destroy!
+
+    assert_equal [ tags(:web) ], filter.reload.tags
+  end
+
+  test "an accepted filter builds one search predicate per term" do
+    filter = users(:david).filters.new(terms: 10.times.map { "term#{it}" })
+
+    assert_equal 10, search_predicates(filter.cards)
+  end
+
   test "resource removal" do
     filter = users(:david).filters.create! tag_ids: [ tags(:mobile).id ], board_ids: [ boards(:writebook).id ]
 
@@ -203,4 +250,10 @@ class FilterTest < ActiveSupport::TestCase
     assert_not_includes filter.board_titles, "Writebook"
     assert_not_includes filter.board_titles, "Private board"
   end
+
+  private
+    # Each term adds one full-text MATCH predicate (SQLite FTS5 and MySQL alike).
+    def search_predicates(relation)
+      relation.to_sql.scan(/\bMATCH\b/i).size
+    end
 end

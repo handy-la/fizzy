@@ -4,6 +4,12 @@ module Filter::Fields
   INDEXES = %w[ all closed not_now stalled postponing_soon golden ]
   SORTED_BY = %w[ newest oldest latest ]
 
+  # Each term adds one full-text predicate to the cards query, so a filter
+  # carries few short terms.
+  MAX_TERMS = 10
+  MAX_TERM_LENGTH = 100
+  MAX_TERMS_LENGTH = 300
+
   delegate :default_value?, to: :class
 
   class_methods do
@@ -13,6 +19,16 @@ module Filter::Fields
 
     def default_value?(key, value)
       default_values[key.to_sym].eql?(value)
+    end
+
+    def normalize_terms(terms)
+      Array(terms).collect { it.to_s.squish }.compact_blank.uniq
+    end
+
+    def terms_within_limits?(terms)
+      terms.size <= MAX_TERMS &&
+        terms.all? { it.length <= MAX_TERM_LENGTH } &&
+        terms.sum(&:length) <= MAX_TERMS_LENGTH
     end
 
     def indexed_by_human_name(index)
@@ -54,11 +70,15 @@ module Filter::Fields
     end
 
     def terms
-      Array(super)
+      self.class.normalize_terms(super)
     end
 
     def terms=(value)
-      super(Array(value).filter(&:present?))
+      super(self.class.normalize_terms(value))
+    end
+
+    def terms_within_limits?
+      self.class.terms_within_limits?(terms)
     end
 
     def column_ids

@@ -13,6 +13,8 @@ module FilterScoped
       else
         @filter = Current.user.filters.from_params filter_params
       end
+
+      head :unprocessable_entity unless @filter.terms_within_limits?
     end
 
     def filter_params
