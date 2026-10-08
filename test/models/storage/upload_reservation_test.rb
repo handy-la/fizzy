@@ -87,12 +87,14 @@ class Storage::UploadReservationTest < ActiveSupport::TestCase
     assert_equal 0, @account.bytes_used_exact
   end
 
-  test "expired upload cannot attach and remains charged until URL grace passes" do
+  test "upload can attach after its URL expires while cleanup has not purged it" do
     blob = reserve
     blob.upload(StringIO.new("hello"))
     Storage::UploadReservation.find_by!(blob: blob).update!(expires_at: 1.minute.ago)
 
-    assert_raises(ActiveRecord::RecordNotSaved) { cards(:logo).image.attach(blob) }
+    cards(:logo).image.attach(blob)
+    assert blob.attachments.exists?
+    assert_not Storage::UploadReservation.exists?(blob: blob)
     Storage::UploadReservation.cleanup
     assert ActiveStorage::Blob.exists?(blob.id)
     assert_equal 5, @account.bytes_used_exact
@@ -131,9 +133,9 @@ class Storage::UploadReservationTest < ActiveSupport::TestCase
 
   test "cleanup also purges legacy abandoned blobs and preserves attached blobs" do
     old = ActiveStorage::Blob.create_and_upload!(io: StringIO.new("hello"), filename: "old.txt")
-    old.update_column(:created_at, 3.days.ago)
+    old.update_column(:created_at, 31.days.ago)
     attached = ActiveStorage::Blob.create_and_upload!(io: StringIO.new("hello"), filename: "attached.txt")
-    attached.update_column(:created_at, 3.days.ago)
+    attached.update_column(:created_at, 31.days.ago)
     cards(:logo).image.attach(attached)
 
     Storage::UploadReservation.cleanup
@@ -170,6 +172,65 @@ class Storage::UploadReservationTest < ActiveSupport::TestCase
     error = assert_raises(Storage::UploadReservation::Rejected) { reserve }
     assert_equal :unprocessable_entity, error.status
     assert_equal 5, @account.bytes_used_exact
+  end
+
+  test "uploaded draft remains usable after a long pause" do
+    blob = reserve
+    blob.upload(StringIO.new("hello"))
+    html = ActionText::Attachment.from_attachable(blob).to_html
+
+    travel 3.days do
+      Storage::UploadReservation.cleanup
+      assert ActiveStorage::Blob.exists?(blob.id)
+      assert_equal 5, @account.bytes_used_exact
+      cards(:logo).update!(description: "<p>Draft</p>#{html}")
+      assert cards(:logo).description.embeds.attached?
+      assert_not Storage::UploadReservation.exists?(blob: blob)
+      assert_equal 5, @account.reload.bytes_used_exact
+    end
+  end
+
+  test "legacy uploaded draft is not deleted after a weekend" do
+    blob = ActiveStorage::Blob.create_and_upload!(io: StringIO.new("hello"), filename: "draft.txt")
+    blob.update_column(:created_at, 3.days.ago)
+    Storage::UploadReservation.cleanup
+    assert ActiveStorage::Blob.exists?(blob.id)
+    assert blob.service.exist?(blob.key)
+  end
+
+  test "detaching imported upload metadata does not require the original identity" do
+    blob = reserve
+    blob.upload(StringIO.new("hello"))
+    cards(:logo).image.attach(blob)
+    absent_id = Identity.type_for_attribute("id").cast(SecureRandom.uuid)
+    assert_not Identity.exists?(absent_id)
+    blob.update!(metadata: blob.metadata.merge("quota_identity_id" => absent_id))
+
+    cards(:logo).image.purge
+    assert_not blob.attachments.exists?
+    assert_equal 5, @account.reload.bytes_used_exact
+  end
+
+  test "failed upload releases its reservation after the URL and grace expire" do
+    blob = reserve
+    travel 3.hours do
+      Storage::UploadReservation.cleanup
+      assert_not ActiveStorage::Blob.exists?(blob.id)
+      assert_not Storage::UploadReservation.exists?(blob: blob)
+      assert_equal 0, @account.bytes_used_exact
+    end
+  end
+
+  test "uploaded but abandoned draft expires after thirty days" do
+    blob = reserve
+    blob.upload(StringIO.new("hello"))
+    travel 31.days do
+      Storage::UploadReservation.cleanup
+      assert_not ActiveStorage::Blob.exists?(blob.id)
+      assert_not blob.service.exist?(blob.key)
+      assert_not Storage::UploadReservation.exists?(blob: blob)
+      assert_equal 0, @account.bytes_used_exact
+    end
   end
 
   private

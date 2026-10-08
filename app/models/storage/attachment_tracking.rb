@@ -6,7 +6,6 @@ module Storage::AttachmentTracking
     # by the time after_destroy_commit runs
     before_destroy :lock_storage_account, :snapshot_storage_context
     before_create :lock_storage_account
-    validate :pending_upload_not_expired, on: :create
     after_create :record_storage_attach
     after_destroy :record_storage_detach
   end
@@ -19,15 +18,7 @@ module Storage::AttachmentTracking
       unless ActiveStorage::Blob.lock.find_by(id: blob_id)
         errors.add(:blob_id, "upload no longer exists")
       end
-      pending_upload_not_expired(lock: true) if new_record?
       throw :abort if errors.any?
-    end
-
-    def pending_upload_not_expired(lock: false)
-      reservation = Storage::UploadReservation.lock(lock).find_by(blob_id: blob_id)
-      if reservation && reservation.expires_at <= Time.current
-        errors.add(:blob_id, "upload reservation has expired")
-      end
     end
 
     def record_storage_attach

@@ -201,6 +201,11 @@ avatares cargados por esta vía también cuentan. Al quitar el último adjunto s
 restaura la reserva: una URL PUT de S3 puede recrear el objeto tras borrarlo.
 No liberes espacio ni pierdas la clave antes de borrar el objeto con éxito,
 después del vencimiento de la URL (una hora) y su margen (una hora).
-`Storage::CleanupUploadsJob` reintenta cada 15 minutos. Los blobs antiguos sin
-reserva esperan 49 horas por sus URLs anteriores. Evidencia y límites:
+`Storage::CleanupUploadsJob` reintenta cada 15 minutos. Un archivo subido puede
+seguir en un borrador local: conserva la reserva 30 días, separados de la URL.
+Puede adjuntarse mientras exista. Si no hay objeto después de vencer la URL y
+el margen, la limpieza libera la reserva. Los blobs antiguos sin reserva usan
+la misma conservación de 30 días, que cubre sus URLs anteriores de 48 horas.
+La identidad de una reserva de borrado es opcional: una importación conserva
+metadata del autor, pero ese autor puede no existir aquí. Evidencia y límites:
 `docs/test-audits/handy-779.md`.

@@ -86,16 +86,20 @@ de SaaS en una cuenta del entorno OSS; no agrega una API para pruebas.
 - Un fallo al emitir la URL revierte blob y reserva. S3 no notifica a Rails
   cada PUT fallido; una URL ya emitida permanece reservada hasta vencer y
   completar el borrado. Liberarla antes permitiría reutilizarla sin cargo.
-- La URL nueva vence en una hora. La limpieza espera además una hora para
-  permitir que termine un PUT iniciado antes del vencimiento. Cada 15 minutos
-  el trabajo borra primero el objeto y luego sus registros. Un error conserva
-  clave y cargo para el siguiente intento.
+- La URL nueva vence en una hora, separada de la reserva del borrador. Cada
+  15 minutos la limpieza elimina cargas sin objeto después de la URL y una
+  hora de margen. Un archivo subido conserva su reserva 30 días, para que una
+  pausa del editor no borre su imagen. Puede adjuntarse mientras el blob exista.
+  Después de esos 30 días y el margen, se purga como borrador abandonado. Esta
+  conservación finita cumple la limpieza solicitada y limita el consumo con
+  la cuota y el número de pendientes. Se borra primero el objeto y luego sus
+  registros; un error conserva clave y cargo para el siguiente intento.
 - Un adjunto cargado por esta vía conserva su cargo al borrar el último
   vínculo, hasta el mismo vencimiento y margen. Esto impide recrear un objeto
   con la URL anterior después de un borrado inmediato.
-- El barrido antiguo sólo toca blobs sin adjuntos con al menos 49 horas, por
-  las URLs de 48 horas anteriores. La cuenta y el blob se vuelven a comprobar
-  bajo el lock compartido con la creación de adjuntos.
+- El barrido antiguo también conserva imágenes de borrador por 30 días,
+  más el margen. Esto supera las URLs anteriores de 48 horas. La cuenta y el
+  blob se vuelven a comprobar bajo el lock compartido con los adjuntos.
 - Los callbacks de destrucción admiten blobs ausentes: la importación de
   cuentas puede borrar los blobs en bloque antes de destruir sus adjuntos.
   La prueba existente de ida y vuelta lo comprueba.
@@ -110,3 +114,56 @@ se comprobó con SQLite. En el código instalado de Active Storage, S3 firma
 prueba aquí una carga que siga activa más de una hora después de vencer la URL:
 ese margen limita la espera antes de borrar. No ejecuté pruebas de sistema,
 porque el cambio no toca vistas.
+
+## Autoría de los casos de la primera revisión
+
+Antes de editar: se agregan `uploaded draft remains usable after a long pause`,
+`legacy uploaded draft is not deleted after a weekend` y `detaching imported
+upload metadata does not require the original identity`.
+
+- **Contrato:** conservar una imagen en un borrador durante pausas normales y
+  permitir quitar adjuntos importados cuyo autor no existe en este servidor.
+  Fronteras: limpieza real, adjunto ActionText y destrucción de adjunto.
+- **Regresión:** usar la duración de la URL como plazo del borrador lo elimina
+  durante una pausa; exigir una identidad antigua en la reserva revierte el
+  borrado del adjunto importado.
+- **Cobertura:** los casos iniciales sólo cubren adjuntos inmediatos y autores
+  de este servidor. No había prueba de un borrador tras una pausa ni de metadata
+  de un autor que no existe.
+- **Seam:** ninguno. Se usan blobs, limpieza y adjuntos productivos. Una metadata
+  con UUID de identidad ausente representa el dato que copia la importación.
+  La base de estos casos es el primer commit de la tarjeta, `dbef2d0f4f15e62505ea089c8681a64dae1a6245`.
+
+
+### RED de la primera revisión y GREEN final
+
+Se exportó ese SHA con `git archive` a `.context/fizzy-779-review-red` y se
+copió la prueba candidata. Mismo entorno Ruby/mise/OSS que el RED inicial:
+
+```bash
+mise exec -- bash -c 'cd ../.context/fizzy-779-review-red && bin/rails test test/models/storage/upload_reservation_test.rb --name "/draft|imported/"'
+```
+
+RED: salida 1, tres casos, tres aserciones, dos fallos y un error por el defecto
+real. Se eliminan las dos imágenes de borrador y el borrado del adjunto importado
+falla con `Identity must exist`. No hay error de entorno ni tabla ausente.
+
+La limpieza conserva ahora borradores subidos por 30 días. Se retiró el rechazo
+por fecha al adjuntar; el lock y la comprobación del blob siguen evitando la
+carrera contra la limpieza. La relación con identidad es opcional, porque la
+cuota del borrado pertenece a la cuenta y el autor importado puede no existir.
+
+Los casos añadidos de carga fallida y borrador abandonado usan el contrato de
+limpieza de la ficha inicial: distinguen un PUT que nunca creó un objeto del
+archivo subido conservado para el editor. No agregan un seam.
+
+GREEN final: `PARALLEL_WORKERS=4 mise exec -- bin/rails test`, con el entorno
+completo anterior: salida 0; **1.823 casos, 7.178 aserciones, cero fallos, cero
+errores, seis omisiones**. El lote enfocado de cargas HTTP y almacenamiento:
+120 casos, 387 aserciones, salida 0. RuboCop de los tres archivos Ruby de esta
+ronda y `git diff --check`: salida 0.
+
+
+El mismo selector `--name "/draft|imported/"` en el checkout corregido devuelve
+salida 0: cuatro casos y 14 aserciones. Son los tres casos del RED más el nuevo
+caso de vencimiento del borrador a los 30 días.

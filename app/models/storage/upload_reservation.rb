@@ -5,6 +5,7 @@ class Storage::UploadReservation < ApplicationRecord
   MAX_ACCOUNT_UPLOADS = 100
   PURGE_GRACE = 1.hour
   LEGACY_EXPIRY = 48.hours
+  DRAFT_RETENTION = 30.days
 
   class Rejected < StandardError
     attr_reader :status
@@ -16,7 +17,7 @@ class Storage::UploadReservation < ApplicationRecord
   end
 
   belongs_to :account
-  belongs_to :identity
+  belongs_to :identity, optional: true
   belongs_to :blob, class_name: "ActiveStorage::Blob"
 
   def self.reserve(account:, identity:, attributes:)
@@ -39,7 +40,7 @@ class Storage::UploadReservation < ApplicationRecord
           "quota_identity_id" => identity.id, "quota_expires_at" => expires_at.iso8601(6))
         blob = ActiveStorage::Blob.create_before_direct_upload!(**attributes.merge(byte_size: size, metadata: metadata))
         create!(account: account, identity: identity, blob: blob, byte_size: size,
-          expires_at: expires_at)
+          expires_at: DRAFT_RETENTION.from_now)
         yield blob
       end
     end
@@ -55,9 +56,20 @@ class Storage::UploadReservation < ApplicationRecord
   def self.cleanup
     where(expires_at: ..PURGE_GRACE.ago).find_each(&:purge)
 
+    # A successful upload can live in a local-save draft before it is attached.
+    # Empty uploads need no draft retention once their URL and grace expire.
+    where(created_at: ..(ActiveStorage.service_urls_for_direct_uploads_expire_in + PURGE_GRACE).ago)
+      .where(expires_at: PURGE_GRACE.ago..).find_each do |reservation|
+        blob = reservation.blob
+        url_expires_at = Time.iso8601(blob.metadata["quota_expires_at"])
+        if url_expires_at + PURGE_GRACE <= Time.current && !blob.service.exist?(blob.key)
+          reservation.purge
+        end
+      end
+
     # Also remove abandoned blobs issued before reservations were introduced.
     # Their old signed upload URLs could remain usable for 48 hours.
-    ActiveStorage::Blob.unattached.where(created_at: ..(LEGACY_EXPIRY + PURGE_GRACE).ago).find_each do |blob|
+    ActiveStorage::Blob.unattached.where(created_at: ..([ LEGACY_EXPIRY, DRAFT_RETENTION ].max + PURGE_GRACE).ago).find_each do |blob|
       serialize_account(blob.account) do
         if !blob.attachments.exists? && !exists?(blob: blob)
           blob.delete
