@@ -3,6 +3,10 @@ class Account::DataTransfer::ActiveStorage::FileRecordSet < Account::DataTransfe
     super(account: account, model: ::ActiveStorage::Blob)
   end
 
+  def discard
+    records.find_each(&:delete)
+  end
+
   private
     def records
       ::ActiveStorage::Blob.where(account: account).where.not(id: excluded_blob_ids)

@@ -1,6 +1,8 @@
 require "test_helper"
 
 class ZipFileTest < ActiveSupport::TestCase
+  include ZipTestHelper
+
   test "writer adds files with content" do
     tempfile = Tempfile.new([ "test", ".zip" ])
     tempfile.binmode
@@ -128,6 +130,32 @@ class ZipFileTest < ActiveSupport::TestCase
   ensure
     tempfile&.close
     tempfile&.unlink
+  end
+
+  test "reader io stops an entry that expands beyond its declared size" do
+    tempfile = create_test_zip("data/card.json" => "x" * 100)
+    declare_uncompressed_size(tempfile.path, "data/card.json", 10)
+
+    File.open(tempfile.path, "rb") do |file|
+      reader = ZipFile::Reader.new(file)
+
+      error = assert_raises(ZipFile::InvalidFileError) { reader.read("data/card.json") }
+      assert_match(/expands beyond its declared 10 bytes/, error.message)
+      assert_raises(ZipFile::InvalidFileError) { reader.read("data/card.json") { |io| io.read(1.megabyte) } }
+    end
+  end
+
+  test "reader io inflates a deflated entry in bounded chunks" do
+    tempfile = create_test_zip("data/random.json" => Random.new(42).bytes(2.megabytes))
+
+    File.open(tempfile.path, "rb") do |file|
+      ZipFile::Reader.new(file).read("data/random.json") do |io|
+        chunk = io.read(5.megabytes)
+
+        assert_operator chunk.bytesize, :>, 0
+        assert_operator chunk.bytesize, :<, 1.megabyte
+      end
+    end
   end
 
   private

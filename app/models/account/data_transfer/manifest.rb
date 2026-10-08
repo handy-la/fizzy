@@ -21,6 +21,10 @@ class Account::DataTransfer::Manifest
     end
   end
 
+  def discard_records
+    record_sets.reverse_each(&:discard)
+  end
+
   private
     def record_sets
       [

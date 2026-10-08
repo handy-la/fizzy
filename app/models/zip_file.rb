@@ -1,5 +1,6 @@
 class ZipFile
   class InvalidFileError < StandardError; end
+  class LimitExceededError < InvalidFileError; end
 
   class << self
     def create_for(attachment, filename:)
@@ -16,13 +17,13 @@ class ZipFile
       end
     end
 
-    def read_from(blob)
+    def read_from(blob, limits: nil)
       raise ArgumentError, "No block given" unless block_given?
 
       if s3_service?(blob.service)
-        read_from_s3(blob) { |zip| yield zip }
+        read_from_s3(blob, limits: limits) { |zip| yield zip }
       else
-        read_from_disk(blob) { |zip| yield zip }
+        read_from_disk(blob, limits: limits) { |zip| yield zip }
       end
     end
 
@@ -86,23 +87,23 @@ class ZipFile
         tempfile&.unlink
       end
 
-      def read_from_s3(blob)
+      def read_from_s3(blob, limits:)
         url = blob.url(expires_in: 6.hour)
         ssl_verify_peer = blob.service.client.client.config.ssl_verify_peer
         remote_io = RemoteIO.new(url, ssl_verify_peer: ssl_verify_peer)
-        reader = Reader.new(remote_io)
+        reader = Reader.new(remote_io, limits: limits)
         yield reader
       end
 
-      def read_from_disk(blob)
+      def read_from_disk(blob, limits:)
         if path = path_on_disk(blob)
           File.open(path, "rb") do |file|
-            reader = Reader.new(file)
+            reader = Reader.new(file, limits: limits)
             yield reader
           end
         else
           blob.open do |file|
-            reader = Reader.new(file)
+            reader = Reader.new(file, limits: limits)
             yield reader
           end
         end

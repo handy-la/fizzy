@@ -83,6 +83,15 @@ El seed de desarrollo activa varias cuentas sólo en su proceso y restaura la
 configuración al terminar. No agregues una excepción al registro público.
 Evidencia y límites: `docs/test-audits/handy-781.md`.
 
+Una importación abre su ZIP con `Account::Import::LIMITS`: `ZipFile::Limits`
+rechaza el directorio central (entradas, bytes por entrada, límite menor para
+JSON, total, relación de compresión) antes de extraer, y `ZipFile::Reader::IO`
+detiene una entrada cuyos bytes reales pasan su tamaño declarado. Lee las
+entradas sólo con `ZipFile::Reader#read`: el extractor de ZipKit directo omite
+ese contador e infla un trozo completo de una vez. Un límite en `process` borra
+las filas y archivos importados (`Manifest#discard_records`).
+Evidencia: `docs/test-audits/handy-782.md`.
+
 ## Coding style
 
 Before editing or reviewing code, read STYLE.md.

@@ -5,6 +5,14 @@ class Account::Import < ApplicationRecord
 
   REQUIRED_STORAGE_SPACE_FACTOR = 2
 
+  LIMITS = ZipFile::Limits.new(
+    max_entries: 1_000_000,
+    max_entry_size: 10.gigabytes,
+    max_json_entry_size: 16.megabytes,
+    max_total_size: 1.terabyte,
+    max_compression_ratio: 100
+  )
+
   broadcasts_refreshes
 
   belongs_to :account
@@ -27,9 +35,10 @@ class Account::Import < ApplicationRecord
 
   def check(start: nil, callback: nil)
     processing!
-    ensure_sufficient_storage_space
 
-    ZipFile.read_from(file.blob) do |zip|
+    ZipFile.read_from(file.blob, limits: LIMITS) do |zip|
+      ensure_sufficient_storage_space(zip)
+
       Account::DataTransfer::Manifest.new(account).each_record_set(start: start) do |record_set, last_id|
         record_set.check(from: zip, start: last_id, callback: callback)
       end
@@ -51,9 +60,9 @@ class Account::Import < ApplicationRecord
   def process(start: nil, callback: nil)
     processing!
 
-    ensure_sufficient_storage_space if start.nil?
+    ZipFile.read_from(file.blob, limits: LIMITS) do |zip|
+      ensure_sufficient_storage_space(zip) if start.nil?
 
-    ZipFile.read_from(file.blob) do |zip|
       Account::DataTransfer::Manifest.new(account).each_record_set(start: start) do |record_set, last_id|
         record_set.import(from: zip, start: last_id, callback: callback)
       end
@@ -65,6 +74,10 @@ class Account::Import < ApplicationRecord
     reconcile_account_storage
 
     mark_completed
+  rescue ZipFile::LimitExceededError => e
+    mark_as_failed(:invalid_export)
+    discard_imported_records
+    raise e
   rescue Account::DataTransfer::RecordSet::ConflictError => e
     mark_as_failed(:conflict)
     raise e
@@ -85,15 +98,19 @@ class Account::Import < ApplicationRecord
   end
 
   private
-    def ensure_sufficient_storage_space
+    def ensure_sufficient_storage_space(zip)
       return unless path = ZipFile.path_on_disk(file.blob)
 
-      required = file.blob.byte_size * REQUIRED_STORAGE_SPACE_FACTOR
+      required = zip.uncompressed_size * REQUIRED_STORAGE_SPACE_FACTOR
       available = available_storage_space(path)
 
       if available && available < required
         raise InsufficientStorageSpaceError, "import needs ~#{human_size(required)} free, found #{human_size(available)}"
       end
+    end
+
+    def discard_imported_records
+      Account::DataTransfer::Manifest.new(account).discard_records
     end
 
     def human_size(bytes)

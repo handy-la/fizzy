@@ -52,6 +52,10 @@ class Account::DataTransfer::RecordSet
     end
   end
 
+  def discard
+    records.delete_all
+  end
+
   private
     attr_reader :zip
 

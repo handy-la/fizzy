@@ -14,6 +14,9 @@ class Account::DataTransfer::AccountRecordSet < Account::DataTransfer::RecordSet
     super(account: account, model: Account)
   end
 
+  def discard
+  end
+
   private
     def records
       [ account ]
