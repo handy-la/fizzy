@@ -54,12 +54,13 @@ Rails.application.configure do
     policy.connect_src :self, *sources.(:connect_src)
     policy.frame_src :self, *sources.(:frame_src)
 
-    # Don't fight user tools: permit inline styles, data:/https: sources, and
-    # blob: workers for accessibility extensions, privacy tools, and custom fonts.
+    # Keep remote media opt-in. Storage/CDN hosts must be allowed explicitly
+    # through img_src/media_src; permitting every HTTPS host enables tracking.
+    # Inline styles, local previews, custom fonts and blob workers remain allowed.
     policy.style_src :self, :unsafe_inline, *sources.(:style_src)
-    policy.img_src :self, "blob:", "data:", "https:", *sources.(:img_src)
+    policy.img_src :self, "blob:", "data:", *sources.(:img_src)
     policy.font_src :self, "data:", "https:", *sources.(:font_src)
-    policy.media_src :self, "blob:", "data:", "https:", *sources.(:media_src)
+    policy.media_src :self, "blob:", "data:", *sources.(:media_src)
     policy.worker_src :self, "blob:", *sources.(:worker_src)
 
     # Security-critical defaults (not configurable)

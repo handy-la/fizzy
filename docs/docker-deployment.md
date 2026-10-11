@@ -135,6 +135,13 @@ Then set the following as appropriate for your S3 bucket:
 - `S3_ACCESS_KEY_ID`
 - `S3_SECRET_ACCESS_KEY`
 - `CSP_CONNECT_SRC`
+- `CSP_IMG_SRC`
+- `CSP_MEDIA_SRC`
+
+Usa el origen exacto del almacenamiento o CDN para estas directivas
+(por ejemplo, `https://mi-bucket.s3.us-east-1.amazonaws.com`).
+No uses `https:` ni `*`: permiten que contenido externo registre visitas.
+Los medios remotos del texto requieren abrir un enlace con aviso.
 
 If you're using a provider other than AWS, you will also need some of the following:
 

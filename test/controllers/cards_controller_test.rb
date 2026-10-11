@@ -209,6 +209,35 @@ class CardsControllerTest < ActionDispatch::IntegrationTest
     assert_response :success
   end
 
+  test "saved remote media and comments require consent" do
+    image_url = "https://tracker.example.test/pixel.png"
+    video_url = "https://tracker.example.test/video.mp4"
+    card = cards(:logo)
+
+    put card_path(card, format: :json), params: { card: { description: %(<action-text-attachment url="#{image_url}" content-type="image/png"></action-text-attachment>) } }
+    assert_response :success
+    card.comments.create! creator: users(:kevin), body: %(<action-text-attachment url="#{video_url}" content-type="video/mp4"></action-text-attachment>)
+
+    get card_path(card)
+    assert_response :success
+    assert_select "img[src=?], video[src=?], source[src=?]", image_url, video_url, video_url, count: 0
+    [ image_url, video_url ].each do |url|
+      assert_select "a[href=?][rel~=noreferrer]", url, minimum: 1
+    end
+  end
+
+  test "card responses restrict media to authorized origins" do
+    get card_path(cards(:logo))
+    assert_response :success
+
+    policy = response.headers.fetch("Content-Security-Policy").split(";").map(&:split).index_by(&:first)
+    %w[img-src media-src].each do |directive|
+      assert_includes policy.fetch(directive), "'self'"
+      assert_empty policy.fetch(directive) & %w[https: http: * https://* http://*]
+      assert_not_includes policy.fetch(directive), "https://tracker.example.test"
+    end
+  end
+
   test "show as JSON" do
     card = cards(:logo)
     card.steps.create!(content: "First step")

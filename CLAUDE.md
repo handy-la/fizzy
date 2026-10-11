@@ -136,6 +136,16 @@ reintentos y trabajos admitidos antes de esta política.
 Una consulta por cuenta no protege una identidad que crea otra cuenta.
 Evidencia y presupuesto medido: `docs/test-audits/handy-936.md`.
 
+## Medios externos y saneado de Action Text
+
+Action Text vuelve a sanear el HTML que generan los partials. Su lista por
+omisión quita `rel` y `target`: un enlace seguro en el partial pierde su
+protección al mostrar una tarjeta. Conserva esos atributos en el initializer
+de saneado y prueba `ActionText::Content#to_s`, además de la vista directa.
+Los medios remotos requieren una acción explícita; `img-src` y `media-src`
+no deben permitir todo HTTPS. Para S3 o un CDN, autoriza su origen exacto.
+Evidencia y límites: `docs/test-audits/handy-922.md`.
+
 ## Coding style
 
 Before editing or reviewing code, read STYLE.md.
