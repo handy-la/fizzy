@@ -110,6 +110,12 @@ Los logs se guardaron en `.context/handy-927-system-suite-final.log` y
 `.context/handy-927-suite-final.log`. La sintaxis del worker y de los módulos nuevos
 también pasa `node --check` (los módulos usan `--input-type=module`).
 
+Después de la primera revisión se retiró la interceptación de GET privados:
+el worker sólo responde por assets públicos. Así conserva la revalidación
+HTTP y los 304 existentes. El comando enfocado completo se repitió sobre ese
+ajuste: salida 0, 7 casos, 41 aserciones, sin fallos ni errores. Log:
+`.context/handy-927-after-review.log`.
+
 ## Límites
 
 - La revocación se simula borrando las sesiones en el servidor, antes de que
@@ -122,5 +128,6 @@ también pasa `node --check` (los módulos usan `--input-type=module`).
 - La actualización requiere red. Un navegador que todavía usa la versión
   antigua y permanece desconectado no puede recibir el arreglo.
 - No se prueba la eliminación retrospectiva de la caché HTTP ni el historial
-  de Turbo. La nueva ruta privada usa `cache: "no-store"` y no escribe Cache
-  Storage. No se agrega almacenamiento autenticado, cifrado ni por cuenta.
+  de Turbo. El worker no intercepta las solicitudes privadas: conserva la
+  política HTTP del servidor y no escribe Cache Storage. No se agrega
+  almacenamiento autenticado, cifrado ni por cuenta.
