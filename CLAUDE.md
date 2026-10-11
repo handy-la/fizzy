@@ -412,7 +412,9 @@ huella SHA-256 única entre cuentas; un índice por usuario permite doble envío
 `Session` borra sus registros al salir y el envío usa el scope `active`, que
 excluye sesiones eliminadas incluso sin callbacks. El service worker verifica
 el registro firmado antes de mostrar cada mensaje para detener entregas que
-ya estaban en tránsito. Si no puede comprobarlo por red, descarta el mensaje.
+ya estaban en tránsito. Si no puede comprobarlo por red, descarta el mensaje. La reconciliación
+conserva el endpoint ante errores temporales y deja la UI sin activar; sólo un
+rechazo definitivo o la falta de usuario autoriza su cancelación.
 La migración retira registros anteriores porque no tienen prueba de sesión.
 `clear-offline-cache#clearCache` también sirve al ingreso con código: conserva
 su envío síncrono. La espera de `unsubscribe()` sólo pertenece a `#logout`;

@@ -85,20 +85,27 @@ test("a subscription belonging to another user is unsubscribed and needs consent
   assert.ok(calls.includes("unsubscribe"))
 })
 
-test("a login redirect with HTTP 200 cannot enable notifications", async () => {
+test("an unverified HTTP 200 cannot enable notifications or revoke the endpoint", async () => {
   const { controller, calls, classes } = await browser({ response: { ok: true, statusCode: 200 } })
   await controller.connect()
   assert.equal(classes.has("on"), false)
-  assert.ok(calls.includes("unsubscribe"))
+  assert.equal(calls.includes("unsubscribe"), false)
 })
 
-test("network failure removes a subscription instead of assuming its owner", async () => {
+test("network failure retains the subscription without assuming its owner", async () => {
   const { controller, calls, classes } = await browser({ failure: new Error("offline") })
   await controller.connect()
   assert.equal(classes.has("on"), false)
-  assert.ok(calls.includes("unsubscribe"))
+  assert.equal(calls.includes("unsubscribe"), false)
 })
 
+
+test("a transient server error retains the subscription without enabling notifications", async () => {
+  const { controller, calls, classes } = await browser({ response: { ok: false, statusCode: 503 } })
+  await controller.connect()
+  assert.equal(classes.has("on"), false)
+  assert.equal(calls.includes("unsubscribe"), false)
+})
 
 test("startup without an authenticated user unsubscribes without assuming ownership", async () => {
   const { load, calls } = await browser({ verificationUrl: null })

@@ -11,16 +11,22 @@ export function pushSubscriptionBody(subscription) {
 }
 
 export async function verifyPushSubscription(subscription, url) {
-  if (url) {
-    try {
-      const response = await post(url, { body: pushSubscriptionBody(subscription), responseKind: "json" })
-      if (response.statusCode === 204) return true
-    } catch {
-      // An unverified subscription must never be treated as belonging to this user.
-    }
+  if (!url) {
+    await subscription.unsubscribe()
+    return false
   }
 
-  await subscription.unsubscribe()
+  try {
+    const response = await post(url, { body: pushSubscriptionBody(subscription), responseKind: "json" })
+    if (response.statusCode === 204) return true
+
+    if ([ 401, 403, 409 ].includes(response.statusCode)) {
+      await subscription.unsubscribe()
+    }
+  } catch {
+    // Keep the endpoint during temporary outages, but never enable unverified push.
+  }
+
   return false
 }
 

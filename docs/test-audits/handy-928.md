@@ -34,6 +34,21 @@ la sesión autorizada. Los setups de `Notification::PushTarget::WebTest` y
 `NotificationDeliveryTest` agregan una sesión de fixture al registro existente;
 conservan sus aserciones de entrega positiva. No se retira ninguna prueba ni seam.
 
+## Autoría del ajuste de errores temporales
+
+- **Contrato:** una excepción de red, un 5xx o un HTTP 200 sin verificación
+  conserva el endpoint y no activa la UI. Sólo la ausencia de usuario o un
+  rechazo definitivo de autorización cancela la suscripción. Dueño:
+  `verifyPushSubscription`; frontera: transporte HTTP y PushManager.
+- **Regresión:** cancelar el endpoint cuando una navegación ocurre sin red
+  deja al usuario sin push después de recuperar la conexión. El worker y la
+  sesión ya bloquean las entregas que no pueden autorizarse.
+- **Cobertura:** se corrigen los casos existentes de red y HTTP 200, cuyo
+  esperado anterior exigía una cancelación innecesaria. Se añade 503 porque
+  una respuesta HTTP fallida no recorre el catch de una excepción de red.
+- **Seam:** se conserva el mismo harness Node y las mismas APIs productivas;
+  no hay un nuevo seam ni un cambio en las pruebas de entrega del worker.
+
 ## RED histórico
 
 Base completa del repo: `8ea002d54eb0b5bfa755c75efa5bddb2fd692a72`.
@@ -60,13 +75,12 @@ Desde la exportación `.context/handy-928-base/`:
 
 ```bash
 node --experimental-vm-modules --test \
-  --test-name-pattern='existing subscription|belonging|login redirect|network failure|logout waits|service worker' \
+  --test-name-pattern='existing subscription|belonging|unverified HTTP|network failure|logout waits|service worker' \
   test/javascript/push_subscriptions_test.mjs
 ```
 
-Salida 1: nueve fallos de aserción. La UI se activa antes de HTTP, no retira
-la suscripción ante rechazo/redirección/error de red, logout no espera la
-cancelación y el worker muestra mensajes sin consultar al servidor, incluso
+Salida 1: nueve fallos de aserción. La UI se activa antes de HTTP o ante rechazo, HTTP 200 o error de red;
+logout no espera la cancelación y el worker muestra mensajes sin consultar al servidor, incluso
 ante 403 o falta de red. Log: `.context/handy-928-js-red.log`.
 
 Los casos de verificación HTTP adicionales comprueban la nueva interfaz:
@@ -83,6 +97,25 @@ logout sí tiene RED independiente en HTTP y en el worker. El caso de fallo de
 cancelación durante logout comprueba que el formulario continúa para que el
 servidor retire sus registros; el RED de espera cubre el mismo ciclo de vida.
 
+## RED del error temporal detectado en revisión
+
+Se exportó la primera corrección, SHA completo
+`89b52034aa1b2b79735373d7bee760cc3f6cb53f`, a
+`.context/handy-928-first-fix/`. Allí se copió la candidata JavaScript final.
+Desde esa exportación, con Node 26.8.1:
+
+```bash
+node --experimental-vm-modules --test \
+  --test-name-pattern='network failure|transient server|unverified HTTP' \
+  test/javascript/push_subscriptions_test.mjs
+```
+
+Salida 1: tres fallos de aserción porque se cancelaba el endpoint ante excepción,
+503 o HTTP 200 sin autorización. El mismo comando desde `fizzy-custom/` pasó
+los tres casos, salida 0. Logs: `.context/handy-928-transient-red.log` y
+`.context/handy-928-transient-green.log`. El registro firmado y el worker
+conservan la defensa de privacidad mientras la UI no activa push sin verificación.
+
 ## GREEN y reproducción final
 
 Desde `fizzy-custom/`, con el mismo entorno limpio:
@@ -96,7 +129,7 @@ env -u GEM_HOME -u GEM_PATH -u MY_RUBY_HOME -u RUBY_VERSION \
 
 La suite incluye las candidatas y el wrapper Node. Los nueve casos JavaScript
 seleccionados pasan con el mismo comando RED desde el repo corregido; el archivo
-completo pasa once casos. La suite de sistema se ejecuta con las mismas variables,
+completo pasa doce casos. La suite de sistema se ejecuta con las mismas variables,
 `PARALLEL_WORKERS=1` y `mise exec -- bin/rails test:system --seed 40822`.
 
 La primera suite de sistema detectó una regresión introducida al retrasar
@@ -113,14 +146,14 @@ Los cinco casos HTTP seleccionados pasan con `bin/rails test test/controllers/us
 cinco casos, 27 aserciones, salida 0. Logs de GREEN:
 `.context/handy-928-server-selected-green.log` y
 `.context/handy-928-js-selected-green.log` (nueve casos, salida 0).
-El wrapper de la suite ejecuta los once casos completos del navegador simulado.
+El wrapper de la suite ejecuta los doce casos completos del navegador simulado.
 Rubocop pasó los diez archivos Ruby modificados y `script/check_agents_docs`
 pasó sus cuatro archivos.
 
 SHA-256 de las candidatas finales copiadas a la base:
 
 - Controller: `e9f6fb8cbc9bb9bc7931c2b6925fdf7a0cce8ed9287b84ccd5593213cd38f871`.
-- JavaScript: `15db4a17414d7df0d4f158f9180fabedbd4bf71cef8beb3df1258a189b217132`.
+- JavaScript: `7e9d0936252a36d51e56189c024dddbe160b37a9b6d7e5bf611dd2cf83a0b2ec`.
 
 
 ## Decisiones y límites
@@ -134,8 +167,8 @@ SHA-256 de las candidatas finales copiadas a la base:
   borrado no ejecuta callbacks. El worker también consulta la sesión al recibir
   mensajes con un token ligado al registro anterior, no al endpoint reutilizado.
 - Sin red o sin autorización, el worker descarta el mensaje y no cambia el badge.
-  Una reconciliación sin red cancela la suscripción local. La activación posterior
-  requiere otra acción explícita del usuario. Es una decisión de privacidad.
+  Una reconciliación sin red conserva la suscripción local sin activar la UI.
+  Sólo un rechazo definitivo o la falta de usuario la cancela.
 - No se verificó entrega real por FCM, Firefox o Apple, ni ejecución SaaS/MySQL.
   La migración se ejecutó en SQLite y ambos schemas incluyen el contrato nuevo.
   Los casos Node sustituyen APIs del navegador y transporte; Chromium prueba la
