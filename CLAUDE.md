@@ -263,6 +263,20 @@ por cuenta antes del DNS y reparte workers por turnos. Conserva el límite de
 lectura para filas antiguas; `find_each` omite el orden de esa selección.
 Política de descarte y evidencia: `docs/test-audits/handy-940.md`.
 
+## Caché offline y pérdida de sesión
+
+El worker sólo guarda recursos estáticos públicos del mismo origen en
+`fizzy-static-v1`. Nunca agregues documentos, respuestas de API ni adjuntos:
+no hay almacenamiento offline protegido por usuario. El worker debe servirse
+sin sesión para poder actualizarse tras una revocación. Al activar borra las
+cachés antiguas `main`, `storage`, `assets` y su registro de IndexedDB.
+La inicialización y los formularios de sesión también borran esas cachés;
+Turbo cambia de usuario sin volver a ejecutar los módulos. Una passkey usa
+`form.submit()`, que no emite `submit`: espera el borrado dentro del componente.
+`Turbo.offline.start` debe comenzar con `readyState` completo: su espera de
+DOMContentLoaded puede perder el evento tras una operación asíncrona.
+Evidencia y límites: `docs/test-audits/handy-927.md`.
+
 ## Passkeys: un challenge autentica una vez
 
 El challenge sigue firmado y sin estado, pero `ActionPack::Passkey#authenticate`

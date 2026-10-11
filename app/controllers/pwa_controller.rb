@@ -5,5 +5,6 @@ class PwaController < ApplicationController
 
   # We need a stable URL at the root, so we can't use the regular asset path here.
   def service_worker
+    response.headers["Cache-Control"] = "no-store"
   end
 end

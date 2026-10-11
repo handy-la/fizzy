@@ -19,6 +19,7 @@
 //   mediation     — WebAuthn mediation hint, e.g. "conditional" (on rails-passkey-sign-in-button)
 
 import { register, authenticate } from "lib/action_pack/webauthn"
+import { clearOfflineCache } from "lib/offline_cache"
 
 // Base class for passkey web components. Manages the shared ceremony lifecycle:
 // challenge refresh, button state, error display, and event dispatch.
@@ -70,6 +71,7 @@ class PasskeyButton extends HTMLElement {
 
       this.button.dispatchEvent(new CustomEvent("passkey:success", { bubbles: true }))
       this.fillForm(passkey)
+      await clearOfflineCache()
       this.form.submit()
     } catch (error) {
       this.button.disabled = false
@@ -154,6 +156,7 @@ class PasskeySignInButton extends PasskeyButton {
 
       this.form.dispatchEvent(new CustomEvent("passkey:success", { bubbles: true }))
       this.fillForm(passkey)
+      await clearOfflineCache()
       this.form.submit()
     } catch (error) {
       if (error.name === "AbortError") return
