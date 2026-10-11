@@ -84,6 +84,8 @@ class SessionsControllerTest < ActionDispatch::IntegrationTest
 
       assert_redirected_to new_session_path
       assert_not cookies[:session_token].present?
+      assert_equal "true", response.headers["X-Fizzy-Clear-Offline-Cache"]
+      assert_includes response.headers["Cache-Control"], "no-store"
     end
   end
 
@@ -149,6 +151,8 @@ class SessionsControllerTest < ActionDispatch::IntegrationTest
 
       assert_response :no_content
       assert_not cookies[:session_token].present?
+      assert_equal "true", response.headers["X-Fizzy-Clear-Offline-Cache"]
+      assert_includes response.headers["Cache-Control"], "no-store"
     end
   end
 end

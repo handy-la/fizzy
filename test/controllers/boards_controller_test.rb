@@ -13,6 +13,8 @@ class BoardsControllerTest < ActionDispatch::IntegrationTest
   test "show" do
     get board_path(boards(:writebook))
     assert_response :success
+    assert_match(/\A[0-9a-f]{64}\z/, response.headers["X-Fizzy-Offline-Session"])
+    assert_equal accounts("37s").external_account_id.to_s, response.headers["X-Fizzy-Offline-Account"]
   end
 
   test "invalidates page title cache when account updates" do
@@ -270,6 +272,7 @@ class BoardsControllerTest < ActionDispatch::IntegrationTest
   test "show as JSON" do
     get board_path(boards(:writebook)), as: :json
     assert_response :success
+    assert_includes response.headers["Cache-Control"], "no-store"
     assert_equal boards(:writebook).name, @response.parsed_body["name"]
     assert_equal boards(:writebook).auto_postpone_period_in_days, @response.parsed_body["auto_postpone_period_in_days"]
   end

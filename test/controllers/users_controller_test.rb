@@ -6,6 +6,7 @@ class UsersControllerTest < ActionDispatch::IntegrationTest
 
     get user_path(users(:david))
     assert_in_body users(:david).name
+    assert_includes response.headers["Cache-Control"], "no-store"
   end
 
   test "update oneself" do

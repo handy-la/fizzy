@@ -1,9 +1,5 @@
-import { Turbo } from "@hotwired/turbo-rails"
-
-if (Current.user) {
-  Turbo.offline.start("/service-worker.js", {
-    scope: "/",
-    native: true,
-    preload: /\/assets\//
-  })
+// The worker owns cache policy and session transitions, including native forms
+// and JSON requests. Turbo's offline preloader must not bypass that policy.
+if ("serviceWorker" in navigator) {
+  navigator.serviceWorker.register("/service-worker.js", { scope: "/" }).catch(console.error)
 }

@@ -109,6 +109,7 @@ class Users::DataExportsControllerTest < ActionDispatch::IntegrationTest
 
     assert_response :success
     assert_select "a#download-link"
+    assert_includes response.headers["Cache-Control"], "no-store"
   end
 
   test "show displays a warning if the export is missing" do

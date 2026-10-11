@@ -94,6 +94,8 @@ module Authentication
     end
 
     def start_new_session_for(identity)
+      clear_offline_cache
+
       identity.sessions.create!(user_agent: request.user_agent, ip_address: request.remote_ip).tap do |session|
         set_current_session session
       end
@@ -105,6 +107,8 @@ module Authentication
     end
 
     def terminate_session
+      clear_offline_cache
+
       Current.session.destroy
       Current.identity&.close_remote_connections(reconnect: true)
       cookies.delete(:session_token)

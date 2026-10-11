@@ -1,4 +1,5 @@
 class ApplicationController < ActionController::Base
+  include OfflineCaching
   include Authentication
   include Authorization
   include BlockSearchEngineIndexing

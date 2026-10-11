@@ -17,6 +17,8 @@ class Users::EmailAddresses::ConfirmationsControllerTest < ActionDispatch::Integ
     post user_email_address_confirmation_path(user_id: @user.id, email_address_token: @token, script_name: @user.account.slug)
 
     assert_equal @new_email, @user.reload.identity.email_address
+    assert_equal "true", response.headers["X-Fizzy-Clear-Offline-Cache"]
+    assert_includes response.headers["Cache-Control"], "no-store"
     assert_redirected_to edit_user_url(script_name: @user.account.slug, id: @user)
   end
 
@@ -33,6 +35,8 @@ class Users::EmailAddresses::ConfirmationsControllerTest < ActionDispatch::Integ
 
     assert_response :no_content
     assert_equal @new_email, @user.reload.identity.email_address
+    assert_equal "true", response.headers["X-Fizzy-Clear-Offline-Cache"]
+    assert_includes response.headers["Cache-Control"], "no-store"
   end
 
   test "create as JSON with invalid token" do

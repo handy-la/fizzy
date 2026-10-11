@@ -274,3 +274,18 @@ la misma conservación de 30 días, que cubre sus URLs anteriores de 48 horas.
 La identidad de una reserva de borrado es opcional: una importación conserva
 metadata del autor, pero ese autor puede no existir aquí. Evidencia y límites:
 `docs/test-audits/handy-779.md`.
+
+## Caché offline y cambios de sesión
+
+No agregues una regla general ni uses `caches.match` entre particiones. El
+servidor sólo autoriza HTML completo de tableros y tarjetas mediante cabeceras
+de sesión y cuenta. El worker confirma el ámbito por cliente en red; después
+de reiniciarse requiere otra respuesta en red antes de permitir lecturas
+offline. Las transiciones de sesión esperan el borrado y avanzan una generación
+para impedir escrituras tardías. Vacía el registro IndexedDB legado mediante
+una transacción: `deleteDatabase` se bloquea con conexiones antiguas abiertas.
+`fresh_when` puede reemplazar Cache-Control: la
+política `no-store` de respuestas sensibles se aplica también en after_action.
+No reactives el preloader de TurboOffline: elude esta política. Los blobs
+y enlaces firmados requieren red. Evidencia y límites:
+`docs/test-audits/handy-925.md`.

@@ -23,6 +23,8 @@ class Sessions::PasskeysControllerTest < ActionDispatch::IntegrationTest
 
       assert_response :redirect
       assert cookies[:session_token].present?
+      assert_equal "true", response.headers["X-Fizzy-Clear-Offline-Cache"]
+      assert_includes response.headers["Cache-Control"], "no-store"
       assert_redirected_to landing_path
     end
   end
@@ -108,6 +110,8 @@ class Sessions::PasskeysControllerTest < ActionDispatch::IntegrationTest
 
       assert_response :success
       assert @response.parsed_body["session_token"].present?
+      assert_equal "true", response.headers["X-Fizzy-Clear-Offline-Cache"]
+      assert_includes response.headers["Cache-Control"], "no-store"
     end
   end
 

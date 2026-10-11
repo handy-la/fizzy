@@ -29,6 +29,7 @@ class My::AccessTokensControllerTest < ActionDispatch::IntegrationTest
       post my_access_tokens_path, params: { access_token: { description: "GitHub", permission: "read" } }
       follow_redirect!
       assert_in_body identities(:kevin).access_tokens.last.token
+      assert_includes response.headers["Cache-Control"], "no-store"
     end
   end
 
@@ -37,6 +38,7 @@ class My::AccessTokensControllerTest < ActionDispatch::IntegrationTest
       post my_access_tokens_path, params: { access_token: { description: "Fizzy CLI", permission: "write" } }, as: :json
     end
     assert_response :created
+    assert_includes response.headers["Cache-Control"], "no-store"
     body = @response.parsed_body
     assert body["id"].present?
     assert body["token"].present?
@@ -53,6 +55,7 @@ class My::AccessTokensControllerTest < ActionDispatch::IntegrationTest
       post my_access_tokens_path, params: { access_token: { description: "Fizzy CLI", permission: "read" } }, env: bearer_token, as: :json
     end
     assert_response :created
+    assert_includes response.headers["Cache-Control"], "no-store"
     body = @response.parsed_body
     assert body["token"].present?
     assert_equal "Fizzy CLI", body["description"]

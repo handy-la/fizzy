@@ -17,6 +17,8 @@ class Sessions::TransfersControllerTest < ActionDispatch::IntegrationTest
 
       assert_redirected_to session_menu_url(script_name: nil)
       assert parsed_cookies.signed[:session_token]
+      assert_equal "true", response.headers["X-Fizzy-Clear-Offline-Cache"]
+      assert_includes response.headers["Cache-Control"], "no-store"
     end
   end
 
