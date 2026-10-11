@@ -53,6 +53,14 @@ no uses `board.cards` para resolver una tarjeta por número recibido. El filtro
 usa el dueño de la asociación, no `Current.user`, porque también se usa en
 exportaciones y Cable. Política y evidencia: `docs/test-audits/handy-938.md`.
 
+La revocación de `Access` borra las notificaciones del tablero en su misma
+transacción; el job de limpieza sigue como defensa secundaria. Filtra las
+colecciones con `Notification.accessible` y vuelve a comprobar `accessible?`
+antes de renderizar un aviso o enviarlo por push. La comprobación consulta
+el acceso del destinatario en la base: una asociación o un fragmento cargado
+antes de revocar no autoriza la entrega. Un push en cola cuyo aviso fue borrado
+se descarta al deserializar. Evidencia y límites: `docs/test-audits/handy-924.md`.
+
 ## UUID primary keys
 
 All tables use UUIDv7 keys, base36-encoded to 25 characters. Fixture UUIDs

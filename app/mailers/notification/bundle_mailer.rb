@@ -8,7 +8,7 @@ class Notification::BundleMailer < ApplicationMailer
     @bundle = bundle
     @notifications = bundle.notifications
       .preload(:card, :creator, source: [ :board, :creator ])
-      .reject { |n| n.source.nil? || n.card.nil? }
+      .reject { |n| n.source.nil? || n.card.nil? || !n.accessible? }
     @unsubscribe_token = @user.generate_token_for(:unsubscribe)
 
     if @notifications.any?

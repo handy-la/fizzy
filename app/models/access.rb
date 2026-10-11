@@ -7,6 +7,7 @@ class Access < ApplicationRecord
 
   scope :ordered_by_recently_accessed, -> { order(accessed_at: :desc) }
 
+  after_destroy :destroy_inaccessible_notifications
   after_destroy_commit :clean_inaccessible_data_later
 
   def accessed
@@ -20,5 +21,9 @@ class Access < ApplicationRecord
 
     def clean_inaccessible_data_later
       Board::CleanInaccessibleDataJob.perform_later(user, board) unless user.destroyed?
+    end
+
+    def destroy_inaccessible_notifications
+      user.notifications.on_board(board_id).destroy_all
     end
 end

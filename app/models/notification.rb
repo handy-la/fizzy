@@ -10,6 +10,8 @@ class Notification < ApplicationRecord
   scope :unread, -> { where(read_at: nil) }
   scope :read, -> { where.not(read_at: nil) }
   scope :ordered, -> { order(read_at: :desc, updated_at: :desc) }
+  scope :on_board, ->(board) { joins(:card).where(cards: { board_id: board }) }
+  scope :accessible, -> { joins(card: { board: :accesses }).where("accesses.user_id = notifications.user_id") }
   scope :preloaded, -> {
     preload(
       :creator, :account,
@@ -49,6 +51,10 @@ class Notification < ApplicationRecord
 
   def read?
     read_at.present?
+  end
+
+  def accessible?
+    self.class.accessible.exists?(id: id)
   end
 
   private

@@ -42,6 +42,7 @@ class Notification::BundleMailerTest < ActionMailer::TestCase
 
   test "groups notifications by board, sorted alphabetically" do
     private_board = boards(:private)
+    private_board.accesses.grant_to(@user)
     private_card = Current.with(user: @user) do
       private_board.cards.create!(
         title: "Private card", creator: @user, status: :published, account: @user.account

@@ -44,7 +44,7 @@ module Board::Accessible
     return if accessible_to?(user)
 
     mentions_for_user(user).destroy_all
-    notifications_for_user(user).destroy_all
+    user.notifications.on_board(self).destroy_all
     watches_for(user).destroy_all
     pins_for(user).destroy_all
     assignments_for(user).destroy_all
@@ -75,27 +75,6 @@ module Board::Accessible
         .joins("LEFT JOIN comments ON mentions.source_id = comments.id AND mentions.source_type = 'Comment'")
         .joins("LEFT JOIN cards AS comment_cards ON comments.card_id = comment_cards.id")
         .where("(mentions.source_type = 'Card' AND cards.board_id = ?) OR (mentions.source_type = 'Comment' AND comment_cards.board_id = ?)", board_id_binary, board_id_binary)
-    end
-
-    def notifications_for_user(user)
-      # Query handles 2 paths:
-      #
-      # 1. Notification->Event->Card
-      # 2. Notification->Event->Comment->Card
-      #
-      # Notification->Event->Mention->Card and Notification->Event->Mention->Comment->Card are
-      # handled by destroying mentions_for_user.
-      uuid_type = ActiveRecord::Type.lookup(:uuid, adapter: :trilogy)
-      board_id_binary = uuid_type.serialize(id)
-
-      user.notifications
-        .joins("LEFT JOIN events ON notifications.source_id = events.id AND notifications.source_type = 'Event'")
-        .joins("LEFT JOIN cards AS event_cards ON events.eventable_id = event_cards.id AND events.eventable_type = 'Card'")
-        .joins("LEFT JOIN comments AS event_comments ON events.eventable_id = event_comments.id AND events.eventable_type = 'Comment'")
-        .joins("LEFT JOIN cards AS event_comment_cards ON event_comments.card_id = event_comment_cards.id")
-        .where("(notifications.source_type = 'Event' AND events.eventable_type = 'Card' AND event_cards.board_id = ?) OR
-              (notifications.source_type = 'Event' AND events.eventable_type = 'Comment' AND event_comment_cards.board_id = ?)",
-               board_id_binary, board_id_binary)
     end
 
     def watches_for(user)

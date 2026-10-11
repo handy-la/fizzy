@@ -9,16 +9,16 @@ class Notifications::TraysController < ApplicationController
 
     # Invalidate on the whole set instead of the unread set since the max updated at in the unread set
     # can stay the same when reading old notifications.
-    fresh_when etag: [ Current.user.notifications, include_read? ]
+    fresh_when etag: [ Current.user.notifications.accessible, include_read? ]
   end
 
   private
     def unread_notifications
-      Current.user.notifications.unread.preloaded.ordered.limit(MAX_ENTRIES_LIMIT)
+      Current.user.notifications.accessible.unread.preloaded.ordered.limit(MAX_ENTRIES_LIMIT)
     end
 
     def read_notifications
-      Current.user.notifications.read.preloaded.ordered.limit(MAX_ENTRIES_LIMIT)
+      Current.user.notifications.accessible.read.preloaded.ordered.limit(MAX_ENTRIES_LIMIT)
     end
 
     def include_read?

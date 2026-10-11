@@ -39,7 +39,7 @@ module Notification::Pushable
 
   private
     def pushable?
-      !creator.system? && user.active? && account.active?
+      !creator.system? && user.active? && account.active? && accessible?
     end
 
     def push_to(target)

@@ -33,7 +33,7 @@ class Notification::Bundle < ApplicationRecord
   end
 
   def notifications
-    user.notifications.where(updated_at: window).unread
+    user.notifications.accessible.where(updated_at: window).unread
   end
 
   def deliver

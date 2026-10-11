@@ -1,6 +1,6 @@
 class Notifications::ReadingsController < ApplicationController
   def create
-    @notification = Current.user.notifications.find(params[:notification_id])
+    @notification = Current.user.notifications.accessible.find(params[:notification_id])
     @notification.read
 
     respond_to do |format|
@@ -10,7 +10,7 @@ class Notifications::ReadingsController < ApplicationController
   end
 
   def destroy
-    @notification = Current.user.notifications.find(params[:notification_id])
+    @notification = Current.user.notifications.accessible.find(params[:notification_id])
     @notification.unread
 
     respond_to do |format|

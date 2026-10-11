@@ -1,6 +1,6 @@
 class Notifications::BulkReadingsController < ApplicationController
   def create
-    Current.user.notifications.unread.read_all
+    Current.user.notifications.accessible.unread.read_all
 
     respond_to do |format|
       format.html do
