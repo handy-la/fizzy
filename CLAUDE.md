@@ -401,3 +401,20 @@ y pageshow. Una passkey usa form.submit(), que no emite submit.
 No reactives el preloader de TurboOffline. Preserva la limpieza de snapshots
 antes del logout y los controles de credenciales de Handy 925.
 Evidencia: `docs/test-audits/handy-925.md` y `docs/test-audits/handy-927.md`.
+
+## Push: el permiso del navegador no identifica al usuario
+
+Una `PushSubscription` existente sólo se activa después de verificar usuario
+**y sesión** en servidor. No la vuelvas a vincular al conectar una pantalla:
+si cambió el dueño, retira el registro con las claves del navegador, llama
+`unsubscribe()` y exige otra activación explícita. El endpoint tiene una
+huella SHA-256 única entre cuentas; un índice por usuario permite doble envío.
+`Session` borra sus registros al salir y el envío usa el scope `active`, que
+excluye sesiones eliminadas incluso sin callbacks. El service worker verifica
+el registro firmado antes de mostrar cada mensaje para detener entregas que
+ya estaban en tránsito. Si no puede comprobarlo por red, descarta el mensaje.
+La migración retira registros anteriores porque no tienen prueba de sesión.
+`clear-offline-cache#clearCache` también sirve al ingreso con código: conserva
+su envío síncrono. La espera de `unsubscribe()` sólo pertenece a `#logout`;
+repetir el envío del código después de deshabilitar el campo lo omite.
+Evidencia y límites: `docs/test-audits/handy-928.md`.

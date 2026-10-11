@@ -8,6 +8,7 @@ class Notification::PushTarget::WebTest < ActiveSupport::TestCase
     stub_web_push_dns_resolution
 
     @user.push_subscriptions.create!(
+      session: sessions(:david),
       endpoint: "https://fcm.googleapis.com/fcm/send/test123",
       p256dh_key: "test_key",
       auth_key: "test_auth"

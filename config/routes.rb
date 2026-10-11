@@ -16,6 +16,7 @@ Rails.application.routes.draw do
       resource :role
       resource :events
       resources :push_subscriptions
+      resource :push_subscription_verification, only: [ :create, :show ]
 
       resources :email_addresses, param: :token do
         resource :confirmation, module: :email_addresses

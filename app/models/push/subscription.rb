@@ -12,6 +12,11 @@ class Push::Subscription < ApplicationRecord
 
   belongs_to :account, default: -> { user.account }
   belongs_to :user
+  belongs_to :session, optional: true
+
+  before_validation :set_endpoint_digest
+
+  scope :active, -> { joins(:session) }
 
   validates :endpoint, presence: true
   validates :client_id, length: { maximum: 64 }, allow_nil: true
@@ -35,6 +40,18 @@ class Push::Subscription < ApplicationRecord
     end
   end
 
+  def self.for_endpoint(endpoint)
+    find_by(endpoint_digest: Digest::SHA256.hexdigest(endpoint.to_s))
+  end
+
+  def authorized_for?(user, session)
+    session.present? && user_id == user.id && session_id == session.id && Session.exists?(session.id)
+  end
+
+  def matches_keys?(attributes)
+    endpoint == attributes[:endpoint] && p256dh_key == attributes[:p256dh_key] && auth_key == attributes[:auth_key]
+  end
+
   def notification(**params)
     WebPush::Notification.new(
       **params,
@@ -42,7 +59,8 @@ class Push::Subscription < ApplicationRecord
       endpoint: endpoint,
       endpoint_ip: resolved_endpoint_ip,
       p256dh_key: p256dh_key,
-      auth_key: auth_key
+      auth_key: auth_key,
+      verification_url: verification_url
     )
   end
 
@@ -60,6 +78,16 @@ class Push::Subscription < ApplicationRecord
     def enforce_user_quota
       User.where(id: user_id).update_all("updated_at = updated_at")
       raise LimitExceeded if self.class.where(user_id: user_id).count >= MAX_PER_USER
+    end
+
+    def verification_url
+      Rails.application.routes.url_helpers.user_push_subscription_verification_path(
+        user, token: signed_id(purpose: :push_delivery), script_name: account.slug
+      )
+    end
+
+    def set_endpoint_digest
+      self.endpoint_digest = Digest::SHA256.hexdigest(endpoint.to_s)
     end
 
     def endpoint_uri

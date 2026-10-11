@@ -1,0 +1,177 @@
+# Handy 928: dueño y sesión de las notificaciones web
+
+## Autoría registrada antes de editar las pruebas
+
+- **Contrato:** un endpoint sólo entrega notificaciones del usuario y la sesión
+  que lo autorizaron. Cerrar o revocar esa sesión impide entregas nuevas.
+  `Push::Subscription`, `Session` y los controladores HTTP son los dueños.
+  La UI sólo muestra una suscripción activa después de verificarla en servidor.
+  El service worker verifica también las entregas que ya estaban en tránsito.
+- **Regresión:** conservar el registro al salir, aceptar el mismo endpoint para
+  dos usuarios, enviar con una sesión eliminada o habilitar la UI antes de
+  consultar al servidor vuelve a exponer notificaciones del usuario anterior.
+  Omitir el registro firmado del mensaje o su comprobación permite mostrar
+  una entrega anterior después de que cambie el usuario.
+- **Cobertura:** `users/push_subscriptions_controller_test.rb` comprobaba alta,
+  duplicados del mismo usuario y borrado individual. `sessions_controller_test.rb`
+  comprueba cookies y Cable. `notification/push_target/web_test.rb` comprueba
+  envío con registros y sin registros. `web_push/persistent_request_test.rb`
+  comprueba el destino HTTP, pero no la autorización del mensaje en el navegador.
+  Ninguno comprobaba cambio de dueño, revocación externa ni reconciliación.
+  Se amplía el primer archivo. Los casos JavaScript observan la frontera propia
+  del navegador: espera de HTTP, permiso persistente, red y mensaje en tránsito.
+- **Seam:** las peticiones usan rutas, sesiones y registros productivos. El
+  caso de unicidad escribe mediante Active Record para observar la restricción
+  de base de datos, independiente del filtro HTTP. El caso del payload captura
+  el mensaje en `WebPush.payload_send`, frontera existente con el proveedor.
+  Los casos JavaScript cargan los módulos productivos con Node VM y sustituyen
+  Stimulus, HTTP, DOM y PushManager; el caso de logout toma la acción del formulario
+  productivo. No se añade una API exclusiva de pruebas. El wrapper Ruby incluye
+  estos casos en la suite normal. Requiere Node además de Ruby.
+
+La prueba existente de alta duplicada ahora registra mediante HTTP para conservar
+la sesión autorizada. Los setups de `Notification::PushTarget::WebTest` y
+`NotificationDeliveryTest` agregan una sesión de fixture al registro existente;
+conservan sus aserciones de entrega positiva. No se retira ninguna prueba ni seam.
+
+## RED histórico
+
+Base completa del repo: `8ea002d54eb0b5bfa755c75efa5bddb2fd692a72`.
+Se exportó con `git archive` a `.context/handy-928-base`, sin otro worktree ni
+source checkout. Se copiaron únicamente las candidatas de controller y JavaScript.
+Entorno OSS, SQLite, Ruby 3.4.8 de mise y Node 26.8.1. No se usaron proveedores reales.
+
+Desde `fizzy-custom/`, para los cinco casos que observan contratos anteriores:
+
+```bash
+env -u GEM_HOME -u GEM_PATH -u MY_RUBY_HOME -u RUBY_VERSION \
+  -u RUBYOPT -u RUBYLIB -u BUNDLE_PATH -u BUNDLE_WITH -u BUNDLE_WITHOUT \
+  SAAS=false BUNDLE_GEMFILE=Gemfile PARALLEL_WORKERS=1 CI_PROGRESS_BAR=false \
+  mise exec -- ruby -e 'Dir.chdir("../.context/handy-928-base"); exec("./bin/rails", "test", "test/controllers/users/push_subscriptions_controller_test.rb", "-i", "/logout_removes|another_user_cannot|revoked_without|payload_carries|storage_rejects/")'
+```
+
+Salida 1: cinco fallos de aserción, sin errores. Logout conserva el endpoint;
+el segundo usuario recibe 201 en lugar de 409; una sesión eliminada todavía
+invoca `web_push_pool.queue`; el mensaje no lleva URL de verificación; la base
+permite guardar el mismo endpoint para dos usuarios. Log local:
+`.context/handy-928-server-final-red.log`.
+
+Desde la exportación `.context/handy-928-base/`:
+
+```bash
+node --experimental-vm-modules --test \
+  --test-name-pattern='existing subscription|belonging|login redirect|network failure|logout waits|service worker' \
+  test/javascript/push_subscriptions_test.mjs
+```
+
+Salida 1: nueve fallos de aserción. La UI se activa antes de HTTP, no retira
+la suscripción ante rechazo/redirección/error de red, logout no espera la
+cancelación y el worker muestra mensajes sin consultar al servidor, incluso
+ante 403 o falta de red. Log: `.context/handy-928-js-red.log`.
+
+Los casos de verificación HTTP adicionales comprueban la nueva interfaz:
+registro correcto sin cambios, cambio de usuario, claves incorrectas, nueva
+sesión del mismo usuario, otro dispositivo y tokens de entregas anteriores.
+El RED histórico anterior demuestra el defecto de autorización que corrigen;
+no se cuenta como RED la ausencia de la ruta nueva en la base.
+
+**Excepción RED acotada:** el caso JavaScript de arranque público llama al nuevo
+helper que no existe en la base. Un error de import no demostraría la regresión,
+por eso se excluye del RED histórico. Su GREEN comprueba que se llama
+`unsubscribe()` sin petición de alta cuando no hay usuario. La revocación sin
+logout sí tiene RED independiente en HTTP y en el worker. El caso de fallo de
+cancelación durante logout comprueba que el formulario continúa para que el
+servidor retire sus registros; el RED de espera cubre el mismo ciclo de vida.
+
+## GREEN y reproducción final
+
+Desde `fizzy-custom/`, con el mismo entorno limpio:
+
+```bash
+env -u GEM_HOME -u GEM_PATH -u MY_RUBY_HOME -u RUBY_VERSION \
+  -u RUBYOPT -u RUBYLIB -u BUNDLE_PATH -u BUNDLE_WITH -u BUNDLE_WITHOUT \
+  SAAS=false BUNDLE_GEMFILE=Gemfile PARALLEL_WORKERS=2 CI_PROGRESS_BAR=false \
+  mise exec -- bin/rails test
+```
+
+La suite incluye las candidatas y el wrapper Node. Los nueve casos JavaScript
+seleccionados pasan con el mismo comando RED desde el repo corregido; el archivo
+completo pasa once casos. La suite de sistema se ejecuta con las mismas variables,
+`PARALLEL_WORKERS=1` y `mise exec -- bin/rails test:system --seed 40822`.
+
+La primera suite de sistema detectó una regresión introducida al retrasar
+`clearCache`: el ingreso con código comparte ese controlador y deshabilita
+su campo después del primer submit. El segundo submit omitía el código. La
+exportación base pasó 43 casos con esa semilla. La corrección conserva
+`clearCache` síncrono y usa la acción `logout` sólo en los dos formularios de
+salida. La suite final pasó 43 casos, 322 aserciones, sin fallos ni omisiones.
+Log: `.context/handy-928-system-green.log`.
+
+La suite general final pasó 1.878 casos y 7.442 aserciones, sin fallos ni
+errores; informó seis omisiones. Salida 0. Log: `.context/handy-928-suite.log`.
+Los cinco casos HTTP seleccionados pasan con `bin/rails test test/controllers/users/push_subscriptions_controller_test.rb -i '/logout_removes|another_user_cannot|revoked_without|payload_carries|storage_rejects/'`:
+cinco casos, 27 aserciones, salida 0. Logs de GREEN:
+`.context/handy-928-server-selected-green.log` y
+`.context/handy-928-js-selected-green.log` (nueve casos, salida 0).
+El wrapper de la suite ejecuta los once casos completos del navegador simulado.
+Rubocop pasó los diez archivos Ruby modificados y `script/check_agents_docs`
+pasó sus cuatro archivos.
+
+SHA-256 de las candidatas finales copiadas a la base:
+
+- Controller: `e9f6fb8cbc9bb9bc7931c2b6925fdf7a0cce8ed9287b84ccd5593213cd38f871`.
+- JavaScript: `15db4a17414d7df0d4f158f9180fabedbd4bf71cef8beb3df1258a189b217132`.
+
+
+## Decisiones y límites
+
+- La migración retira registros previos: no tienen prueba de sesión ni dueño
+  global único. Los usuarios deben activar push otra vez. No se toca el historial
+  de notificaciones. Una vuelta atrás no restaura los registros retirados.
+- El índice global usa SHA-256 para no depender del prefijo de 255 caracteres
+  que MySQL aplica al índice antiguo de endpoint por usuario.
+- Una sesión borrada por SQL queda fuera del scope `active`, incluso si el
+  borrado no ejecuta callbacks. El worker también consulta la sesión al recibir
+  mensajes con un token ligado al registro anterior, no al endpoint reutilizado.
+- Sin red o sin autorización, el worker descarta el mensaje y no cambia el badge.
+  Una reconciliación sin red cancela la suscripción local. La activación posterior
+  requiere otra acción explícita del usuario. Es una decisión de privacidad.
+- No se verificó entrega real por FCM, Firefox o Apple, ni ejecución SaaS/MySQL.
+  La migración se ejecutó en SQLite y ambos schemas incluyen el contrato nuevo.
+  Los casos Node sustituyen APIs del navegador y transporte; Chromium prueba la
+  navegación real, pero su configuración deniega permisos de notificación.
+- El cambio no borra una notificación que el sistema operativo ya mostró antes
+  de cerrar sesión. La comprobación del worker requiere su versión actualizada.
+
+## Integración con main del 13 de octubre
+
+El rebase incorpora los controles ya publicados de cuota push y limpieza de
+caché. Conserva `register_for` y su lock de usuario, `client_id`, los límites de
+alta y fan-out, y la caché pública del worker. La autorización de usuario y sesión
+se comprueba antes de registrar; el envío combina el scope `active` y el límite.
+El logout limpia la caché antes de cancelar push y enviar el formulario. Un fallo
+al limpiar la caché impide el envío; un fallo local de PushManager permite que
+el servidor revoque los registros. El ingreso conserva la acción de limpieza
+actual y deshabilita el código en `turbo:submit-start`, como hace main.
+
+Autoría de las adaptaciones de pruebas, antes de editarlas:
+
+- **Contrato:** el envío queda limitado a cinco registros activos; el logout
+  sólo sale después de limpiar datos privados. Se conservan las comprobaciones
+  existentes de privacidad, token rotado, cuota y limpieza de sesión.
+- **Regresión:** combinar mal los cambios puede enviar sin sesión, quitar el
+  límite, impedir rotaciones o enviar logout antes de borrar datos privados.
+- **Cobertura:** se conservan las pruebas publicadas de cuotas y caché. El caso
+  de fan-out copia filas por SQL y necesita una huella distinta por endpoint
+  para cumplir la nueva restricción. El harness Node debe ofrecer `Turbo.cache`
+  usado por main. Se amplía el mismo caso de logout para comprobar que una
+  limpieza fallida no permite salir; no se duplica otra capa.
+- **Seam:** las pruebas usan las mismas rutas, modelos, formulario y APIs de
+  navegador productivas. El helper privado de caché tiene dos consumidores
+  productivos (`clearCache` y `logout`). No se añade API exclusiva de pruebas.
+
+El RED histórico de cuotas pertenece al main publicado y a su documento
+`docs/test-audits/handy-940.md`. El RED de privacidad y sesión de esta tarjeta
+permanece arriba. La adaptación de la fila SQL cambia sólo su huella y conserva
+la aserción independiente de cinco destinos; no se cuenta una violación de
+unicidad como RED de fan-out. La validación de integración se registra al terminar.

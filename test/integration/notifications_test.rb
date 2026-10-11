@@ -21,6 +21,7 @@ class NotificationDeliveryTest < ActiveSupport::TestCase
 
     # Give assignee a web push subscription
     @assignee.push_subscriptions.create!(
+      session: sessions(:kevin),
       endpoint: "https://fcm.googleapis.com/fcm/send/test123",
       p256dh_key: "test_key",
       auth_key: "test_auth"

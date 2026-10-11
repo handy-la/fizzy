@@ -12,6 +12,7 @@
   <%= csrf_meta_tags %>
   <%= csp_meta_tag %>
   <%= tag.meta name: "current-user-id", content: Current.user.id if Current.user %>
+  <%= tag.meta name: "push-subscription-verification-url", content: user_push_subscription_verification_path(Current.user) if Current.user %>
   <%= tag.meta name: "timezone", content: Time.zone.name %>
   <%= tag.meta name: "vapid-public-key", content: Rails.configuration.x.vapid.public_key %>
 

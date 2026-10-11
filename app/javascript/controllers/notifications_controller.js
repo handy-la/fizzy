@@ -1,13 +1,16 @@
 import { Controller } from "@hotwired/stimulus"
 import { post } from "@rails/request.js"
+import { verifyPushSubscription } from "helpers/push_subscription"
 
 export default class extends Controller {
   static classes = [ "enabled" ]
   static targets = [ "subscribeButton", "explainer" ]
-  static values = { subscriptionsUrl: String }
+  static values = { subscriptionsUrl: String, verificationUrl: String }
   
   async connect() {
     if (!this.#allowed) return
+
+    this.element.classList.remove(this.enabledClass)
 
     switch(Notification.permission) {
       case "default":
@@ -17,7 +20,7 @@ export default class extends Controller {
         const registration = await this.#getServiceWorkerRegistration()
         const subscription = await registration?.pushManager?.getSubscription()
 
-        if (registration && subscription) {
+        if (registration && subscription && await verifyPushSubscription(subscription, this.verificationUrlValue)) {
           this.element.classList.add(this.enabledClass)
         } else {
           this.#showButtonToSubscribe()
@@ -32,8 +35,8 @@ export default class extends Controller {
 
       switch(Notification.permission) {
         case "denied":  { break }
-        case "granted": { this.#subscribe(registration); break }
-        case "default": { this.#requestPermissionAndSubscribe(registration) }
+        case "granted": { await this.#subscribe(registration); break }
+        case "default": { await this.#requestPermissionAndSubscribe(registration) }
       }
     }
   }
@@ -43,7 +46,8 @@ export default class extends Controller {
       const registration = await this.#getServiceWorkerRegistration()
       const existingSubscription = await registration?.pushManager?.getSubscription()
 
-      return Notification.permission == "granted" && registration && existingSubscription
+      return Notification.permission == "granted" && registration && existingSubscription &&
+        await verifyPushSubscription(existingSubscription, this.verificationUrlValue)
     }
   }
 
@@ -61,21 +65,30 @@ export default class extends Controller {
   }
 
   async #subscribe(registration) {
-    registration.pushManager
-      .subscribe({ userVisibleOnly: true, applicationServerKey: this.#vapidPublicKey })
-      .then(subscription => {
-        this.#syncPushSubscription(subscription)
-      })
-  }
-
-  async #syncPushSubscription(subscription) {
-    const response = await post(this.subscriptionsUrlValue, { body: this.#extractJsonPayloadAsString(subscription), responseKind: "turbo-stream" })
-    if (response.ok) {
+    const existing = await registration.pushManager.getSubscription()
+    if (existing && await verifyPushSubscription(existing, this.verificationUrlValue)) {
       this.element.classList.add(this.enabledClass)
       this.subscribeButtonTarget.hidden = true
     } else {
-      subscription.unsubscribe()
+      const subscription = await registration.pushManager.subscribe({ userVisibleOnly: true, applicationServerKey: this.#vapidPublicKey })
+      await this.#syncPushSubscription(subscription)
     }
+  }
+
+  async #syncPushSubscription(subscription) {
+    try {
+      const response = await post(this.subscriptionsUrlValue, { body: this.#extractJsonPayloadAsString(subscription), responseKind: "json" })
+      if (response.statusCode === 201) {
+        this.element.classList.add(this.enabledClass)
+        this.subscribeButtonTarget.hidden = true
+        return
+      }
+    } catch {
+      // Registration failed; discard the browser endpoint instead of retaining it.
+    }
+
+    await subscription.unsubscribe()
+    this.#showButtonToSubscribe()
   }
 
   #showButtonToSubscribe() {
@@ -85,7 +98,7 @@ export default class extends Controller {
 
   async #requestPermissionAndSubscribe(registration) {
     const permission = await Notification.requestPermission()
-    if (permission === "granted") this.#subscribe(registration)
+    if (permission === "granted") await this.#subscribe(registration)
   }
 
   get #vapidPublicKey() {

@@ -1,7 +1,8 @@
 class WebPush::Notification
-  def initialize(title:, body:, url:, badge:, endpoint:, endpoint_ip:, p256dh_key:, auth_key:)
+  def initialize(title:, body:, url:, badge:, endpoint:, endpoint_ip:, p256dh_key:, auth_key:, verification_url: nil)
     @title, @body, @url, @badge = title, body, url, badge
     @endpoint, @endpoint_ip, @p256dh_key, @auth_key = endpoint, endpoint_ip, p256dh_key, auth_key
+    @verification_url = verification_url
   end
 
   def deliver(connection: nil)
@@ -20,7 +21,7 @@ class WebPush::Notification
     end
 
     def encoded_message
-      JSON.generate title: @title, options: { body: @body, icon: icon_path, data: { url: @url, path: @url, badge: @badge } }
+      JSON.generate title: @title, options: { body: @body, icon: icon_path, data: { url: @url, path: @url, badge: @badge, verification_url: @verification_url } }
     end
 
     def icon_path

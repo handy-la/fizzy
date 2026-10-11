@@ -30,7 +30,7 @@ class Users::PushSubscriptionsControllerTest < ActionDispatch::IntegrationTest
   test "create as JSON for duplicate subscription" do
     subscription_params = { "endpoint" => "https://fcm.googleapis.com/fcm/send/abc123", "p256dh_key" => "123", "auth_key" => "456" }
 
-    users(:david).push_subscriptions.create!(subscription_params)
+    post user_push_subscriptions_path(users(:david)), params: { push_subscription: subscription_params }, as: :json
 
     assert_no_difference -> { Push::Subscription.count } do
       post user_push_subscriptions_path(users(:david)),
@@ -38,6 +38,147 @@ class Users::PushSubscriptionsControllerTest < ActionDispatch::IntegrationTest
     end
 
     assert_response :created
+  end
+
+  test "logout removes subscriptions authorized by this session" do
+    post user_push_subscriptions_path(users(:david)),
+      params: { push_subscription: shared_browser_subscription }, as: :json
+    assert_response :created
+
+    sign_out
+
+    assert_not Push::Subscription.exists?(endpoint: shared_browser_subscription[:endpoint])
+  end
+
+  test "another user cannot silently register an existing endpoint" do
+    post user_push_subscriptions_path(users(:david)),
+      params: { push_subscription: shared_browser_subscription }, as: :json
+    assert_response :created
+
+    logout_and_sign_in_as :kevin
+    post user_push_subscriptions_path(users(:kevin)),
+      params: { push_subscription: shared_browser_subscription }, as: :json
+
+    assert_response :conflict
+    assert_equal 1, Push::Subscription.where(endpoint: shared_browser_subscription[:endpoint]).count
+  end
+
+  test "a session revoked without logout cannot receive new notifications" do
+    post user_push_subscriptions_path(users(:david)),
+      params: { push_subscription: shared_browser_subscription }, as: :json
+    assert_response :created
+
+    identities(:david).sessions.delete_all
+    pool = mock("web push pool")
+    pool.expects(:queue).never
+    Rails.configuration.x.stubs(:web_push_pool).returns(pool)
+
+    Notification::PushTarget::Web.new(notifications(:logo_mentioned_david)).process
+  end
+
+  test "verification preserves only a registration authorized by the current session" do
+    post user_push_subscriptions_path(users(:david)), params: { push_subscription: shared_browser_subscription }, as: :json
+    subscription = Push::Subscription.find_by!(endpoint: shared_browser_subscription[:endpoint])
+
+    post user_push_subscription_verification_path(users(:david)), params: { push_subscription: shared_browser_subscription }, as: :json
+    assert_response :no_content
+    assert_equal subscription.id, Push::Subscription.find_by!(endpoint: shared_browser_subscription[:endpoint]).id
+  end
+
+  test "changing user retires the old endpoint before a new explicit registration" do
+    post user_push_subscriptions_path(users(:david)), params: { push_subscription: shared_browser_subscription }, as: :json
+    logout_and_sign_in_as :kevin
+
+    post user_push_subscription_verification_path(users(:kevin)), params: { push_subscription: shared_browser_subscription }, as: :json
+    assert_response :conflict
+    assert_not Push::Subscription.exists?(endpoint: shared_browser_subscription[:endpoint])
+
+    post user_push_subscriptions_path(users(:kevin)), params: { push_subscription: shared_browser_subscription }, as: :json
+    assert_response :created
+    assert_equal users(:kevin), Push::Subscription.find_by!(endpoint: shared_browser_subscription[:endpoint]).user
+  end
+
+  test "verification with different keys cannot retire another browser" do
+    post user_push_subscriptions_path(users(:david)), params: { push_subscription: shared_browser_subscription }, as: :json
+    logout_and_sign_in_as :kevin
+
+    post user_push_subscription_verification_path(users(:kevin)),
+      params: { push_subscription: shared_browser_subscription.merge(auth_key: "wrong-key") }, as: :json
+    assert_response :conflict
+    assert Push::Subscription.exists?(endpoint: shared_browser_subscription[:endpoint])
+  end
+
+  test "a new session of the same identity must give fresh consent" do
+    post user_push_subscriptions_path(users(:david)), params: { push_subscription: shared_browser_subscription }, as: :json
+    logout_and_sign_in_as :david
+
+    post user_push_subscription_verification_path(users(:david)), params: { push_subscription: shared_browser_subscription }, as: :json
+    assert_response :conflict
+    assert_not Push::Subscription.exists?(endpoint: shared_browser_subscription[:endpoint])
+  end
+
+  test "logout leaves another device of the same identity subscribed" do
+    another_session = identities(:david).sessions.create!
+    other = users(:david).push_subscriptions.create!(shared_browser_subscription.merge(session: another_session))
+    post user_push_subscriptions_path(users(:david)),
+      params: { push_subscription: shared_browser_subscription.merge(endpoint: "https://fcm.googleapis.com/fcm/send/current-device") }, as: :json
+    assert_response :created
+
+    sign_out
+
+    assert_equal [ other.id ], users(:david).push_subscriptions.reload.pluck(:id)
+  end
+
+  test "queued delivery is authorized only for its original user and session" do
+    post user_push_subscriptions_path(users(:david)), params: { push_subscription: shared_browser_subscription }, as: :json
+    subscription = Push::Subscription.find_by!(endpoint: shared_browser_subscription[:endpoint])
+    token = subscription.signed_id(purpose: :push_delivery)
+
+    get user_push_subscription_verification_path(users(:david), token: token), as: :json
+    assert_response :no_content
+
+    logout_and_sign_in_as :kevin
+    get user_push_subscription_verification_path(users(:david), token: token), as: :json
+    assert_response :forbidden
+  end
+
+  test "queued delivery cannot use the registration created after logout" do
+    post user_push_subscriptions_path(users(:david)), params: { push_subscription: shared_browser_subscription }, as: :json
+    token = Push::Subscription.find_by!(endpoint: shared_browser_subscription[:endpoint]).signed_id(purpose: :push_delivery)
+    sign_out
+    sign_in_as :david
+    post user_push_subscriptions_path(users(:david)), params: { push_subscription: shared_browser_subscription }, as: :json
+    assert_response :created
+
+    get user_push_subscription_verification_path(users(:david), token: token), as: :json
+    assert_response :forbidden
+  end
+
+  test "push payload carries verification for this registration and account" do
+    post user_push_subscriptions_path(users(:david)), params: { push_subscription: shared_browser_subscription }, as: :json
+    assert_response :created
+    subscription = Push::Subscription.find_by!(endpoint: shared_browser_subscription[:endpoint])
+    message = nil
+    WebPush.expects(:payload_send).with do |**attributes|
+      message = JSON.parse(attributes[:message])
+      true
+    end
+
+    subscription.notification(title: "Private title", body: "Private extract", url: "/card").deliver
+
+    assert_kind_of String, message.dig("options", "data", "verification_url")
+    verification_url = URI.parse(message.dig("options", "data", "verification_url"))
+    assert_equal "#{subscription.account.slug}/users/#{subscription.user_id}/push_subscription_verification", verification_url.path
+    token = Rack::Utils.parse_query(verification_url.query).fetch("token")
+    assert_equal subscription, Push::Subscription.find_signed(token, purpose: :push_delivery)
+  end
+
+  test "storage rejects the same endpoint for two users" do
+    post user_push_subscriptions_path(users(:david)), params: { push_subscription: shared_browser_subscription }, as: :json
+    assert_response :created
+    assert_raises(ActiveRecord::RecordNotUnique) do
+      users(:kevin).push_subscriptions.create!(shared_browser_subscription)
+    end
   end
 
   test "destroy as JSON" do
@@ -155,5 +296,9 @@ class Users::PushSubscriptionsControllerTest < ActionDispatch::IntegrationTest
       post user_push_subscriptions_path(users(:david)), params: { push_subscription: {
         endpoint: push_endpoint(index), p256dh_key: "key-#{index}", auth_key: "auth-#{index}", client_id: client_id
       } }, headers: { "REMOTE_ADDR" => ip }, as: :json
+    end
+
+    def shared_browser_subscription
+      { endpoint: "https://fcm.googleapis.com/fcm/send/shared-browser", p256dh_key: "browser-key", auth_key: "browser-auth" }
     end
 end

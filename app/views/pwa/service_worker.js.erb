@@ -121,8 +121,22 @@ async function fetchAsset(request) {
 
 self.addEventListener("push", (event) => {
   const data = event.data.json()
-  event.waitUntil(Promise.all([ showNotification(data), updateBadgeCount(data.options) ]))
+  event.waitUntil(processPush(data))
 })
+
+async function processPush(data) {
+  const verificationUrl = data.options?.data?.verification_url
+  if (!verificationUrl) return
+
+  try {
+    const response = await fetch(verificationUrl, { credentials: "same-origin", cache: "no-store", redirect: "error" })
+    if (response.status === 204) {
+      await Promise.all([ showNotification(data), updateBadgeCount(data.options) ])
+    }
+  } catch {
+    // A queued notification must not expose a previous user's data after logout.
+  }
+}
 
 async function showNotification({ title, options }) {
   return self.registration.showNotification(title, options)

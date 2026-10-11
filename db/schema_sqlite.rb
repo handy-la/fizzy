@@ -510,7 +510,11 @@ ActiveRecord::Schema[8.2].define(version: 2026_10_12_212000) do
     t.string "user_agent", limit: 4096
     t.uuid "user_id", null: false
     t.string "client_id", limit: 64
+    t.uuid "session_id"
+    t.string "endpoint_digest", limit: 64, null: false
     t.index ["account_id"], name: "index_push_subscriptions_on_account_id"
+    t.index ["endpoint_digest"], name: "index_push_subscriptions_on_endpoint_digest", unique: true
+    t.index ["session_id"], name: "index_push_subscriptions_on_session_id"
     t.index ["user_id", "endpoint"], name: "index_push_subscriptions_on_user_id_and_endpoint", unique: true
   end
 
