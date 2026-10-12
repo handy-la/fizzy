@@ -6,4 +6,11 @@ Rails.application.config.after_initialize do
   ActionText::ContentHelper.allowed_tags = Rails::HTML5::SafeListSanitizer.allowed_tags.to_a + [ ActionText::Attachment.tag_name, "figure", "figcaption" ] + ActionText::ContentHelper.allowed_tags.to_a
   # Preserve the no-referrer links emitted for remote media after rendering.
   ActionText::ContentHelper.allowed_attributes = Rails::HTML5::SafeListSanitizer.allowed_attributes.to_a + ActionText::Attachment::ATTRIBUTES + ActionText::ContentHelper.allowed_attributes.to_a + %w[ rel target ]
+
+  # An explicit scrubber replaces the sanitizer's tag/attribute options.
+  # Keep the existing allowlists as well as normalizing authored links.
+  link_scrubber = ActionTextLinkScrubber.new
+  link_scrubber.tags = ActionText::ContentHelper.allowed_tags
+  link_scrubber.attributes = ActionText::ContentHelper.allowed_attributes
+  ActionText::ContentHelper.scrubber = link_scrubber
 end

@@ -13,6 +13,33 @@ class ActionTextRenderingTest < ActionView::TestCase
     assert_match(/<a href="#">malicious link<\/a>/, rendered)
   end
 
+  [ [ "_blank", "opener" ], [ "preview", "opener" ], [ "_parent", "opener" ], [ "_top", "opener" ], [ nil, "opener" ] ].each do |target, rel|
+    test "authored link cannot opt into opener access with target #{target.inspect}" do
+      target_attribute = target ? %(target="#{target}") : ""
+      html = %(<a href="https://attacker.example.test/" #{target_attribute} rel="#{rel}">View</a>)
+      link = Nokogiri::HTML.fragment(ActionText::Content.new(html).to_s).at_css("a")
+
+      assert_equal "https://attacker.example.test/", link["href"]
+      assert_equal %w[noopener noreferrer], link["rel"].to_s.split.sort
+      if target == "_blank"
+        assert_equal "_blank", link["target"]
+      else
+        assert_nil link["target"]
+      end
+    end
+  end
+
+  test "link normalization preserves HTML and URL filtering" do
+    html = <<~HTML
+      <script>alert(1)</script>
+      <iframe src="https://attacker.example.test/"></iframe>
+      <a href="javascript:alert(1)" target="_blank" rel="opener" onclick="alert(1)" data-action="dangerous#action">View</a>
+    HTML
+    fragment = Nokogiri::HTML.fragment(ActionText::Content.new(html).to_s)
+
+    assert_empty fragment.css("script, iframe, [onclick], [data-action], a[href]")
+  end
+
   %w[image/png video/mp4].each do |content_type|
     kind = content_type.start_with?("image/") ? "image" : "video"
 

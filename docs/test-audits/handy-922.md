@@ -36,7 +36,7 @@ propio. Una instalación con S3 debe autorizar su origen exacto mediante
 
 Base del repo: `8ea002d54eb0b5bfa755c75efa5bddb2fd692a72`.
 Ruby: 3.4.8, seleccionado con mise desde `fizzy-custom/`.
-Pruebas aplicadas a la base y al arreglo, SHA-256:
+Primera versión de las pruebas aplicada a la base y al arreglo, SHA-256:
 
 - `test/helpers/action_text_rendering_test.rb`:
   `5ef4400ff4910324bf595206f9283b1fed996d5d79507f53e062cbe3a6e67c38`.
@@ -113,3 +113,69 @@ los partials de medios remotos siguen sin emitirlas. La navegación explícita
 comparte la conexión y los datos que el navegador tenga para el sitio de
 destino; el aviso lo comunica. No hay proxy que envíe credenciales del servidor.
 
+## Normalización de enlaces (revisión de Dédalo)
+
+Autoría antes de agregar los casos nuevos:
+
+- **Contrato:** el saneado de Action Text conserva la protección de los enlaces
+  generados y rechaza atributos aportados por usuarios que habiliten acceso a
+  otra ventana. Sólo se conserva `target=_blank`, con `rel` forzado a
+  `noopener noreferrer`. Con `rel` sin `target` se exige la misma protección.
+- **Regresión:** conservar `rel=opener` o un destino de ventana con nombre en
+  contenido guardado permite controlar una ventana ajena. Un scrubber que
+  sustituya el filtro HTML normal también puede conservar scripts o URLs
+  ejecutables; el caso de filtrado conserva esa defensa.
+- **Cobertura:** los casos iniciales sólo comprobaban enlaces generados por las
+  vistas. No cubrían atributos `rel` y `target` en enlaces escritos por el
+  usuario. Se amplía `ActionTextRenderingTest`, sin duplicar sus pruebas de
+  medios externos. La prueba de filtrado era verde antes de este ajuste:
+  protege contra perder el saneado al instalar el scrubber.
+- **Seam:** `ActionText::Content#to_s` es la frontera productiva. El scrubber
+  se conecta al saneado real de Action Text; no se crea una API para pruebas.
+
+El scrubber debe conservar los filtros de etiquetas, atributos, CSS y URLs
+antes de normalizar los enlaces. Rails da prioridad a un scrubber explícito
+sobre las listas de `tags` y `attributes`: se le asignan las listas existentes.
+
+Evidencia del ajuste de enlaces:
+
+- Base con el defecto, antes del scrubber:
+  `31d84f87d4382f4f4327def249e72ddaf4691ec5`.
+- Versión final de `test/helpers/action_text_rendering_test.rb`, SHA-256:
+  `2985722d06f8e2cc5a474f557d669f03aebd5c04cb5b612db3b99eede20f1308`.
+- Se exportó esa revisión a `../.context/handy-922-opener-base.*` con
+  `git archive`, se copió la prueba final y se ejecutó `db:prepare` en modo
+  test. El Ruby se seleccionó desde `fizzy-custom/`, antes de entrar en la
+  exportación.
+
+Comando RED desde la exportación, con Ruby 3.4.8:
+
+```bash
+env -u GEM_HOME -u GEM_PATH -u MY_RUBY_HOME -u RUBY_VERSION -u RUBYOPT -u RUBYLIB -u BUNDLE_PATH -u BUNDLE_WITH -u BUNDLE_WITHOUT SAAS=false BUNDLE_GEMFILE=Gemfile PARALLEL_WORKERS=1 CI_PROGRESS_BAR=false "$ruby_bin" bin/rails test test/helpers/action_text_rendering_test.rb
+```
+
+Resultado: **21 pruebas, 94 aserciones, 5 fallos, 0 errores, exit 1**.
+Los cinco casos de enlace conservaban `rel=opener` en lugar de los valores
+seguros. El caso que conserva el filtrado de HTML y URLs pasó en esa base.
+No se toma como RED un ensayo intermedio que usó `assert_equal nil` y fue
+rechazado por Minitest; la versión final usa `assert_nil`.
+
+Comando GREEN desde `fizzy-custom/`:
+
+```bash
+env -u GEM_HOME -u GEM_PATH -u MY_RUBY_HOME -u RUBY_VERSION -u RUBYOPT -u RUBYLIB -u BUNDLE_PATH -u BUNDLE_WITH -u BUNDLE_WITHOUT SAAS=false BUNDLE_GEMFILE=Gemfile PARALLEL_WORKERS=1 CI_PROGRESS_BAR=false mise exec -- bin/rails test test/helpers/action_text_rendering_test.rb
+```
+
+Resultado: **21 pruebas, 99 aserciones, 0 fallos, 0 errores, exit 0**.
+Registros: `.context/handy-922-opener-red.log` y
+`.context/handy-922-opener-green.log`, bajo la raíz del workspace.
+
+Tras rebase y corrección, el mismo entorno con `PARALLEL_WORKERS=4` y
+`mise exec -- bin/rails test`: **1964 pruebas, 7935 aserciones, 0 fallos,
+0 errores, 6 omisiones, exit 0**.
+
+Con el mismo entorno y `PARALLEL_WORKERS=1 mise exec -- bin/rails test:system`:
+**43 pruebas, 322 aserciones, 0 fallos, 0 errores, 0 omisiones, exit 0**.
+RuboCop sobre los seis archivos Ruby del cambio: sin infracciones.
+El ajuste del scrubber cambia atributos de seguridad, sin cambio visual;
+las cuatro capturas anteriores siguen mostrando la presentación final.

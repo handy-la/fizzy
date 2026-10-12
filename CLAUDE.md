@@ -142,6 +142,9 @@ Action Text vuelve a sanear el HTML que generan los partials. Su lista por
 omisión quita `rel` y `target`: un enlace seguro en el partial pierde su
 protección al mostrar una tarjeta. Conserva esos atributos en el initializer
 de saneado y prueba `ActionText::Content#to_s`, además de la vista directa.
+El scrubber fuerza `noopener noreferrer` cuando un enlace aporta `rel` o
+`target`, y sólo conserva `target=_blank`. Asigna las listas de etiquetas y
+atributos al scrubber: al pasarlo, Rails deja de usar las opciones del filtro.
 Los medios remotos requieren una acción explícita; `img-src` y `media-src`
 no deben permitir todo HTTPS. Para S3 o un CDN, autoriza su origen exacto.
 Evidencia y límites: `docs/test-audits/handy-922.md`.
