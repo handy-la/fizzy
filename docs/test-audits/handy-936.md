@@ -135,7 +135,53 @@ no representan el costo de importar 50 000 registros a la base de datos.
 ## Validación final
 
 Suite completa, mismo entorno con `PARALLEL_WORKERS=4`,
-`mise exec -- bin/rails test`: salida 0; 1 873 casos, 7 430 aserciones,
+`mise exec -- bin/rails test`: salida 0; 1 874 casos, 7 435 aserciones,
 cero fallos, cero errores y seis omisiones previas. Log local:
-`.context/handy-936-suite.log`. RuboCop sobre los siete archivos Ruby del lote:
+`.context/handy-936-suite-final.log`. RuboCop sobre los nueve archivos Ruby del lote:
 sin ofensas. No hay cambios visuales ni pasos manuales de configuración.
+
+## Autoría del límite de ejecución
+
+La revisión propia encontró un segundo camino dentro del contrato de esta
+misma tarjeta: las excepciones transitorias marcan el registro failed y el
+trabajo continuable programa un reintento. Esa identidad puede crear otra
+importación antes de que el reintento vuelva a processing. La admisión HTTP
+por sí sola no serializa esos dos trabajos.
+
+- **Contrato:** la clave entregada a Solid Queue agrupa todas las importaciones
+  de la misma identidad global, incluso de cuentas distintas o reintentos.
+  El límite es uno y un conflicto espera, en lugar de perder trabajo.
+- **Regresión:** dejar el trabajo sin control devuelve nil; usar account_id
+  separa una identidad por cuentas; usar una clave global bloquea otras identidades.
+- **Cobertura:** las pruebas HTTP cubren nuevas solicitudes. La prueba de
+  reintentos sólo comprueba que se encolan. Ninguna observa la clave que usa
+  Solid Queue para su semáforo productivo.
+- **Seam:** métodos públicos de ActiveJob::ConcurrencyControls, consumidos por
+  Solid Queue. No hay API nueva para pruebas. Es cobertura de configuración
+  de seguridad; la implementación de semáforos pertenece a la dependencia.
+
+### Evidencia del límite en la cola
+
+Se ejecutó `mise exec -- bin/rails test test/jobs/account/data_import_job_test.rb`
+con el entorno limpio indicado arriba, en la exportación del mismo SHA base
+(RED) y en el repo corregido (GREEN). Candidato idéntico, SHA-256:
+`114d383c13f3b8605c87c6981835876436c93a769e45b79d7ac695805eadb727`.
+RED: salida 1, cuatro casos, un fallo porque los trabajos no tenían control de
+concurrencia. GREEN: salida 0, cuatro casos, doce aserciones, sin fallos.
+Logs: `.context/handy-936-job-red-export.log` y
+`.context/handy-936-job-green.log`.
+
+Solid Queue recibe la identidad como clave, cupo uno y conducta `block`.
+Su semáforo dura 24 horas para recuperar trabajos cuyo proceso murió. Esa
+ventana no es un timeout del importador: un trabajo que dure más de 24 horas
+puede perder la exclusión de la cola ante trabajos antiguos o reintentos ya
+admitidos. La admisión HTTP conserva el cupo mientras el registro esté activo.
+No se verificó el semáforo con un worker Solid Queue real: se prueba la
+configuración que consume la dependencia y la admisión simultánea por HTTP.
+
+La primera revisión de signoff pasó antes de incorporar este control adicional.
+Informó dos riesgos no bloqueantes que se conservan: el checksum multipart
+mantiene la transacción de escritura de SQLite durante la lectura del archivo;
+una importación atascada en pending/processing requiere intervención para
+liberar el cupo. Este control adicional responde a la comprobación propia de
+reintentos dentro del contrato, sin corregir esas observaciones informativas.

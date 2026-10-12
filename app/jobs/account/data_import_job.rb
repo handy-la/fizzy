@@ -8,6 +8,8 @@ class Account::DataImportJob < ApplicationJob
     Account::Import::InsufficientStorageSpaceError, ActiveJob::Continuation::ResumeLimitError ].freeze
 
   queue_as :backend
+  # Also serialize retries and imports admitted before this policy was installed.
+  limits_concurrency to: 1, key: ->(import) { import.identity_id }, duration: 1.day
   discard_on(*TERMINAL_ERRORS)
   after_discard do |job, error|
     if import = job.arguments.first

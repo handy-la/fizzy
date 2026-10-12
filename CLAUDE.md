@@ -131,6 +131,8 @@ antes de crear entradas. El lector conserva un índice por nombre para evitar
 recorrer toda la lista en cada lectura. `Account::Import.start` reserva una sola
 importación pendiente o en curso por identidad global bajo un lock de escritura;
 el controlador debe usar esa operación antes de crear cuenta, blob o trabajo.
+`DataImportJob` también serializa por identidad en Solid Queue, para incluir
+reintentos y trabajos admitidos antes de esta política.
 Una consulta por cuenta no protege una identidad que crea otra cuenta.
 Evidencia y presupuesto medido: `docs/test-audits/handy-936.md`.
 

@@ -3,6 +3,19 @@ require "test_helper"
 class Account::DataImportJobTest < ActiveJob::TestCase
   include ActionMailer::TestHelper
 
+  test "serializes imports by global identity across accounts without blocking other identities" do
+    first = Account::Import.create!(account: accounts("37s"), identity: identities(:david))
+    second = Account::Import.create!(account: accounts(:initech), identity: identities(:david))
+    other = Account::Import.create!(account: accounts("37s"), identity: identities(:jason))
+    jobs = [ first, second, other ].map { |import| Account::DataImportJob.new(import) }
+
+    assert jobs.all?(&:concurrency_limited?)
+    assert_equal jobs[0].concurrency_key, jobs[1].concurrency_key
+    assert_not_equal jobs[0].concurrency_key, jobs[2].concurrency_key
+    assert_equal 1, Account::DataImportJob.concurrency_limit
+    assert_equal :block, Account::DataImportJob.concurrency_on_conflict
+  end
+
   test "performs import via continuable steps" do
     source_account = accounts("37s")
     exporter = users(:david)
