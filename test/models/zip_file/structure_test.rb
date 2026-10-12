@@ -61,10 +61,10 @@ class ZipFile::StructureTest < ActiveSupport::TestCase
     end
   end
 
-  test "import rejects a valid archive with 50001 entries before materializing its directory" do
+  test "import rejects a valid archive with 20001 entries before materializing its directory" do
     io = StringIO.new("".b)
     writer = ZipFile::Writer.new(io)
-    50_001.times { |index| writer.add_file("data/cards/#{index}.json", "{}") }
+    20_001.times { |index| writer.add_file("data/cards/#{index}.json", "{}") }
     writer.close
     io = RecordingIO.new(io.string)
     ZipKit::FileReader.any_instance.expects(:read_cdir_entry).never
@@ -72,14 +72,14 @@ class ZipFile::StructureTest < ActiveSupport::TestCase
     error = assert_raises(ZipFile::LimitExceededError) do
       ZipFile::Reader.new(io, limits: Account::Import::LIMITS)
     end
-    assert_match(/50001 entries, the limit is 50000/, error.message)
+    assert_match(/20001 entries, the limit is 20000/, error.message)
     assert_not_includes io.read_lengths, directory_location(io.string, zip64: false).last
   end
 
-  test "import rejects a central directory above 16 MiB before parsing entries" do
+  test "import rejects a central directory above 4 MiB before parsing entries" do
     archive = StringIO.new("".b)
     writer = ZipFile::Writer.new(archive)
-    256.times { |index| writer.add_file(index.to_s.ljust(65_490, "x"), "") }
+    64.times { |index| writer.add_file(index.to_s.ljust(65_490, "x"), "") }
     writer.add_file("x", "")
     writer.close
     io = RecordingIO.new(archive.string)
@@ -89,7 +89,7 @@ class ZipFile::StructureTest < ActiveSupport::TestCase
       ZipFile::Reader.new(io, limits: Account::Import::LIMITS)
     end
     assert_match(/central directory/, error.message)
-    assert_not_includes io.read_lengths, 16.megabytes + 1
+    assert_not_includes io.read_lengths, 4.megabytes + 47
   end
 
   test "ZIP64 never reads its arbitrary declared EOCD record size" do

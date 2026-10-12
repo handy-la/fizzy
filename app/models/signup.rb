@@ -45,6 +45,11 @@ class Signup
     end
   end
 
+  def cancel
+    handle_account_creation_error(nil)
+    destroy_account
+  end
+
   private
     # Override to customize the handling of external accounts associated to the account.
     def create_tenant

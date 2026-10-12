@@ -10,7 +10,13 @@ class Account::ImportAdmissionTest < ActionDispatch::IntegrationTest
     sessions = 2.times.map do
       open_session.tap { |session| session.cookies["session_token"] = cookies["session_token"] }
     end
-    uploads = 2.times.map { fixture_file_upload("avatar.png", "application/zip") }
+    zip = Tempfile.new([ "concurrent-import", ".zip" ])
+    zip.binmode
+    writer = ZipFile::Writer.new(zip)
+    writer.add_file("data/account.json", "{}")
+    writer.close
+    zip.rewind
+    uploads = 2.times.map { Rack::Test::UploadedFile.new(zip.path, "application/zip") }
     ready = Queue.new
     start = Queue.new
     threads = sessions.zip(uploads).map do |session, upload|
@@ -32,5 +38,7 @@ class Account::ImportAdmissionTest < ActionDispatch::IntegrationTest
   ensure
     threads&.each(&:join)
     Account.where.not(id: original_account_ids).find_each(&:destroy!) if original_account_ids
+    Account::Import::Admission.where(identity: identity).delete_all if identity
+    zip&.close!
   end
 end

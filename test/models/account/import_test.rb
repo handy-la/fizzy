@@ -159,7 +159,7 @@ class Account::ImportTest < ActiveSupport::TestCase
       import.file.attach(io: tempfile, filename: "export.zip", content_type: "application/zip")
     end
 
-    assert_raises(Account::DataTransfer::RecordSet::IntegrityError) { import.check }
+    assert_raises(ZipFile::InvalidFileError) { import.check }
 
     assert import.failed?
     assert_equal "invalid_export", import.failure_reason
@@ -318,12 +318,12 @@ class Account::ImportTest < ActiveSupport::TestCase
     assert import.reload.failed_due_to_insufficient_storage_space?
   end
 
-  test "check proceeds when free storage space cannot be determined" do
+  test "check rejects when free storage space cannot be determined" do
     import = import_with_attached(compressible_zip)
     import.stubs(:available_storage_space).returns(nil)
 
-    assert_raises(Account::DataTransfer::RecordSet::IntegrityError) { import.check }
-    assert import.reload.failed_due_to_invalid_export?
+    assert_raises(Account::Import::InsufficientStorageSpaceError) { import.check }
+    assert import.reload.failed_due_to_insufficient_storage_space?
   end
 
   test "process fails fast with a clear reason when free storage space is insufficient" do
@@ -344,14 +344,14 @@ class Account::ImportTest < ActiveSupport::TestCase
 
   test "available_storage_space is indeterminate when df output is unparseable" do
     import = import_with_attached_zip
-    import.stubs(:`).returns("Filesystem 1024-blocks Used Available Capacity Mounted on\n")
+    Account::Import.stubs(:`).returns("Filesystem 1024-blocks Used Available Capacity Mounted on\n")
 
     assert_nil import.send(:available_storage_space, "/tmp")
   end
 
   test "available_storage_space parses df output whose filesystem name contains spaces" do
     import = import_with_attached_zip
-    import.stubs(:`).returns(<<~DF)
+    Account::Import.stubs(:`).returns(<<~DF)
       Filesystem 1024-blocks Used Available Capacity Mounted on
       map auto home 1000000 250000 750000 25% /System/Volumes/Data/home
     DF
@@ -376,7 +376,7 @@ class Account::ImportTest < ActiveSupport::TestCase
     ZipKit::FileReader::ZipEntry.any_instance.expects(:extractor_from).never
 
     error = assert_raises(ZipFile::InvalidFileError) { import.check }
-    assert_match(/#{Regexp.escape(bomb_entry)} has a compression ratio above 100:1/, error.message)
+    assert_match(/#{Regexp.escape(bomb_entry)} has a compression ratio above 50:1/, error.message)
     assert import.reload.failed_due_to_invalid_export?
     assert_empty Card.where(account: import.account)
   ensure
@@ -388,8 +388,17 @@ class Account::ImportTest < ActiveSupport::TestCase
     export = export_with_blobs
     forged_entry = nil
     File.open(export.path, "rb") { |file| forged_entry = ZipFile::Reader.new(file).glob("storage/*").last }
-    declare_uncompressed_size(export.path, forged_entry, 1)
-    import = import_from(export.path)
+    forged_key = forged_entry.delete_prefix("storage/")
+    tampered = rewrite_zip(export.path) do |name, content, _|
+      if name.start_with?("data/active_storage_blobs/")
+        data = JSON.parse(content)
+        data["byte_size"] = 1 if data["key"] == forged_key
+        content = data.to_json
+      end
+      [ content, false ]
+    end
+    declare_uncompressed_size(tampered.path, forged_entry, 1)
+    import = import_from(tampered.path)
     uploaded_keys = []
     subscriber = ActiveSupport::Notifications.subscribe("service_upload.active_storage") { |*, payload| uploaded_keys << payload[:key] }
 
@@ -400,14 +409,84 @@ class Account::ImportTest < ActiveSupport::TestCase
     assert import.reload.failed_due_to_invalid_export?
     assert_operator uploaded_keys.size, :>, 0
     uploaded_keys.each { |key| assert_not ActiveStorage::Blob.service.exist?(key), "partial blob file #{key} was left on storage" }
-    assert_equal [ import.file.blob.id ], ActiveStorage::Blob.where(account: import.account).pluck(:id)
+    assert_empty ActiveStorage::Blob.where(account: import.account)
     assert_empty Card.where(account: import.account)
     assert_empty Board.where(account: import.account)
     assert_empty User.where(account: import.account)
     assert_empty ActiveStorage::Attachment.where(account: import.account).where.not(record_type: "Account::Import")
-    assert import.file.attached?
+    assert_not import.file.attached?
   ensure
+    tampered&.close!
     ActiveSupport::Notifications.unsubscribe(subscriber) if subscriber
+    export&.close!
+  end
+
+  test "failed object deletion preserves the ZIP and quota until cleanup succeeds" do
+    tempfile = compressible_zip
+    import = import_with_attached(tempfile)
+    admission = Account::Import::Admission.claim(identity: import.identity, import: import)
+    admission.reserve(account: import.account, bytes: 512.kilobytes + import.file.blob.byte_size)
+    blob = import.file.blob
+    blob.service.stubs(:delete).raises(IOError, "storage unavailable")
+
+    assert_raises(IOError) { import.mark_as_failed(:invalid_export) }
+    assert import.reload.failed?
+    assert import.file.attached?
+    assert ActiveStorage::Blob.exists?(blob.id)
+    assert_equal 512.kilobytes + blob.byte_size, import.account.bytes_used_exact
+    assert_nil admission.reload.finished_at
+
+    blob.service.unstub(:delete)
+    Account::Import.cleanup
+    assert_not blob.service.exist?(blob.key)
+    assert_not ActiveStorage::Blob.exists?(blob.id)
+    assert_not import.reload.file.attached?
+    assert_equal 0, import.account.bytes_used_exact
+    assert admission.reload.finished_at
+  ensure
+    tempfile&.close!
+  end
+
+  test "completed import keeps unattached blobs charged and releases ZIP reservation" do
+    export = export_with_blobs
+    import = import_from(export.path)
+    import.check
+    reserved = import.admission.reserved_bytes
+    assert_equal reserved, import.account.bytes_used_exact
+    import.process
+
+    assert import.reload.completed?
+    assert_not import.file.attached?
+    assert_equal 0, import.admission.reload.reserved_bytes
+    assert import.admission.finished_at
+    assert_equal 12, import.account.bytes_used_exact
+    assert_equal 2, Storage::UploadReservation.where(account: import.account).count
+    blobs = ActiveStorage::Blob.where(account: import.account).to_a
+    assert blobs.all? { |blob| blob.metadata["quota_upload"] == true }
+    Storage::UploadReservation.cleanup
+    assert blobs.all? { |blob| blob.service.exist?(blob.key) }
+  ensure
+    export&.close!
+  end
+
+  test "blob metadata cannot exceed declared storage entry bytes" do
+    export = export_with_blobs
+    tampered = rewrite_zip(export.path) do |name, content, _|
+      if name.start_with?("data/active_storage_blobs/")
+        data = JSON.parse(content)
+        data["byte_size"] = 1.gigabyte
+        content = data.to_json
+      end
+      [ content, false ]
+    end
+    import = import_from(tampered.path)
+    error = assert_raises(Account::DataTransfer::RecordSet::IntegrityError) { import.check }
+    assert_match(/Blob size does not match/, error.message)
+    assert_not import.file.attached?
+    assert_empty ActiveStorage::Blob.where(account: import.account)
+    assert_equal 0, import.account.bytes_used_exact
+  ensure
+    tampered&.close!
     export&.close!
   end
 
@@ -435,6 +514,7 @@ class Account::ImportTest < ActiveSupport::TestCase
       tempfile = Tempfile.new([ "compressible", ".zip" ])
       tempfile.binmode
       writer = ZipFile::Writer.new(tempfile)
+      writer.add_file("data/account.json", "{}")
       writer.add_file("data/padding.json", " " * 512.kilobytes)
       writer.close
       tempfile.rewind

@@ -9,18 +9,22 @@ class Account::Import < ApplicationRecord
     Net::OpenTimeout, Net::ReadTimeout, Errno::ECONNRESET, Errno::ETIMEDOUT ].freeze
 
   LIMITS = ZipFile::Limits.new(
-    max_entries: 50_000,
-    max_entry_size: 10.gigabytes,
-    max_json_entry_size: 16.megabytes,
-    max_total_size: 1.terabyte,
-    max_compression_ratio: 100,
-    max_central_directory_size: 16.megabytes
+    max_entries: 20_000,
+    max_entry_size: 100.megabytes,
+    max_json_entry_size: 1.megabyte,
+    max_total_size: 1.gigabyte,
+    max_compression_ratio: 50,
+    max_central_directory_size: 4.megabytes
   )
+
+  MAX_COMPRESSED_BYTES = 100.megabytes
+  MAX_RECORDS = 10_000
 
   broadcasts_refreshes
 
   belongs_to :account
   belongs_to :identity
+  has_one :admission, class_name: "Account::Import::Admission", foreign_key: :import_id
 
   has_one_attached :file, dependent: :purge_later
 
@@ -30,26 +34,90 @@ class Account::Import < ApplicationRecord
   scope :expired, -> { where(completed_at: ...24.hours.ago).or(where(status: :failed, created_at: ...7.days.ago)) }
 
   def self.start(identity:, file:)
-    transaction do
-      # A write locks the global identity on SQLite as well as MySQL. Keep the
-      # admission check and the new import in this transaction across accounts.
-      Identity.where(id: identity.id).update_all("updated_at = updated_at")
+    admission = Admission.claim(identity: identity)
+    preflight(file)
+    signup = Signup.new(identity: identity, full_name: "Import", skip_account_seeding: true)
 
-      if where(identity: identity, status: %w[ pending processing ]).exists?
-        raise AlreadyInProgressError, "An import is already in progress"
+    if signup.complete
+      Current.set(account: signup.account) do
+        reserve_upload(admission, signup.account, file)
+        import = signup.account.imports.create!(identity: identity)
+        admission.update!(import: import)
+        import.file.attach(file)
+        import.process_later
+        started = true
+        import
       end
-
-      signup = Signup.new(identity: identity, full_name: "Import", skip_account_seeding: true)
-      if signup.complete
-        Current.set(account: signup.account) do
-          signup.account.imports.create!(identity: identity, file: file).tap(&:process_later)
-        end
-      end
+    end
+  ensure
+    unless started
+      import&.mark_as_failed(:invalid_export)
+      signup&.cancel if signup&.account
+      admission&.finish
     end
   end
 
   def self.cleanup
+    where(status: :failed).find_each(&:purge_failed_files)
     expired.each(&:cleanup)
+    Admission.where(finished_at: ..24.hours.ago).delete_all
+  end
+
+  def self.preflight(upload)
+    unless upload.respond_to?(:tempfile) && upload.tempfile.size.positive?
+      raise ZipFile::InvalidFileError, "a ZIP upload is required"
+    end
+    if upload.tempfile.size > MAX_COMPRESSED_BYTES
+      raise Admission::Rejected.new(:content_too_large)
+    end
+
+    zip = ZipFile::Reader.new(upload.tempfile, limits: LIMITS)
+    validate_record_budget(zip)
+    bytes = upload.tempfile.size + zip.uncompressed_size
+    if bytes > Admission.account_limit(Account.new) || bytes > Admission::MAX_IDENTITY_BYTES
+      raise InsufficientStorageSpaceError, "import exceeds available quota"
+    end
+    upload.tempfile.rewind
+    bytes
+  end
+
+  def self.reserve_upload(admission, account, upload)
+    bytes = preflight(upload)
+    ensure_disk_capacity(ActiveStorage::Blob.service, bytes * REQUIRED_STORAGE_SPACE_FACTOR)
+    admission.reserve(account: account, bytes: bytes)
+    upload.tempfile.rewind
+  end
+
+  def self.validate_record_budget(zip)
+    if zip.glob("data/*.json").size > MAX_RECORDS
+      raise ZipFile::LimitExceededError, "ZIP contains more than #{MAX_RECORDS} records"
+    end
+    unless zip.exists?("data/account.json")
+      raise ZipFile::InvalidFileError, "ZIP has no account record"
+    end
+  end
+
+  def self.ensure_disk_capacity(service, required)
+    if service.respond_to?(:root)
+      path = service.root.to_s
+      path = File.dirname(path) until File.exist?(path) || path == File.dirname(path)
+      ensure_capacity(required, available_storage_space(path))
+    end
+  end
+
+  def self.ensure_capacity(required, available)
+    unless available.is_a?(Integer) && available >= required
+      raise InsufficientStorageSpaceError, "import needs ~#{ActiveSupport::NumberHelper.number_to_human_size(required)} free, found #{available || 'unknown'}"
+    end
+  end
+
+  def self.available_storage_space(path)
+    fields = `df -Pk #{Shellwords.escape(path)} 2>/dev/null`.lines.last.to_s.split
+    capacity_index = fields.index { |field| field.match?(/\A\d+%\z/) }
+    if capacity_index
+      available_kilobytes = Integer(fields[capacity_index - 1], exception: false)
+      available_kilobytes&.kilobytes
+    end
   end
 
   def process_later
@@ -86,7 +154,7 @@ class Account::Import < ApplicationRecord
     processing!
 
     ZipFile.read_from(file.blob, limits: LIMITS) do |zip|
-      ensure_sufficient_storage_space(zip) if start.nil?
+      ensure_sufficient_storage_space(zip)
 
       Account::DataTransfer::Manifest.new(account).each_record_set(start: start) do |record_set, last_id|
         record_set.import(from: zip, start: last_id, callback: callback)
@@ -96,12 +164,9 @@ class Account::Import < ApplicationRecord
     add_importer_to_all_access_boards
     create_missing_user_settings
     reconcile_cards_count
-    reconcile_account_storage
-
     mark_completed
   rescue ZipFile::LimitExceededError => e
     mark_as_failed(:invalid_export)
-    discard_imported_records
     raise e
   rescue Account::DataTransfer::RecordSet::ConflictError => e
     mark_as_failed(:conflict)
@@ -126,45 +191,80 @@ class Account::Import < ApplicationRecord
         ImportMailer.failed(self).deliver_later
       end
     end
+    purge_failed_files if failed?
+  end
+
+  def purge_failed_files
+    Storage::UploadReservation.serialize_account(account) do
+      discard_imported_records
+      purge_archive
+      admission&.finish
+    end
   end
 
   def cleanup
+    admission&.update!(import_id: nil)
     destroy
     account.destroy if failed?
   end
 
   private
     def ensure_sufficient_storage_space(zip)
-      return unless path = ZipFile.path_on_disk(file.blob)
+      self.class.validate_record_budget(zip)
+      if file.blob.byte_size > MAX_COMPRESSED_BYTES
+        raise ZipFile::LimitExceededError, "compressed ZIP exceeds #{MAX_COMPRESSED_BYTES} bytes"
+      end
+      bytes = zip.uncompressed_size + file.blob.byte_size
+      if path = ZipFile.path_on_disk(file.blob)
+        self.class.ensure_capacity(bytes * REQUIRED_STORAGE_SPACE_FACTOR, available_storage_space(path))
+      end
+      self.admission ||= Admission.claim(identity: identity, import: self)
+      admission.reserve(account: account, bytes: bytes)
+    end
 
-      required = zip.uncompressed_size * REQUIRED_STORAGE_SPACE_FACTOR
-      available = available_storage_space(path)
-
-      if available && available < required
-        raise InsufficientStorageSpaceError, "import needs ~#{human_size(required)} free, found #{human_size(available)}"
+    def purge_archive
+      if file.attached?
+        blob = file.blob
+        # Delete the object first and keep its key and charge if deletion fails.
+        blob.delete
+        file.attachment.delete
+        blob.destroy!
+        association(:file_attachment).reset
+        association(:file_blob).reset
       end
     end
 
     def discard_imported_records
       Account::DataTransfer::Manifest.new(account).discard_records
-    end
-
-    def human_size(bytes)
-      ActiveSupport::NumberHelper.number_to_human_size(bytes)
+      Storage::UploadReservation.where(account: account).delete_all
+      account.reconcile_storage
+      account.materialize_storage
     end
 
     def available_storage_space(path)
-      fields = `df -Pk #{Shellwords.escape(path)} 2>/dev/null`.lines.last.to_s.split
-      capacity_index = fields.index { |field| field.match?(/\A\d+%\z/) }
-
-      if capacity_index
-        available_kilobytes = Integer(fields[capacity_index - 1], exception: false)
-        available_kilobytes&.kilobytes
-      end
+      self.class.available_storage_space(path)
     end
 
     def mark_completed
-      update!(status: :completed, completed_at: Time.current)
+      Storage::UploadReservation.serialize_account(account) do
+        reconcile_account_storage
+        # Bulk attachment import bypasses callbacks. Keep unattached objects charged.
+        ActiveStorage::Blob.where(account: account).where.missing(:attachments).find_each do |blob|
+          Storage::UploadReservation.create_or_find_by!(blob: blob) do |reservation|
+            reservation.account = account
+            reservation.identity = identity
+            reservation.byte_size = blob.byte_size
+            reservation.expires_at = Storage::UploadReservation::DRAFT_RETENTION.from_now
+          end
+        end
+        charged = account.bytes_used_exact - (admission&.reserved_bytes || 0)
+        if charged > Admission.account_limit(account) || charged > Admission::MAX_IDENTITY_BYTES
+          raise InsufficientStorageSpaceError, "imported attachments exceed available quota"
+        end
+        purge_archive
+        admission&.finish
+        update!(status: :completed, completed_at: Time.current)
+      end
       ImportMailer.completed(identity, account).deliver_later
     end
 

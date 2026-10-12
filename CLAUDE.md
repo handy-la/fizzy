@@ -91,8 +91,8 @@ tipo de exportación. Evidencia y límites: `docs/test-audits/handy-937.md`.
 
 Data transfer between instances (`app/models/account/data_transfer/`,
 `app/models/zip_file`) must work against both local and S3 storage, and
-archives can exceed hundreds of gigabytes — stream, never buffer a whole
-file.
+exports can exceed hundreds of gigabytes — stream, never buffer a whole
+file. Imports have the admission limits described below.
 
 En modo de cuenta única, `Account.create_with_owner` es la operación que
 controla la admisión. Crea el tenant remoto dentro de su bloque de atributos:
@@ -112,6 +112,19 @@ ese contador e infla un trozo completo de una vez. Un límite en `process` borra
 las filas y archivos importados (`Manifest#discard_records`).
 Evidencia: `docs/test-audits/handy-782.md`.
 
+`Account::Import.start` usa `Account::Import::Admission`: un cupo activo y tres
+intentos por identidad en 24 horas, incluidos los inválidos. Su UPDATE de
+identidad ocurre antes de leer; la reserva toma después el lock de cuenta
+compartido con cargas directas. El cargo incluye ZIP y expansión en Disk y S3.
+El máximo comprimido es 100 MiB; la expansión y el presupuesto activo por
+identidad son 1 GiB; el máximo es 10.000 registros. Capacidad desconocida
+rechaza la carga. La reserva no vence mientras haya datos sin borrar.
+Al terminar, la conciliación y el traspaso a cargo de adjuntos o reservas de
+blobs sin adjunto ocurren bajo el mismo lock. Los errores terminales purgan
+ZIP y datos parciales; primero se borra el objeto, después se libera su cargo.
+No uses `purge_later` para esta limpieza. Los metadatos de cuota importados se
+reemplazan por los del servidor. Evidencia: `docs/test-audits/handy-943.md`.
+
 `ZipKit::FileReader#read_zip_structure` lee todo el tramo final y confía en el
 tamaño del EOCD ZIP64. Usa `ZipFile::Reader::Structure`: valida los metadatos
 antes de crear entradas y lee sólo `cdir_size`. `ZipFile::Limits` limita el
@@ -126,7 +139,7 @@ porque `Continuable` no los reintenta por sí solo. JSON debe ser un objeto
 con UTF-8 válido; el estado fallido y su correo se guardan sólo al terminar.
 Evidencia: `docs/test-audits/handy-932.md`.
 
-`Account::Import` admite 50 000 entradas y un directorio de 16 MiB como máximo,
+`Account::Import` admite 20.000 entradas y un directorio de 4 MiB como máximo,
 antes de crear entradas. El lector conserva un índice por nombre para evitar
 recorrer toda la lista en cada lectura. `Account::Import.start` reserva una sola
 importación pendiente o en curso por identidad global bajo un lock de escritura;

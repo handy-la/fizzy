@@ -17,6 +17,10 @@ class Account::ImportsController < ApplicationController
     end
   rescue Account::Import::AlreadyInProgressError
     head :too_many_requests
+  rescue Account::Import::Admission::Rejected => error
+    head error.status
+  rescue ZipFile::InvalidFileError, Account::Import::InsufficientStorageSpaceError
+    head :unprocessable_entity
   end
 
   def show

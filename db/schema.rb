@@ -38,6 +38,19 @@ ActiveRecord::Schema[8.2].define(version: 2026_10_12_180000) do
     t.index ["value"], name: "index_account_external_id_sequences_on_value", unique: true
   end
 
+  create_table "account_import_admissions", id: :uuid, charset: "utf8mb4", collation: "utf8mb4_0900_ai_ci", force: :cascade do |t|
+    t.uuid "identity_id", null: false
+    t.uuid "account_id"
+    t.uuid "import_id"
+    t.bigint "reserved_bytes", default: 0, null: false
+    t.datetime "finished_at"
+    t.datetime "created_at", null: false
+    t.datetime "updated_at", null: false
+    t.index ["account_id"], name: "index_account_import_admissions_on_account_id"
+    t.index ["identity_id", "created_at"], name: "index_account_import_admissions_on_identity_id_and_created_at"
+    t.index ["import_id"], name: "index_account_import_admissions_on_import_id", unique: true
+  end
+
   create_table "account_imports", id: :uuid, charset: "utf8mb4", collation: "utf8mb4_0900_ai_ci", force: :cascade do |t|
     t.uuid "account_id"
     t.datetime "completed_at"
