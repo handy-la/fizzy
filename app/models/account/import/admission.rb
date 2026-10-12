@@ -2,6 +2,9 @@ class Account::Import::Admission < ApplicationRecord
   MAX_ATTEMPTS = 3
   MAX_IDENTITY_BYTES = 1.gigabyte
   DEFAULT_ACCOUNT_BYTES = 1.gigabyte
+  STALE_AFTER = 1.hour
+
+  class NotRecoverable < StandardError; end
 
   class Rejected < StandardError
     attr_reader :status
@@ -62,4 +65,36 @@ class Account::Import::Admission < ApplicationRecord
   def finish
     update!(reserved_bytes: 0, finished_at: Time.current)
   end
+
+  # Operator path for a slot that a stopped request or a destroyed account left
+  # unfinished. Age alone is never enough: a failed import deletes its objects
+  # before it releases the charge, and anything still active or stored refuses.
+  def recover
+    if import&.failed?
+      import.purge_failed_files
+    else
+      self.class.transaction do
+        Identity.where(id: identity_id).update_all("updated_at = updated_at")
+        reload
+        unless finished_at
+          ensure_recoverable
+          finish
+        end
+      end
+    end
+    self
+  end
+
+  private
+    def ensure_recoverable
+      if created_at > STALE_AFTER.ago
+        raise NotRecoverable, "admission #{id} is less than #{STALE_AFTER.inspect} old; its request may still run"
+      elsif import
+        raise NotRecoverable, "import #{import.id} is #{import.status}"
+      elsif account_id && Account::Import.where(account_id: account_id, status: %w[ pending processing ]).exists?
+        raise NotRecoverable, "account #{account_id} has an active import"
+      elsif account_id && ActiveStorage::Blob.where(account_id: account_id).exists?
+        raise NotRecoverable, "account #{account_id} still has storage objects"
+      end
+    end
 end

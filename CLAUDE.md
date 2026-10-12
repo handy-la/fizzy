@@ -125,6 +125,13 @@ ZIP y datos parciales; primero se borra el objeto, después se libera su cargo.
 No uses `purge_later` para esta limpieza. Los metadatos de cuota importados se
 eliminan; el servidor crea filas de reserva con los bytes comprobados. Evidencia: `docs/test-audits/handy-943.md`.
 
+Un proceso detenido entre `claim` y el import, o una cuenta destruida, deja la
+admisión sin terminar y la identidad recibe 429 para siempre. La recuperación
+es `bin/rails imports:recover_admissions EMAIL=…` (`Admission#recover`). No
+liberes admisiones por fecha: rechaza si es reciente, si hay import activo o
+si la cuenta tiene blobs. Un import fallido sigue por `purge_failed_files`.
+Evidencia: `docs/test-audits/handy-953.md`.
+
 `ZipKit::FileReader#read_zip_structure` lee todo el tramo final y confía en el
 tamaño del EOCD ZIP64. Usa `ZipFile::Reader::Structure`: valida los metadatos
 antes de crear entradas y lee sólo `cdir_size`. `ZipFile::Limits` limita el
