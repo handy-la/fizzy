@@ -123,9 +123,8 @@ class Account::ImportAdmissionReservationTest < ActiveSupport::TestCase
     assert_nil admission.finished_at
 
     blob.service.unstub(:delete)
-    admission.recover
+    assert admission.recover.finished_at, "the operator reads the result from the returned admission"
     assert_not ActiveStorage::Blob.exists?(blob.id)
-    assert admission.reload.finished_at
   end
 
   private

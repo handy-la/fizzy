@@ -72,6 +72,7 @@ class Account::Import::Admission < ApplicationRecord
   def recover
     if import&.failed?
       import.purge_failed_files
+      reload
     else
       self.class.transaction do
         Identity.where(id: identity_id).update_all("updated_at = updated_at")

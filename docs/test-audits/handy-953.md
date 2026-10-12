@@ -57,6 +57,14 @@ fallos — import activo, cuenta destruida con blobs y borrado fallido, cada uno
 con `NotRecoverable`/`IOError` esperado y no lanzado. Al quitar la edad y la
 ruta de `purge_failed_files`, fallan el proceso detenido y el borrado fallido. Se restauró el archivo.
 
+## Ronda 1 del gate: resultado devuelto por `recover`
+
+En un import fallido, `purge_failed_files` termina otra instancia de la
+admisión y `recover` devolvía `self` sin `finished_at`, por lo que la tarea
+informaba un fallo falso. El caso de borrado fallido lee ahora el resultado
+devuelto. RED con el arreglo quitado: ocho casos, un fallo («the operator reads
+the result from the returned admission»), salida 1. GREEN con `reload`.
+
 ## Evidencia GREEN
 
 - Admisión y tarea: 9 casos, 46 aserciones, salida 0.
