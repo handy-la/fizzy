@@ -62,6 +62,21 @@ class WebhookTest < ActiveSupport::TestCase
     end
   end
 
+  test "deactivate a legacy HTTP webhook saves only its state" do
+    webhook = webhooks(:active)
+    webhook.update_columns(url: "http://example.com/legacy")
+    webhook.url = "http://example.com/other"
+
+    travel 1.minute do
+      assert_changes -> { Webhook.find(webhook.id).updated_at } do
+        webhook.deactivate
+      end
+    end
+
+    assert_not webhook.reload.active?
+    assert_equal "http://example.com/legacy", webhook.url
+  end
+
   test "activate" do
     webhook = webhooks(:inactive)
 

@@ -46,11 +46,13 @@ class Webhook < ApplicationRecord
   validate :validate_url
 
   def activate
-    update! active: true unless active?
+    active? || update(active: true)
   end
 
+  # Writes only this column: a legacy HTTP URL fails validation but must still
+  # be deactivated, and no other unvalidated change may be saved with it.
   def deactivate
-    update! active: false
+    update_columns active: false, updated_at: Time.current
   end
 
   def renderer

@@ -271,6 +271,9 @@ también debe rechazar HTTP antes de DNS y de `Net::HTTP`, aunque conserve
 un mensaje para reintentar. Conserva `Net::HTTP.new(hostname, port)` e
 `ipaddr` por separado para mantener SNI y verificación del certificado.
 Pruebas y dependencia del receptor: `docs/test-audits/handy-941.md`.
+Un destino HTTP heredado no pasa la validación: `deactivate` escribe sólo
+`active` sin validar, y `activate` devuelve falso con el motivo para el usuario.
+No uses `update!` ni `update_attribute` ahí. Evidencia: `docs/test-audits/handy-958.md`.
 
 Cada intento renueva `X-Webhook-Timestamp` y firma `<fecha>.<cuerpo persistido>`
 en `X-Webhook-Attempt-Signature` (ADR-0053 de Dédalo). La firma original del

@@ -64,4 +64,27 @@ class Webhooks::ActivationsControllerTest < ActionDispatch::IntegrationTest
 
     assert_response :forbidden
   end
+
+  test "rejects reactivating a legacy HTTP webhook and shows why" do
+    webhook = webhooks(:inactive)
+    webhook.update_columns(url: "http://test.example.com/webhooks")
+
+    post board_webhook_activation_path(webhook.board, webhook)
+
+    assert_redirected_to board_webhook_path(webhook.board, webhook)
+    assert_equal "Url must use https", flash[:alert]
+    assert_not webhook.reload.active?
+    assert_equal "http://test.example.com/webhooks", webhook.url
+  end
+
+  test "rejects reactivating a legacy HTTP webhook as JSON" do
+    webhook = webhooks(:inactive)
+    webhook.update_columns(url: "http://test.example.com/webhooks")
+
+    post board_webhook_activation_path(webhook.board, webhook), as: :json
+
+    assert_response :unprocessable_entity
+    assert_equal [ "must use https" ], @response.parsed_body["url"]
+    assert_not webhook.reload.active?
+  end
 end

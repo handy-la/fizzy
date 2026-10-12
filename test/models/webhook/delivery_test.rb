@@ -740,6 +740,23 @@ class Webhook::DeliveryTest < ActiveSupport::TestCase
     assert_not delivery.succeeded?
   end
 
+  test "a legacy HTTP delivery deactivates its delinquent webhook without changing the URL" do
+    delivery = webhook_deliveries(:pending)
+    webhook = delivery.webhook
+    webhook.update_columns(url: "http://example.com/webhook")
+    webhook.delinquency_tracker.update!(consecutive_failures_count: 9, first_failure_at: 2.hours.ago)
+
+    Surfguard.expects(:resolve_public_ips).never
+    Net::HTTP.expects(:new).never
+
+    delivery.deliver
+
+    assert_equal "completed", delivery.reload.state
+    assert_equal "insecure_uri", delivery.response[:error]
+    assert_not webhook.reload.active?
+    assert_equal "http://example.com/webhook", webhook.url
+  end
+
   test "handles response too large error" do
     delivery = webhook_deliveries(:pending)
 
