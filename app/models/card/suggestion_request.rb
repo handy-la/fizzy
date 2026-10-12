@@ -7,17 +7,21 @@ class Card::SuggestionRequest < ApplicationRecord
   belongs_to :user
 
   def self.request(card, user:, kind:, description: nil)
-    card.with_lock do
-      request = find_or_initialize_by(card: card, user: user, kind: kind)
-      request.expire if request.persisted?
-      fingerprint = fingerprint_for(card, kind, description)
-      if request.new_record? || request.status == "failed" || request.fingerprint != fingerprint
-        request.update!(token: SecureRandom.hex(16), fingerprint: fingerprint, status: "pending",
-          description: description, suggestion: nil, requested_at: Time.current,
-          started_at: nil, finished_at: nil, error_category: nil, expires_at: QUEUE_WAIT.from_now)
-        Card::SuggestionJob.perform_later(request, request.token)
+    Card::SuggestionQueue.synchronize do |queue|
+      card.with_lock do
+        request = find_or_initialize_by(card: card, user: user, kind: kind)
+        request.expire if request.persisted?
+        fingerprint = fingerprint_for(card, kind, description)
+        if request.new_record? || request.status == "failed" || request.fingerprint != fingerprint
+          raise Card::SuggestionQueue::Full if request.persisted? && request.status.in?(%w[ pending running ])
+          queue.reserve(user)
+          request.update!(token: SecureRandom.hex(16), fingerprint: fingerprint, status: "pending",
+            description: description, suggestion: nil, requested_at: Time.current,
+            started_at: nil, finished_at: nil, error_category: nil, expires_at: QUEUE_WAIT.from_now)
+          Current.with_account(nil) { Card::SuggestionJob.perform_later }
+        end
+        request
       end
-      request
     end
   end
 
@@ -28,6 +32,9 @@ class Card::SuggestionRequest < ApplicationRecord
 
   def self.expire_stalled
     where(status: %w[ pending running completed ], expires_at: ..Time.current).find_each(&:expire)
+    if where(status: "pending", expires_at: Time.current..).exists? && !where(status: "running", expires_at: Time.current..).exists?
+      Current.with_account(nil) { Card::SuggestionJob.perform_later }
+    end
   end
 
   def self.revoke_for_account(account)
@@ -42,8 +49,7 @@ class Card::SuggestionRequest < ApplicationRecord
     expire
     return unless status == "pending"
 
-    if self.class.where(id: id, token: token, status: "pending", expires_at: Time.current..)
-        .update_all(status: "running", started_at: Time.current, expires_at: GENERATION_WAIT.from_now, updated_at: Time.current) == 1
+    if Card::SuggestionQueue.synchronize { |queue| queue.start(self, token) }
       reload
       broadcast_state
       if access_allowed?

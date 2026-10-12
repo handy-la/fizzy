@@ -143,6 +143,12 @@ Una prueba de sistema que cambia el tamaño de la ventana debe restaurarlo
 en `ensure`. Capybara reutiliza el navegador: dejarlo en tamaño móvil oculta
 elementos y rompe pruebas de navegación o notificaciones posteriores.
 
+Una prueba sin transacciones debe borrar en `teardown` los registros que crea
+en tablas sin fixtures. `fixtures :all` sólo limpia tablas con fixtures:
+dejar una sugerencia pendiente puede consumir cupos y hacer que un job de
+una prueba posterior genere para la tarjeta anterior. Evidencia y limpieza:
+`docs/test-audits/handy-934.md`.
+
 ## Pegado en pruebas de sistema
 
 La barra flotante de una tarjeta puede cubrir el centro de `lexxy-editor`.
@@ -170,6 +176,13 @@ o un `paste` real autoriza el debounce del título (Lexical cancela el pegado
 antes del `beforeinput`). En comentarios, un foco programático
 puede tener `isTrusted`: exige también la intención real de puntero o Tab.
 En un celular el foco llega tras esa intención; lo autoriza el `click` del toque.
+
+La admisión de IA cuenta solicitudes `pending` y `running` bajo
+`Card::SuggestionQueue`: una por usuario, dos por cuenta y cuatro globales.
+Los jobs sólo avisan al planificador global, que da turnos por cuenta; no
+vuelvas a encolar directamente una llamada por tarjeta. Las reservas de gasto
+viven fuera de la fila reutilizable de solicitud. Contrato y recuperación:
+`docs/ai-suggestions.md`; evidencia: `docs/test-audits/handy-934.md`.
 
 ## Reintentos de webhooks
 

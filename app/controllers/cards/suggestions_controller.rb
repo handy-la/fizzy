@@ -30,5 +30,8 @@ class Cards::SuggestionsController < ApplicationController
     def accept_request(kind, description = nil)
       request = Card::SuggestionRequest.request(@card, user: Current.user, kind: kind, description: description)
       render json: request.state, status: :accepted
+    rescue Card::SuggestionQueue::Full
+      response.headers["Retry-After"] = Card::Suggestion::REQUEST_TIMEOUT.to_s
+      head :too_many_requests
     end
 end

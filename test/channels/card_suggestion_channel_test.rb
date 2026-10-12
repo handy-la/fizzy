@@ -25,6 +25,7 @@ class CardSuggestionChannelTest < ActionCable::Channel::TestCase
   end
 
   test "recover rechecks current access and never sends revoked text" do
+    @request.update!(status: "completed", suggestion: "Respuesta anterior")
     private_card = with_current_user(:kevin) { boards(:private).cards.create!(title: "Privado", status: :published) }
     request = Card::SuggestionRequest.request(private_card, user: users(:kevin), kind: "comment")
     request.update!(status: "completed", suggestion: "Texto privado")

@@ -10,7 +10,7 @@
 #
 # It's strongly recommended that you check this file into your version control system.
 
-ActiveRecord::Schema[8.2].define(version: 2026_10_08_130000) do
+ActiveRecord::Schema[8.2].define(version: 2026_10_12_070000) do
   create_table "accesses", id: :uuid, charset: "utf8mb4", collation: "utf8mb4_0900_ai_ci", force: :cascade do |t|
     t.datetime "accessed_at"
     t.uuid "account_id", null: false
@@ -227,6 +227,18 @@ ActiveRecord::Schema[8.2].define(version: 2026_10_08_130000) do
     t.index ["user_id"], name: "index_card_not_nows_on_user_id"
   end
 
+  create_table "card_suggestion_admissions", id: :uuid, charset: "utf8mb4", collation: "utf8mb4_0900_ai_ci", force: :cascade do |t|
+    t.uuid "account_id", null: false
+    t.datetime "created_at", null: false
+    t.index ["account_id", "created_at"], name: "index_card_suggestion_admissions_on_account_id_and_created_at"
+    t.index ["created_at"], name: "index_card_suggestion_admissions_on_created_at"
+  end
+
+  create_table "card_suggestion_queues", id: :uuid, charset: "utf8mb4", collation: "utf8mb4_0900_ai_ci", force: :cascade do |t|
+    t.integer "value", default: 0, null: false
+    t.uuid "last_account_id"
+  end
+
   create_table "card_suggestion_requests", id: :uuid, charset: "utf8mb4", collation: "utf8mb4_0900_ai_ci", force: :cascade do |t|
     t.uuid "card_id", null: false
     t.uuid "user_id", null: false
@@ -244,6 +256,7 @@ ActiveRecord::Schema[8.2].define(version: 2026_10_08_130000) do
     t.datetime "finished_at"
     t.string "error_category"
     t.index ["status", "expires_at"], name: "index_card_suggestion_requests_on_status_and_expires_at"
+    t.index ["user_id", "status", "expires_at"], name: "idx_on_user_id_status_expires_at_4f8f7611e0"
     t.index ["card_id", "user_id", "kind"], name: "index_card_suggestion_requests_on_card_id_and_user_id_and_kind", unique: true
   end
 

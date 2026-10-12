@@ -74,10 +74,54 @@ proveedor. La base conserva la propuesta durante su retención funcional.
 Categorías: timeout, provider, empty, incomplete, context_too_large, interrupted,
 queue_expired, result_expired, superseded y access_revoked.
 
+## Admisión, presupuesto y turnos
+
+El POST reserva capacidad antes de encolar, bajo un bloqueo global persistente
+(`Card::SuggestionQueue`). Un UPDATE obtiene el bloqueo de escritura de SQLite
+o de fila de MySQL antes de contar solicitudes. El bloqueo abarca la reserva,
+el cambio de estado y la creación de la solicitud; no abarca la llamada externa.
+
+Los límites incluyen `pending` y `running` vigentes: una solicitud por usuario
+(membresía), dos por cuenta y cuatro globales. Se permite recuperar la misma
+solicitud y contexto sin ocupar otro cupo ni crear otro job. Cambiar el contexto
+mientras sigue activa devuelve 429; no reemplaza el token ni reinicia el plazo.
+Un exceso de capacidad o presupuesto devuelve 429 antes de crear trabajo, con
+`Retry-After: 90` como intervalo de reintento, no como garantía de disponibilidad.
+
+Cada nueva admisión reserva una llamada: diez por cuenta y treinta globales en
+una ventana móvil de una hora. `Card::SuggestionAdmission` conserva esa reserva
+independiente de la fila reutilizable de la solicitud. Un timeout, una
+cancelación o una solicitud que vence no devuelve presupuesto. Recuperar un
+resultado ya terminado no vuelve a gastar. Las reservas viejas se borran bajo
+el mismo bloqueo, al admitir otra petición. No se guarda texto ni token en ellas.
+Es un presupuesto de llamadas admitidas, no una medición del costo en moneda.
+
+Los jobs nuevos son avisos globales sin argumentos ni cuenta serializada.
+`Card::SuggestionJob` conserva compatibilidad con los argumentos antiguos.
+Al ejecutarse, el aviso escoge la siguiente cuenta después del cursor persistido
+por ID y vuelve al principio al acabar la ronda; dentro de la cuenta toma la
+solicitud más antigua por fecha e ID. La reclamación vuelve a comprobar el turno
+y la ausencia de otra generación vigente bajo el bloqueo global. El proveedor
+se llama fuera del bloqueo y con el contexto de la cuenta seleccionada.
+
+El límite de concurrencia de Solid Queue sigue en uno. La vigencia `running`
+aporta además una reserva entre procesos. El barrido existente recupera trabajo
+pendiente sin una generación vigente: encola un aviso después de vencer un
+worker perdido. No reintenta la llamada perdida ni devuelve su presupuesto.
+Con cuatro solicitudes y llamadas de 90 s, el lote tarda seis minutos y el último
+comienza a los 270 s, dentro de los diez minutos de cola. Esta cuenta no incluye
+un worker detenido ni solicitudes antiguas del despliegue; esas filas mantienen
+su vencimiento original. No se afirma un plazo absoluto del proveedor real.
+
+La migración agrega las tablas de bloqueo y reservas y un índice por usuario,
+estado y vencimiento. Debe aplicarse antes de iniciar el código nuevo.
+Evidencia de admisión concurrente, presupuestos, turnos y recuperación:
+`docs/test-audits/handy-934.md`.
+
 ## Entrega y aceptación
 
-HTTP sólo crea o recupera la misma solicitud para el mismo usuario, tarjeta y
-contexto. El job sigue en `ai_suggestions`, separado de las colas normales.
+HTTP crea una solicitud dentro de los cupos o recupera la misma solicitud para
+el mismo usuario, tarjeta y contexto. El job sigue en `ai_suggestions`, separado de las colas normales.
 La transición a ejecución y el fin usan comparaciones de estado/token para
 impedir que un job repetido genere de nuevo o sustituya otra revisión.
 
