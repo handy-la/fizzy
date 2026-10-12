@@ -1,4 +1,8 @@
 class User::DataExport < Export
+  def concurrency_key
+    "#{self.class.name}/#{user_id}"
+  end
+
   private
     def filename
       "fizzy-user-data-export-#{id}.zip"

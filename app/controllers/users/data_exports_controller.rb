@@ -1,10 +1,9 @@
 class Users::DataExportsController < ApplicationController
   before_action :set_user
   before_action :ensure_current_user
-  before_action :ensure_export_limit_not_exceeded, only: :create
   before_action :set_export, only: :show
 
-  CURRENT_EXPORT_LIMIT = 10
+  CURRENT_EXPORT_LIMIT = Export::CURRENT_LIMIT
 
   def show
     respond_to do |format|
@@ -14,13 +13,15 @@ class Users::DataExportsController < ApplicationController
   end
 
   def create
-    @export = @user.data_exports.create!(account: Current.account)
+    @export = User::DataExport.start_for(@user, account: Current.account)
     @export.build_later
 
     respond_to do |format|
       format.html { redirect_to @user, notice: "Export started. You'll receive an email when it's ready." }
       format.json { render :show, status: :created }
     end
+  rescue Export::LimitExceeded
+    head :too_many_requests
   end
 
   private
@@ -30,10 +31,6 @@ class Users::DataExportsController < ApplicationController
 
     def ensure_current_user
       head :forbidden unless @user == Current.user
-    end
-
-    def ensure_export_limit_not_exceeded
-      head :too_many_requests if @user.data_exports.current.count >= CURRENT_EXPORT_LIMIT
     end
 
     def set_export

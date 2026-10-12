@@ -38,9 +38,9 @@ class Users::DataExportsControllerTest < ActionDispatch::IntegrationTest
     assert_response :too_many_requests
   end
 
-  test "create allows request when exports are older than one day" do
+  test "create allows request when completed exports are older than one day" do
     Users::DataExportsController::CURRENT_EXPORT_LIMIT.times do
-      @user.data_exports.create!(account: Current.account, created_at: 2.days.ago)
+      @user.data_exports.create!(account: Current.account, created_at: 2.days.ago, status: :completed)
     end
 
     assert_difference -> { User::DataExport.count }, 1 do
@@ -48,6 +48,57 @@ class Users::DataExportsControllerTest < ActionDispatch::IntegrationTest
     end
 
     assert_redirected_to @user
+  end
+
+  test "old unfinished exports still occupy slots" do
+    @user.data_exports.delete_all
+    10.times do |index|
+      @user.data_exports.create!(account: Current.account, created_at: 2.days.ago, status: index.even? ? :pending : :processing)
+    end
+
+    assert_no_difference -> { User::DataExport.count } do
+      assert_no_enqueued_jobs only: DataExportJob do
+        post user_data_exports_path(@user), as: :json
+      end
+    end
+    assert_response :too_many_requests
+  end
+
+  %w[ completed failed ].each do |terminal_status|
+    test "#{terminal_status} releases an old unfinished export slot" do
+      @user.data_exports.delete_all
+      exports = 10.times.map do |index|
+        @user.data_exports.create!(account: Current.account, created_at: 2.days.ago, status: index.even? ? :pending : :processing)
+      end
+      export = exports.last
+      if terminal_status == "completed"
+        export.build
+      else
+        ZipFile.stubs(:create_for).raises(IOError.new("ZIP failure"))
+        assert_raises(IOError) { export.build }
+      end
+      assert_equal terminal_status, export.reload.status
+
+      assert_difference -> { User::DataExport.count }, 1 do
+        assert_enqueued_with(job: DataExportJob) do
+          post user_data_exports_path(@user), as: :json
+        end
+      end
+      assert_response :created
+    end
+
+    test "#{terminal_status} exports still consume the daily limit" do
+      @user.data_exports.delete_all
+      10.times do
+        @user.data_exports.create!(account: Current.account, status: terminal_status)
+      end
+      assert_no_difference -> { @user.data_exports.count } do
+        assert_no_enqueued_jobs only: DataExportJob do
+          post user_data_exports_path(@user), as: :json
+        end
+      end
+      assert_response :too_many_requests
+    end
   end
 
   test "show displays completed export with download link" do

@@ -1,4 +1,8 @@
 class Account::Export < Export
+  def concurrency_key
+    "#{self.class.name}/#{account_id}"
+  end
+
   private
     def filename
       "fizzy-account-#{account_id}-export-#{id}.zip"

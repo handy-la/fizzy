@@ -75,6 +75,14 @@ read and write. Don't reach for a search table directly — go through
 
 ## Imports and exports
 
+La admisión de exportaciones usa `Export.start_for`: el UPDATE del principal
+debe ocurrir antes del conteo, en la misma transacción que crea la fila.
+`with_lock` por sí solo no toma un bloqueo de escritura en SQLite. El límite
+diario cuenta todos los estados; el cupo de trabajo cuenta pending y processing
+sin fecha. Completed y failed liberan ese cupo, pero no el límite diario.
+`DataExportJob` comparte un lease de 24 horas por cuenta o usuario, según el
+tipo de exportación. Evidencia y límites: `docs/test-audits/handy-937.md`.
+
 Data transfer between instances (`app/models/account/data_transfer/`,
 `app/models/zip_file`) must work against both local and S3 storage, and
 archives can exceed hundreds of gigabytes — stream, never buffer a whole

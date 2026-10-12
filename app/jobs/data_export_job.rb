@@ -1,6 +1,8 @@
 class DataExportJob < ApplicationJob
   queue_as :backend
 
+  limits_concurrency to: 1, key: ->(export) { export.concurrency_key }, duration: 24.hours
+
   discard_on ActiveJob::DeserializationError
 
   def perform(export)

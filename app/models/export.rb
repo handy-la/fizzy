@@ -1,4 +1,9 @@
 class Export < ApplicationRecord
+  CURRENT_LIMIT = 10
+  IN_PROGRESS_LIMIT = 10
+
+  class LimitExceeded < StandardError; end
+
   belongs_to :account
   belongs_to :user
 
@@ -7,7 +12,21 @@ class Export < ApplicationRecord
   enum :status, %w[ pending processing completed failed ].index_by(&:itself), default: :pending
 
   scope :current, -> { where(created_at: 24.hours.ago..) }
+  scope :in_progress, -> { where(status: %w[ pending processing ]) }
   scope :expired, -> { where(completed_at: ...24.hours.ago) }
+
+  def self.start_for(principal, **attributes)
+    transaction do
+      # UPDATE locks the principal before quota reads on SQLite and MySQL.
+      principal.class.where(id: principal.id).update_all("updated_at = updated_at")
+      exports = where(principal.model_name.element => principal)
+      if exports.current.count >= CURRENT_LIMIT || exports.in_progress.count >= IN_PROGRESS_LIMIT
+        raise LimitExceeded
+      end
+
+      exports.create!(**attributes)
+    end
+  end
 
   def self.cleanup
     expired.destroy_all
