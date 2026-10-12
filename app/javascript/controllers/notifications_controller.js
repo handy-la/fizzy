@@ -95,7 +95,12 @@ export default class extends Controller {
 
   #extractJsonPayloadAsString(subscription) {
     const { endpoint, keys: { p256dh, auth } } = subscription.toJSON()
-    return JSON.stringify({ push_subscription: { endpoint, p256dh_key: p256dh, auth_key: auth } })
+    let clientId = localStorage.getItem("fizzy-push-client-id")
+    if (!clientId) {
+      clientId = crypto.randomUUID()
+      localStorage.setItem("fizzy-push-client-id", clientId)
+    }
+    return JSON.stringify({ push_subscription: { endpoint, p256dh_key: p256dh, auth_key: auth, client_id: clientId } })
   }
 
   // VAPID public key comes encoded as base64 but service worker registration needs it as a Uint8Array

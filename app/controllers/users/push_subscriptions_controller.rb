@@ -1,5 +1,7 @@
 class Users::PushSubscriptionsController < ApplicationController
-  wrap_parameters :push_subscription, include: %i[ endpoint p256dh_key auth_key ]
+  wrap_parameters :push_subscription, include: %i[ endpoint p256dh_key auth_key client_id ]
+
+  rate_limit to: 10, within: 10.minutes, by: -> { Current.user.id }, only: :create
 
   before_action :set_push_subscriptions
 
@@ -7,12 +9,14 @@ class Users::PushSubscriptionsController < ApplicationController
   end
 
   def create
-    subscription = @push_subscriptions.create_with(user_agent: request.user_agent).create_or_find_by!(push_subscription_params)
+    Push::Subscription.register_for(Current.user, **push_subscription_params.to_h.symbolize_keys, user_agent: request.user_agent)
 
     respond_to do |format|
       format.html { head :no_content }
       format.json { head :created }
     end
+  rescue Push::Subscription::LimitExceeded
+    head :too_many_requests
   end
 
   def destroy
@@ -30,6 +34,6 @@ class Users::PushSubscriptionsController < ApplicationController
     end
 
     def push_subscription_params
-      params.require(:push_subscription).permit(:endpoint, :p256dh_key, :auth_key)
+      params.require(:push_subscription).permit(:endpoint, :p256dh_key, :auth_key, :client_id)
     end
 end

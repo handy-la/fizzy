@@ -36,6 +36,20 @@ class Notification::PushTarget::WebTest < ActiveSupport::TestCase
     Notification::PushTarget::Web.new(@notification).process
   end
 
+  test "legacy subscriptions cannot create unbounded fan out" do
+    original = @user.push_subscriptions.first
+    7.times do |index|
+      Push::Subscription.insert_all!([ original.attributes.merge(
+        "id" => "000000000000000000000000#{index}",
+        "endpoint" => "https://fcm.googleapis.com/fcm/send/legacy-#{index}"
+      ) ])
+    end
+    @web_push_pool.expects(:queue).with do |payload, subscriptions|
+      subscriptions.to_a.size == 5
+    end
+    Notification::PushTarget::Web.new(@notification).process
+  end
+
   test "payload includes card title for card events" do
     @notification.update!(source: events(:logo_published))
 

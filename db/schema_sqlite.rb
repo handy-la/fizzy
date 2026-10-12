@@ -10,7 +10,7 @@
 #
 # It's strongly recommended that you check this file into your version control system.
 
-ActiveRecord::Schema[8.2].define(version: 2026_10_12_070000) do
+ActiveRecord::Schema[8.2].define(version: 2026_10_12_120000) do
   create_table "accesses", id: :uuid, force: :cascade do |t|
     t.datetime "accessed_at"
     t.uuid "account_id", null: false
@@ -496,6 +496,7 @@ ActiveRecord::Schema[8.2].define(version: 2026_10_12_070000) do
     t.datetime "updated_at", null: false
     t.string "user_agent", limit: 4096
     t.uuid "user_id", null: false
+    t.string "client_id", limit: 64
     t.index ["account_id"], name: "index_push_subscriptions_on_account_id"
     t.index ["user_id", "endpoint"], name: "index_push_subscriptions_on_user_id_and_endpoint", unique: true
   end

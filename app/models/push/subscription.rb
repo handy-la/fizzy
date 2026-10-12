@@ -1,4 +1,7 @@
 class Push::Subscription < ApplicationRecord
+  MAX_PER_USER = 5
+  class LimitExceeded < StandardError; end
+
   PERMITTED_ENDPOINT_HOSTS = %w[
     jmt17.google.com
     fcm.googleapis.com
@@ -11,7 +14,26 @@ class Push::Subscription < ApplicationRecord
   belongs_to :user
 
   validates :endpoint, presence: true
+  validates :client_id, length: { maximum: 64 }, allow_nil: true
   validate :validate_endpoint_url
+  before_create :enforce_user_quota
+
+  def self.register_for(user, **attributes)
+    transaction do
+      # Acquire a write lock before reading, including on SQLite.
+      User.where(id: user.id).update_all("updated_at = updated_at")
+      subscriptions = user.push_subscriptions
+      subscription = subscriptions.find_by(endpoint: attributes[:endpoint])
+      if attributes[:client_id].present?
+        previous = subscriptions.where(client_id: attributes[:client_id])
+        subscription ||= previous.first
+        previous.where.not(id: subscription&.id).destroy_all
+      end
+      subscription ||= subscriptions.new
+      subscription.update!(attributes)
+      subscription
+    end
+  end
 
   def notification(**params)
     WebPush::Notification.new(
@@ -35,6 +57,11 @@ class Push::Subscription < ApplicationRecord
   end
 
   private
+    def enforce_user_quota
+      User.where(id: user_id).update_all("updated_at = updated_at")
+      raise LimitExceeded if self.class.where(user_id: user_id).count >= MAX_PER_USER
+    end
+
     def endpoint_uri
       @endpoint_uri ||= URI.parse(endpoint) if endpoint.present?
     rescue URI::InvalidURIError

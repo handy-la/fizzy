@@ -16,6 +16,18 @@ class Push::SubscriptionTest < ActiveSupport::TestCase
     assert subscription.valid?
   end
 
+  test "direct creation cannot bypass the user quota" do
+    5.times do |index|
+      users(:david).push_subscriptions.create!(endpoint: "https://fcm.googleapis.com/fcm/send/#{index}")
+    end
+    assert_no_difference -> { Push::Subscription.count } do
+      error = assert_raises(StandardError) do
+        users(:david).push_subscriptions.create!(endpoint: "https://fcm.googleapis.com/fcm/send/sixth")
+      end
+      assert_equal "Push::Subscription::LimitExceeded", error.class.name
+    end
+  end
+
   test "rejects endpoint with non-https scheme" do
     subscription = Push::Subscription.new(
       user: users(:david),

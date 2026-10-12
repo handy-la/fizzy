@@ -223,6 +223,15 @@ estado de cuenta y usuario en `lib/rails_ext/active_storage_authorization.rb`;
 un blob público también exige que la cuenta del adjunto siga activa.
 Evidencia: `docs/test-audits/handy-784.md`.
 
+## Cuotas y envío push
+
+`Push::Subscription.register_for` bloquea al usuario con UPDATE antes de leer
+o sustituir destinos; `with_lock` solo no basta en SQLite. El navegador conserva
+`client_id` en localStorage para sustituir tokens. El pool reserva presupuesto
+por cuenta antes del DNS y reparte workers por turnos. Conserva el límite de
+lectura para filas antiguas; `find_each` omite el orden de esa selección.
+Política de descarte y evidencia: `docs/test-audits/handy-940.md`.
+
 ## Passkeys: un challenge autentica una vez
 
 El challenge sigue firmado y sin estado, pero `ActionPack::Passkey#authenticate`

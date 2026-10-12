@@ -7,6 +7,7 @@ class Notification::PushTarget::Web < Notification::PushTarget
 
   private
     def subscriptions
-      @subscriptions ||= notification.user.push_subscriptions
+      # Bound fan-out also for subscriptions created before the quota existed.
+      @subscriptions ||= notification.user.push_subscriptions.order(updated_at: :desc, id: :desc).limit(Push::Subscription::MAX_PER_USER)
     end
 end
