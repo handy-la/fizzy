@@ -6,6 +6,8 @@ class Account < ApplicationRecord
   has_many :boards, dependent: :destroy
   has_many :cards, dependent: :destroy
   has_many :webhooks, dependent: :destroy
+  has_many :webhook_creations, class_name: "Webhook::Creation", dependent: :delete_all
+  has_many :webhook_retries, class_name: "Webhook::Retry", dependent: :delete_all
   has_many :tags, dependent: :destroy
   has_many :columns, dependent: :destroy
   has_many :entropies, dependent: :destroy

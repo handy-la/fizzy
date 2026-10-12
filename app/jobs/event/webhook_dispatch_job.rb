@@ -9,7 +9,7 @@ class Event::WebhookDispatchJob < ApplicationJob
 
   def perform(event)
     step :dispatch do |step|
-      Webhook.active.triggered_by(event).find_each(start: step.cursor) do |webhook|
+      Webhook.active.triggered_by(event).limit(Webhook::BOARD_LIMIT).find_each(start: step.cursor) do |webhook|
         webhook.trigger(event)
         step.advance! from: webhook.id
       end

@@ -8,6 +8,8 @@ class Webhook::Delivery < ApplicationRecord
   ENDPOINT_TIMEOUT = 7.seconds
   MAX_RESPONSE_SIZE = 100.kilobytes
   STALLED_AFTER = 5.minutes
+  PENDING_LIMIT = 100
+  MAX_ATTEMPTS = 8
   RETRY_WINDOW = 24.hours
   RETRY_ERRORS = %w[ dns_lookup_failed connection_timeout destination_unreachable failed_tls ].freeze
 
@@ -23,6 +25,7 @@ class Webhook::Delivery < ApplicationRecord
   scope :ordered, -> { order created_at: :desc, id: :desc }
   scope :stale, -> { where(created_at: ...STALE_TRESHOLD.ago) }
 
+  before_create :ensure_quota
   after_create_commit :deliver_later
 
   def self.cleanup(batch_size: 500, pause: 0.1)
@@ -30,7 +33,7 @@ class Webhook::Delivery < ApplicationRecord
   end
 
   def self.recover_stalled
-    in_progress.where(updated_at: ..STALLED_AFTER.ago).find_each(&:recover)
+    Webhook::Dispatch.recover
   end
 
   def recover
@@ -42,7 +45,7 @@ class Webhook::Delivery < ApplicationRecord
   end
 
   def deliver_later
-    Webhook::DeliveryJob.set(wait_until: next_attempt_at || Time.current).perform_later(self)
+    Webhook::Dispatch.schedule
   end
 
   def deliver
@@ -50,13 +53,9 @@ class Webhook::Delivery < ApplicationRecord
     recover if in_progress?
     return unless pending?
 
-    if next_attempt_at && next_attempt_at.future?
+    if !ready?
       deliver_later
-    elsif earlier_delivery_pending?
-      self.request[:next_attempt_at] = 1.minute.from_now.iso8601(6)
-      save!
-      deliver_later
-    elsif self.class.where(id: id, state: :pending).update_all(state: :in_progress, updated_at: Time.current) == 1
+    elsif claim
       begin
         reload
         self.request[:first_attempt_at] ||= Time.current.iso8601(6)
@@ -68,7 +67,7 @@ class Webhook::Delivery < ApplicationRecord
         remove_instance_variable(:@resolved_ip) if defined?(@resolved_ip)
         self.response = perform_request
 
-        if retryable_response? && Time.current < retry_deadline
+        if retryable_response? && Time.current < retry_deadline && request[:attempts] < MAX_ATTEMPTS
           self.state = :pending
           delay = [ 1.minute * 2**[ request[:attempts] - 1, 5 ].min, 30.minutes ].min
           self.request[:next_attempt_at] = [ Time.current + delay, retry_deadline ].min.iso8601(6)
@@ -91,6 +90,11 @@ class Webhook::Delivery < ApplicationRecord
     end
   end
 
+  def ready?
+    pending? && (!next_attempt_at || !next_attempt_at.future?) && !earlier_delivery_pending? &&
+      !self.class.in_progress.where(account_id: account_id).where.not(id: id).exists?
+  end
+
   def sanitized_request
     if headers = request&.dig("headers")&.except("X-Webhook-Signature")
       { headers: headers }
@@ -108,10 +112,39 @@ class Webhook::Delivery < ApplicationRecord
   end
 
   def succeeded?
-    completed? && response[:error].blank? && response[:code].between?(200, 299)
+    completed? && response[:error].blank? && response[:code].to_i.between?(200, 299)
   end
 
   private
+    def ensure_quota
+      Account.where(id: account_id).update_all("updated_at = updated_at")
+      if self.class.where(account_id: account_id, state: %w[ pending in_progress ]).count >= PENDING_LIMIT
+        errors.add :base, "Pending webhook delivery quota reached"
+        throw :abort
+      end
+    end
+
+    def claim
+      self.class.transaction do
+        Account.where(id: account_id).update_all("updated_at = updated_at")
+        reload
+        if ready?
+          if request[:attempts].to_i > 0 &&
+              (request[:attempts].to_i >= MAX_ATTEMPTS || Time.current >= retry_deadline || !Webhook::Retry.reserve(account))
+            self.request[:stopped_reason] = "retry_budget_exhausted"
+            self.request.delete(:next_attempt_at)
+            update!(state: :completed)
+            webhook.delinquency_tracker.record_delivery_of(self)
+            false
+          else
+            self.class.where(id: id, state: :pending).update_all(state: :in_progress, updated_at: Time.current) == 1
+          end
+        else
+          false
+        end
+      end
+    end
+
     def next_attempt_at
       Time.iso8601(request[:next_attempt_at]) if request[:next_attempt_at]
     end
@@ -131,7 +164,6 @@ class Webhook::Delivery < ApplicationRecord
       )
       predecessors = webhook.deliveries.where(state: [ :pending, :in_progress ], event_id: events_on_card.select(:id))
         .where("created_at < :time OR (created_at = :time AND id < :id)", time: created_at, id: id)
-      predecessors.in_progress.where(updated_at: ..STALLED_AFTER.ago).find_each(&:recover)
       predecessors.exists?
     end
 

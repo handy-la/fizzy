@@ -4,6 +4,7 @@ class WebhooksController < ApplicationController
   include BoardScoped
 
   before_action :ensure_admin
+  before_action :ensure_creation_budget, only: :create
   before_action :set_webhook, except: %i[ index new create ]
 
   def index
@@ -60,6 +61,10 @@ class WebhooksController < ApplicationController
   end
 
   private
+    def ensure_creation_budget
+      head :too_many_requests unless Webhook::Creation.admit(Current.account)
+    end
+
     def set_webhook
       @webhook = @board.webhooks.find(params[:id])
     end

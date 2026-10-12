@@ -206,11 +206,19 @@ Una entrega pendiente conserva el cuerpo y las cabeceras del primer intento en
 `request` (texto largo, como los cuerpos de ActionText); los reintentos usan esos mismos bytes. Dédalo deduplica por el `id`
 JSON del evento, no por una cabecera nueva. La espera crece de 1 a 30 minutos,
 durante 24 horas desde el primer intento. Los 4xx y los destinos privados son
-fallos terminales. La cola `webhooks` serializa por receptor; cada entrega espera
-sus predecesoras pendientes de la misma tarjeta (incluidos sus comentarios).
-Un envío en progreso sin actualizarse por cinco minutos vuelve a la cola;
-un barrido cada minuto también lo recupera sin esperar otro evento. Antes del
-HTTP se guardan los bytes del mensaje. Evidencia y límites: `docs/test-audits/handy-545.md`.
+fallos terminales. Los límites son 5 webhooks por tablero, 20 por cuenta y 10
+peticiones de creación por minuto por cuenta. Inactivos también cuentan. La admisión y la reserva de
+reintento toman un UPDATE de cuenta antes de leer, dentro de su transacción.
+
+`Webhook::Dispatch` conserva un único aviso global y alterna cuentas; sólo su
+job hace HTTP en la cola exclusiva `webhook_dispatch`. No encoles jobs por
+entrega ni por sucesor bloqueado. Conserva el orden por tarjeta y limita a un
+HTTP por cuenta, con un máximo global de uno. La cuota de 100 pendientes/en
+progreso por cuenta descarta las entregas nuevas al llenarse; el evento se
+conserva. Hay hasta 8 intentos por entrega y 60 reintentos por hora por cuenta.
+El barrido por minuto recupera leases de cinco minutos y despierta reintentos
+vencidos. `webhooks` queda separada para drenar jobs antiguos. Contrato y
+límites: `docs/webhook-resources.md`; evidencia: `docs/test-audits/handy-942.md`.
 
 Las propuestas de comentario llegan por `CardSuggestionChannel`, privado por
 usuario, cuenta y token. El canal vuelve a comprobar acceso al recuperar o

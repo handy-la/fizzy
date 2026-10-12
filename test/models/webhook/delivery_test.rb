@@ -5,6 +5,7 @@ class Webhook::DeliveryTest < ActiveSupport::TestCase
 
   setup do
     freeze_time
+    webhook_deliveries(:in_progress).completed!
     stub_dns_resolution(PUBLIC_TEST_IP)
   end
 
@@ -88,7 +89,7 @@ class Webhook::DeliveryTest < ActiveSupport::TestCase
   test "deliver_later" do
     delivery = webhook_deliveries(:pending)
 
-    assert_enqueued_with job: Webhook::DeliveryJob, args: [ delivery ] do
+    assert_enqueued_with job: Webhook::DispatchJob do
       delivery.deliver_later
     end
   end
@@ -275,9 +276,8 @@ class Webhook::DeliveryTest < ActiveSupport::TestCase
       tracker = delivery.webhook.delinquency_tracker
       tracker.update!(consecutive_failures_count: 9, first_failure_at: 2.hours.ago)
 
-      assert_enqueued_with(job: Webhook::DeliveryJob, args: [ delivery ], at: ->(time) { (59.seconds.from_now..61.seconds.from_now).cover?(time) }) do
-        delivery.deliver
-      end
+      delivery.deliver
+      assert_equal 1.minute.from_now, Time.iso8601(delivery.request[:next_attempt_at])
 
       assert delivery.reload.pending?
       assert_equal 9, tracker.reload.consecutive_failures_count
@@ -311,7 +311,7 @@ class Webhook::DeliveryTest < ActiveSupport::TestCase
     delivery.deliver
     events(:shipping_closed).eventable.update_column(:title, "Changed after first attempt")
     travel 1.minute do
-      Webhook::DeliveryJob.perform_now(delivery.reload)
+      delivery.reload.deliver
     end
 
     assert delivery.reload.succeeded?
@@ -321,7 +321,7 @@ class Webhook::DeliveryTest < ActiveSupport::TestCase
     assert_equal signatures.first, signatures.last
     assert_equal 0, delivery.webhook.delinquency_tracker.reload.consecutive_failures_count
 
-    Webhook::DeliveryJob.perform_now(delivery)
+    delivery.deliver
     assert_equal 2, bodies.size, "a duplicate job must not resend a terminal delivery"
   end
 
@@ -364,14 +364,15 @@ class Webhook::DeliveryTest < ActiveSupport::TestCase
       { status: 200 }
     end
     first.update!(state: :in_progress, updated_at: 6.minutes.ago)
+    Webhook::Delivery.recover_stalled
 
-    Webhook::DeliveryJob.perform_now(second)
+    second.deliver
     assert_empty seen
     assert first.reload.pending?
-    assert_enqueued_with job: Webhook::DeliveryJob, args: [ first ]
-    Webhook::DeliveryJob.perform_now(first)
+    assert_enqueued_with job: Webhook::DispatchJob
+    first.deliver
     travel 1.minute do
-      Webhook::DeliveryJob.perform_now(second)
+      second.deliver
     end
     assert first.reload.succeeded?
     assert second.reload.succeeded?
@@ -387,14 +388,14 @@ class Webhook::DeliveryTest < ActiveSupport::TestCase
       { status: 200 }
     end
 
-    assert_raises(SystemExit) { Webhook::DeliveryJob.perform_now(delivery) }
+    assert_raises(SystemExit) { delivery.deliver }
     assert delivery.reload.in_progress?
-    Webhook::DeliveryJob.perform_now(delivery)
+    delivery.deliver
     assert_equal 1, bodies.size, "an active request must not be reclaimed"
     delivery.event.eventable.update_column(:title, "Changed while worker was stopped")
 
     travel 6.minutes do
-      Webhook::DeliveryJob.perform_now(delivery)
+      delivery.deliver
     end
     assert delivery.reload.succeeded?
     assert_equal 2, bodies.size
@@ -416,7 +417,7 @@ class Webhook::DeliveryTest < ActiveSupport::TestCase
     assert_operator delivery.request[:payload].bytesize, :>, 65_535
     assert_equal bodies.first, delivery.request[:payload]
     travel 1.minute do
-      Webhook::DeliveryJob.perform_now(delivery)
+      delivery.deliver
     end
     assert delivery.reload.succeeded?
     assert_equal 2, bodies.size
@@ -428,9 +429,8 @@ class Webhook::DeliveryTest < ActiveSupport::TestCase
     stub_request(:post, delivery.webhook.url).to_return(status: 503)
 
     [ 1, 2, 4, 8, 16, 30, 30 ].each do |minutes|
-      assert_enqueued_with(job: Webhook::DeliveryJob, args: [ delivery ], at: minutes.minutes.from_now) do
-        delivery.reload.deliver
-      end
+      delivery.reload.deliver
+      assert_equal minutes.minutes.from_now, Time.iso8601(delivery.request[:next_attempt_at])
       travel minutes.minutes
     end
     assert delivery.reload.pending?

@@ -22,7 +22,7 @@ production: &production
     command: "SolidQueue::Job.clear_finished_in_batches(sleep_between_batches: 0.3)"
     schedule: every hour at minute 12
   recover_stalled_webhook_deliveries:
-    command: "Webhook::Delivery.recover_stalled"
+    command: "Webhook::Dispatch.recover"
     schedule: every minute
   expire_stalled_suggestions:
     command: "Card::SuggestionRequest.expire_stalled"
@@ -57,6 +57,9 @@ production: &production
 <% end %>
 
 beta: &beta
+  recover_stalled_webhook_deliveries:
+    command: "Webhook::Dispatch.recover"
+    schedule: every minute
   # Only Solid Queue maintenance
   cleanup_pending_uploads:
     class: "Storage::CleanupUploadsJob"

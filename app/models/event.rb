@@ -42,6 +42,7 @@ class Event < ApplicationRecord
 
   private
     def dispatch_webhooks
-      Event::WebhookDispatchJob.perform_later(self)
+      # Admit bounded rows here; one pump wakeup replaces a job per event.
+      Webhook.active.triggered_by(self).order(:id).limit(Webhook::BOARD_LIMIT).each { |webhook| webhook.trigger(self) }
     end
 end

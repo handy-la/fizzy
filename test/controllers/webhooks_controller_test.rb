@@ -48,6 +48,40 @@ class WebhooksControllerTest < ActionDispatch::IntegrationTest
     assert_equal [ "card_published", "card_closed" ], webhook.subscribed_actions
   end
 
+  test "creation rate is shared by account even when webhooks are deleted" do
+    freeze_time
+    board = boards(:writebook)
+    10.times do
+      post board_webhooks_path(board), params: {
+        webhook: { name: "Rate", url: "https://example.com/rate" }
+      }, as: :json
+      assert_response :created
+      Webhook.find(response.parsed_body.fetch("id")).destroy!
+    end
+    assert_no_difference "Webhook.count" do
+      assert_no_enqueued_jobs do
+        post board_webhooks_path(boards(:private)), params: {
+          webhook: { name: "Rate", url: "https://example.com/rate" }
+        }, as: :json
+      end
+    end
+    assert_response :too_many_requests
+  end
+
+  test "board quota is reported as JSON without creating a tracker or job" do
+    board = boards(:writebook)
+    4.times { board.webhooks.create!(name: "Quota", url: "https://example.com/quota", active: false) }
+    assert_no_difference [ "Webhook.count", "Webhook::DelinquencyTracker.count" ] do
+      assert_no_enqueued_jobs do
+        post board_webhooks_path(board), params: {
+          webhook: { name: "Overflow", url: "https://example.com/overflow" }
+        }, as: :json
+      end
+    end
+    assert_response :unprocessable_entity
+    assert response.parsed_body["base"].present?
+  end
+
   test "create with invalid params" do
     board = boards(:writebook)
     assert_no_difference "Webhook.count" do

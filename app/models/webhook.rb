@@ -1,6 +1,9 @@
 class Webhook < ApplicationRecord
   include Triggerable
 
+  BOARD_LIMIT = 5
+  ACCOUNT_LIMIT = 20
+
   SLACK_WEBHOOK_URL_REGEX = %r{//hooks\.slack\.com/services/T[^\/]+/B[^\/]+/[^\/]+\Z}i
   CAMPFIRE_WEBHOOK_URL_REGEX = %r{/rooms/\d+/\d+-[^\/]+/messages\Z}i
   BASECAMP_CAMPFIRE_WEBHOOK_URL_REGEX = %r{/\d+/integrations/[^\/]+/buckets/\d+/chats/\d+/lines\Z}i
@@ -33,6 +36,7 @@ class Webhook < ApplicationRecord
   scope :ordered, -> { order(name: :asc, id: :desc) }
   scope :active, -> { where(active: true) }
 
+  before_create :ensure_quota
   after_create :create_delinquency_tracker!
 
   normalizes :subscribed_actions, with: ->(value) { Array.wrap(value).map(&:to_s).uniq & PERMITTED_ACTIONS }
@@ -66,6 +70,14 @@ class Webhook < ApplicationRecord
   end
 
   private
+    def ensure_quota
+      Account.where(id: account_id).update_all("updated_at = updated_at")
+      if account.webhooks.count >= ACCOUNT_LIMIT || board.webhooks.count >= BOARD_LIMIT
+        errors.add :base, "Webhook quota reached"
+        throw :abort
+      end
+    end
+
     def validate_url
       uri = URI.parse(url.presence)
 

@@ -10,7 +10,7 @@
 #
 # It's strongly recommended that you check this file into your version control system.
 
-ActiveRecord::Schema[8.2].define(version: 2026_10_12_120000) do
+ActiveRecord::Schema[8.2].define(version: 2026_10_12_180000) do
   create_table "accesses", id: :uuid, force: :cascade do |t|
     t.datetime "accessed_at"
     t.uuid "account_id", null: false
@@ -661,6 +661,13 @@ ActiveRecord::Schema[8.2].define(version: 2026_10_12_120000) do
     t.index ["user_id"], name: "index_watches_on_user_id"
   end
 
+  create_table "webhook_creations", id: :uuid, force: :cascade do |t|
+    t.uuid "account_id", null: false
+    t.datetime "created_at", null: false
+    t.index ["account_id", "created_at"], name: "index_webhook_creations_on_account_id_and_created_at"
+    t.index ["created_at"], name: "index_webhook_creations_on_created_at"
+  end
+
   create_table "webhook_delinquency_trackers", id: :uuid, force: :cascade do |t|
     t.uuid "account_id", null: false
     t.integer "consecutive_failures_count", default: 0
@@ -681,10 +688,26 @@ ActiveRecord::Schema[8.2].define(version: 2026_10_12_120000) do
     t.string "state", limit: 255, null: false
     t.datetime "updated_at", null: false
     t.uuid "webhook_id", null: false
+    t.index ["account_id", "state", "created_at"], name: "idx_on_account_id_state_created_at_c55e4ab539"
     t.index ["account_id"], name: "index_webhook_deliveries_on_account_id"
     t.index ["created_at"], name: "index_webhook_deliveries_on_created_at"
     t.index ["event_id"], name: "index_webhook_deliveries_on_event_id"
     t.index ["webhook_id"], name: "index_webhook_deliveries_on_webhook_id"
+  end
+
+  create_table "webhook_dispatches", id: :uuid, force: :cascade do |t|
+    t.integer "value", default: 0, null: false
+    t.uuid "last_account_id"
+    t.string "token", limit: 255
+    t.datetime "leased_until"
+    t.boolean "running", default: false, null: false
+  end
+
+  create_table "webhook_retries", id: :uuid, force: :cascade do |t|
+    t.uuid "account_id", null: false
+    t.datetime "created_at", null: false
+    t.index ["account_id", "created_at"], name: "index_webhook_retries_on_account_id_and_created_at"
+    t.index ["created_at"], name: "index_webhook_retries_on_created_at"
   end
 
   create_table "webhooks", id: :uuid, force: :cascade do |t|

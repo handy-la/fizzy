@@ -8,7 +8,16 @@ default: &default
       threads: 1
       processes: 1
       polling_interval: 0.1
-    - queues: [ "default", "solid_queue_recurring", "backend", "webhooks", "incineration" ]
+    # HTTP pump and pre-deployment webhook jobs never occupy normal workers.
+    - queues: [ "webhook_dispatch" ]
+      threads: 1
+      processes: 1
+      polling_interval: 0.1
+    - queues: [ "webhooks" ]
+      threads: 1
+      processes: 1
+      polling_interval: 0.1
+    - queues: [ "default", "solid_queue_recurring", "backend", "incineration" ]
       threads: 3
       processes: <%= Integer(ENV.fetch("JOB_CONCURRENCY") { Concurrent.physical_processor_count }) %>
       polling_interval: 0.1
