@@ -37,4 +37,49 @@ class Account::ImportsControllerTest < ActionDispatch::IntegrationTest
       assert_redirected_to account_import_path(import, script_name: import.account.slug)
     end
   end
+  [ :pending, :processing ].each do |status|
+    test "rejects another import for the same identity while #{status}" do
+      sign_in_as identities(:david)
+      Account::Import.create!(account: accounts(:initech), identity: identities(:david), status: status)
+
+      untenanted do
+        assert_no_difference [ "Account.count", "User.count", "Account::Import.count", "ActiveStorage::Blob.count" ] do
+          assert_no_enqueued_jobs do
+            post account_imports_path, params: { file: fixture_file_upload("avatar.png", "application/zip") }
+          end
+        end
+        assert_response :too_many_requests
+      end
+    end
+  end
+
+  [ :completed, :failed ].each do |status|
+    test "allows a new import after #{status}" do
+      sign_in_as identities(:david)
+      Account::Import.create!(account: accounts(:initech), identity: identities(:david), status: status)
+
+      untenanted do
+        assert_difference "Account::Import.count", 1 do
+          assert_enqueued_with(job: Account::DataImportJob) do
+            post account_imports_path, params: { file: fixture_file_upload("avatar.png", "application/zip") }
+          end
+        end
+        assert_response :redirect
+      end
+    end
+  end
+
+  test "another identity with an active import does not consume the callers slot" do
+    sign_in_as identities(:david)
+    Account::Import.create!(account: accounts(:initech), identity: identities(:jason), status: :processing)
+
+    untenanted do
+      assert_difference "Account::Import.count", 1 do
+        assert_enqueued_with(job: Account::DataImportJob) do
+          post account_imports_path, params: { file: fixture_file_upload("avatar.png", "application/zip") }
+        end
+      end
+      assert_response :redirect
+    end
+  end
 end

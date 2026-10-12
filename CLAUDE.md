@@ -115,7 +115,7 @@ Evidencia: `docs/test-audits/handy-782.md`.
 `ZipKit::FileReader#read_zip_structure` lee todo el tramo final y confía en el
 tamaño del EOCD ZIP64. Usa `ZipFile::Reader::Structure`: valida los metadatos
 antes de crear entradas y lee sólo `cdir_size`. `ZipFile::Limits` limita el
-directorio a 256 MiB por defecto. Un tamaño declarado incorrecto se rechaza;
+directorio a 16 MiB por defecto. Un tamaño declarado incorrecto se rechaza;
 no agregues una lectura hasta EOF como recuperación.
 Evidencia: `docs/test-audits/handy-829.md`.
 
@@ -125,6 +125,14 @@ Un paso reanudado puede fallar sin avanzar: captura esos errores en `perform`,
 porque `Continuable` no los reintenta por sí solo. JSON debe ser un objeto
 con UTF-8 válido; el estado fallido y su correo se guardan sólo al terminar.
 Evidencia: `docs/test-audits/handy-932.md`.
+
+`Account::Import` admite 50 000 entradas y un directorio de 16 MiB como máximo,
+antes de crear entradas. El lector conserva un índice por nombre para evitar
+recorrer toda la lista en cada lectura. `Account::Import.start` reserva una sola
+importación pendiente o en curso por identidad global bajo un lock de escritura;
+el controlador debe usar esa operación antes de crear cuenta, blob o trabajo.
+Una consulta por cuenta no protege una identidad que crea otra cuenta.
+Evidencia y presupuesto medido: `docs/test-audits/handy-936.md`.
 
 ## Coding style
 

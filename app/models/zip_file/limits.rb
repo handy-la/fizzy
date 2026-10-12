@@ -4,7 +4,7 @@ class ZipFile::Limits
 
   attr_reader :max_entries, :max_entry_size, :max_json_entry_size, :max_total_size, :max_compression_ratio, :max_central_directory_size
 
-  def initialize(max_entries:, max_entry_size:, max_json_entry_size:, max_total_size:, max_compression_ratio:, max_central_directory_size: 256.megabytes)
+  def initialize(max_entries:, max_entry_size:, max_json_entry_size:, max_total_size:, max_compression_ratio:, max_central_directory_size: 16.megabytes)
     @max_entries = max_entries
     @max_entry_size = max_entry_size
     @max_json_entry_size = max_json_entry_size

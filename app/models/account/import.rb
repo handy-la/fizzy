@@ -1,6 +1,7 @@
 require "shellwords"
 
 class Account::Import < ApplicationRecord
+  class AlreadyInProgressError < StandardError; end
   class InsufficientStorageSpaceError < StandardError; end
 
   REQUIRED_STORAGE_SPACE_FACTOR = 2
@@ -8,11 +9,12 @@ class Account::Import < ApplicationRecord
     Net::OpenTimeout, Net::ReadTimeout, Errno::ECONNRESET, Errno::ETIMEDOUT ].freeze
 
   LIMITS = ZipFile::Limits.new(
-    max_entries: 1_000_000,
+    max_entries: 50_000,
     max_entry_size: 10.gigabytes,
     max_json_entry_size: 16.megabytes,
     max_total_size: 1.terabyte,
-    max_compression_ratio: 100
+    max_compression_ratio: 100,
+    max_central_directory_size: 16.megabytes
   )
 
   broadcasts_refreshes
@@ -26,6 +28,25 @@ class Account::Import < ApplicationRecord
   enum :failure_reason, %w[ conflict invalid_export insufficient_storage_space ].index_by(&:itself), prefix: :failed_due_to, scopes: false
 
   scope :expired, -> { where(completed_at: ...24.hours.ago).or(where(status: :failed, created_at: ...7.days.ago)) }
+
+  def self.start(identity:, file:)
+    transaction do
+      # A write locks the global identity on SQLite as well as MySQL. Keep the
+      # admission check and the new import in this transaction across accounts.
+      Identity.where(id: identity.id).update_all("updated_at = updated_at")
+
+      if where(identity: identity, status: %w[ pending processing ]).exists?
+        raise AlreadyInProgressError, "An import is already in progress"
+      end
+
+      signup = Signup.new(identity: identity, full_name: "Import", skip_account_seeding: true)
+      if signup.complete
+        Current.set(account: signup.account) do
+          signup.account.imports.create!(identity: identity, file: file).tap(&:process_later)
+        end
+      end
+    end
+  end
 
   def self.cleanup
     expired.each(&:cleanup)

@@ -5,12 +5,15 @@ class ZipFile::Reader
     @io = io
     @reader = read_structure(limits)
     @uncompressed_size = @reader.sum(&:uncompressed_size)
+    @entries_by_name = @reader.each_with_object({}) do |entry, index|
+      index[entry.filename] ||= entry
+    end
   rescue ZipKit::FileReader::ReadError, ZipKit::FileReader::MissingEOCD, ZipKit::FileReader::UnsupportedFeature => e
     raise ZipFile::InvalidFileError, e.message
   end
 
   def read(file_path)
-    entry = @reader.find { |e| e.filename == file_path }
+    entry = @entries_by_name[file_path]
     raise ArgumentError, "File not found in zip: #{file_path}" unless entry
     raise ArgumentError, "Cannot read directory entry: #{file_path}" if entry.filename.end_with?("/")
 
@@ -26,7 +29,7 @@ class ZipFile::Reader
   end
 
   def exists?(file_path)
-    @reader.any? { |e| e.filename == file_path }
+    @entries_by_name.key?(file_path)
   end
 
   private

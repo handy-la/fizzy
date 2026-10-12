@@ -10,13 +10,13 @@ class Account::ImportsController < ApplicationController
   end
 
   def create
-    signup = Signup.new(identity: Current.identity, full_name: "Import", skip_account_seeding: true)
-
-    if signup.complete
-      start_import(signup.account)
+    if import = Account::Import.start(identity: Current.identity, file: params[:file])
+      redirect_to account_import_path(import, script_name: import.account.slug)
     else
       render :new, alert: "Couldn't create account.", status: :unprocessable_entity
     end
+  rescue Account::Import::AlreadyInProgressError
+    head :too_many_requests
   end
 
   def show
@@ -29,16 +29,5 @@ class Account::ImportsController < ApplicationController
 
     def ensure_accessed_by_owner
       head :forbidden unless @import.identity == Current.identity
-    end
-
-    def start_import(account)
-      import = nil
-
-      Current.set(account: account) do
-        import = account.imports.create!(identity: Current.identity, file: params[:file])
-        import.process_later
-      end
-
-      redirect_to account_import_path(import, script_name: account.slug)
     end
 end
