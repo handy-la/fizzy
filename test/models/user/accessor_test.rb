@@ -1,6 +1,29 @@
 require "test_helper"
 
 class User::AccessorTest < ActiveSupport::TestCase
+  test "accessible cards include published cards and only the members own drafts" do
+    own_draft = boards(:writebook).cards.create!(creator: users(:david), status: :drafted)
+    other_draft = boards(:writebook).cards.create!(creator: users(:jz), status: :drafted)
+    Current.user = users(:kevin)
+
+    assert_includes users(:david).accessible_cards, cards(:text)
+    assert_includes users(:david).accessible_cards, own_draft
+    assert_not_includes users(:david).accessible_cards, other_draft
+    assert_not_includes users(:david).accessible_cards, cards(:unfinished_thoughts)
+  end
+
+  test "admins can access other creators drafts only in accessible boards" do
+    draft = boards(:writebook).cards.create!(creator: users(:david), status: :drafted)
+    Current.user = users(:jz)
+
+    assert_includes users(:kevin).accessible_cards, draft
+
+    boards(:writebook).update! all_access: false
+    boards(:writebook).accesses.revoke_from users(:kevin)
+    users(:kevin).reload
+    assert_not_includes users(:kevin).accessible_cards, draft
+  end
+
   test "new users get added to all_access boards on creation" do
     user = User.create!(account: accounts("37s"), name: "Jorge")
 

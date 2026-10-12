@@ -7,6 +7,7 @@ class CardsController < ApplicationController
   before_action :set_board, only: %i[ create ]
   before_action :set_card, only: %i[ show edit update destroy ]
   before_action :redirect_if_drafted, only: :show
+  before_action :ensure_permission_to_edit_draft, only: :update
   before_action :ensure_permission_to_administer_card, only: %i[ destroy ]
 
   def index
@@ -66,6 +67,10 @@ class CardsController < ApplicationController
 
     def ensure_permission_to_administer_card
       head :forbidden unless Current.user.can_administer_card?(@card)
+    end
+
+    def ensure_permission_to_edit_draft
+      ensure_permission_to_administer_card if @card.drafted?
     end
 
     def card_params

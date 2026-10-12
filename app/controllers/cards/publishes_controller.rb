@@ -1,6 +1,8 @@
 class Cards::PublishesController < ApplicationController
   include CardScoped
 
+  before_action :ensure_permission_to_publish_card
+
   def create
     column = @board.columns.find(params[:column_id]) if params[:column_id].present?
 
@@ -24,6 +26,10 @@ class Cards::PublishesController < ApplicationController
   end
 
   private
+    def ensure_permission_to_publish_card
+      head :forbidden unless Current.user.can_administer_card?(@card)
+    end
+
     def add_another_param?
       params[:creation_type] == "add_another"
     end

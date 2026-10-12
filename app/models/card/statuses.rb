@@ -4,6 +4,8 @@ module Card::Statuses
   included do
     enum :status, %w[ drafted published ].index_by(&:itself)
 
+    scope :visible_to, ->(user) { user.admin? ? all : published.or(drafted.where(creator: user)) }
+
     before_save :mark_if_just_published
     after_create -> { track_event :published }, if: :published?
   end

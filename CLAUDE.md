@@ -47,6 +47,12 @@ A global `Identity` (email-based) can hold `Users` in multiple accounts, so
 an email address is not a single account membership. Board access is per-user
 `Access` records.
 
+Los borradores sólo son visibles para su creador o un administrador con acceso
+al tablero. Usa `User#accessible_cards`, que aplica `Card.visible_to(user)`;
+no uses `board.cards` para resolver una tarjeta por número recibido. El filtro
+usa el dueño de la asociación, no `Current.user`, porque también se usa en
+exportaciones y Cable. Política y evidencia: `docs/test-audits/handy-938.md`.
+
 ## UUID primary keys
 
 All tables use UUIDv7 keys, base36-encoded to 25 characters. Fixture UUIDs
