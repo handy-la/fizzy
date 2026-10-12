@@ -60,8 +60,15 @@ class Account::Import < ApplicationRecord
   end
 
   def self.cleanup
-    where(status: :failed).find_each(&:purge_failed_files)
-    expired.each(&:cleanup)
+    unpurged_ids = []
+    where(status: :failed).find_each do |import|
+      import.purge_failed_files
+    rescue => error
+      # The import keeps its keys and charges; the next sweep retries it.
+      unpurged_ids << import.id
+      Rails.error.report(error, severity: :error, context: { import_id: import.id })
+    end
+    expired.where.not(id: unpurged_ids).each(&:cleanup)
     Admission.where(finished_at: ..24.hours.ago).delete_all
   end
 
@@ -197,9 +204,18 @@ class Account::Import < ApplicationRecord
   end
 
   def purge_failed_files
+    # Storage calls run before the account write lock, which stops every
+    # SQLite writer. Rows, keys and charges stay until each deletion succeeds.
+    manifest = Account::DataTransfer::Manifest.new(account)
+    deleted_blob_ids = manifest.delete_files
+    archive = file.blob if file.attached?
+    archive&.delete
+
     Storage::UploadReservation.serialize_account(account) do
-      discard_imported_records
-      purge_archive
+      # Only blobs created after the first pass reach storage under the lock.
+      manifest.delete_files(except: deleted_blob_ids)
+      discard_imported_records(manifest)
+      destroy_archive(archive)
       admission&.finish
     end
   end
@@ -229,6 +245,12 @@ class Account::Import < ApplicationRecord
         blob = file.blob
         # Delete the object first and keep its key and charge if deletion fails.
         blob.delete
+        destroy_archive(blob)
+      end
+    end
+
+    def destroy_archive(blob)
+      if blob
         file.attachment.delete
         blob.destroy!
         association(:file_attachment).reset
@@ -236,8 +258,8 @@ class Account::Import < ApplicationRecord
       end
     end
 
-    def discard_imported_records
-      Account::DataTransfer::Manifest.new(account).discard_records
+    def discard_imported_records(manifest)
+      manifest.discard_records
       Storage::UploadReservation.where(account: account).delete_all
       account.reconcile_storage
       account.materialize_storage

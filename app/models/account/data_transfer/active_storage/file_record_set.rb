@@ -3,8 +3,16 @@ class Account::DataTransfer::ActiveStorage::FileRecordSet < Account::DataTransfe
     super(account: account, model: ::ActiveStorage::Blob)
   end
 
+  # BlobRecordSet deletes the rows. Objects go first through delete_files,
+  # outside the account write lock.
   def discard
-    records.find_each(&:delete)
+  end
+
+  def delete_files(except: [])
+    records.where.not(id: except).find_each.map do |blob|
+      blob.delete
+      blob.id
+    end
   end
 
   private

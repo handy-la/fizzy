@@ -21,6 +21,12 @@ class Account::DataTransfer::Manifest
     end
   end
 
+  # Deletes the storage objects of imported blobs and returns their ids.
+  # Rows and keys stay until discard_records runs.
+  def delete_files(except: [])
+    Account::DataTransfer::ActiveStorage::FileRecordSet.new(account).delete_files(except: except)
+  end
+
   def discard_records
     record_sets.reverse_each(&:discard)
   end

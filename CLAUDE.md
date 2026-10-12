@@ -109,7 +109,8 @@ JSON, total, relación de compresión) antes de extraer, y `ZipFile::Reader::IO`
 detiene una entrada cuyos bytes reales pasan su tamaño declarado. Lee las
 entradas sólo con `ZipFile::Reader#read`: el extractor de ZipKit directo omite
 ese contador e infla un trozo completo de una vez. Un límite en `process` borra
-las filas y archivos importados (`Manifest#discard_records`).
+las filas y archivos importados (`Manifest#delete_files` y después
+`Manifest#discard_records`, que sólo borra filas).
 Evidencia: `docs/test-audits/handy-782.md`.
 
 `Account::Import.start` usa `Account::Import::Admission`: un cupo activo y tres
@@ -122,6 +123,9 @@ rechaza la carga. La reserva no vence mientras haya datos sin borrar.
 Al terminar, la conciliación y el traspaso a cargo de adjuntos o reservas de
 blobs sin adjunto ocurren bajo el mismo lock. Los errores terminales purgan
 ZIP y datos parciales; primero se borra el objeto, después se libera su cargo.
+La purga de una importación fallida borra los objetos antes del lock de cuenta:
+en SQLite ese lock detiene a todos los escritores. `cleanup` aísla cada
+importación y sigue con las demás. Evidencia: `docs/test-audits/handy-954.md`.
 No uses `purge_later` para esta limpieza. Los metadatos de cuota importados se
 eliminan; el servidor crea filas de reserva con los bytes comprobados. Evidencia: `docs/test-audits/handy-943.md`.
 

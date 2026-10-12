@@ -456,6 +456,45 @@ class Account::ImportTest < ActiveSupport::TestCase
     tempfile&.close!
   end
 
+  # Authoring record: docs/test-audits/handy-954.md.
+  test "cleanup purges the next failed import when one object deletion fails" do
+    zips = [ compressible_zip, compressible_zip ]
+    first, second = zips.map { |zip| import_with_attached(zip) }.sort_by(&:id)
+    second.update!(identity: identities(:kevin))
+    first_admission, second_admission = [ first, second ].map do |import|
+      Account::Import::Admission.claim(identity: import.identity, import: import).tap do |admission|
+        admission.reserve(account: import.account, bytes: import.file.blob.byte_size)
+      end
+    end
+    first.update_columns(status: :failed, created_at: 8.days.ago)
+    second.update_columns(status: :failed)
+    stale = Account::Import::Admission.create!(identity: identities(:jz), finished_at: 25.hours.ago)
+    first_blob, second_blob = first.file.blob, second.file.blob
+    service = first_blob.service
+    original_delete = service.method(:delete)
+    service.define_singleton_method(:delete) do |key|
+      raise IOError, "storage unavailable" if key == first_blob.key
+      original_delete.call(key)
+    end
+
+    assert_nothing_raised { Account::Import.cleanup }
+
+    assert Account::Import.exists?(first.id), "an expired import whose purge failed must stay for the next sweep"
+    assert first.reload.file.attached?
+    assert ActiveStorage::Blob.exists?(first_blob.id)
+    assert_equal first_blob.byte_size, first.account.bytes_used_exact
+    assert_nil first_admission.reload.finished_at
+    assert_not second.reload.file.attached?
+    assert_not service.exist?(second_blob.key)
+    assert_not ActiveStorage::Blob.exists?(second_blob.id)
+    assert_equal 0, second.account.bytes_used_exact
+    assert second_admission.reload.finished_at
+    assert_not Account::Import::Admission.exists?(stale.id)
+  ensure
+    service&.singleton_class&.remove_method(:delete) if service&.singleton_class&.method_defined?(:delete, false)
+    zips&.each(&:close!)
+  end
+
   test "completed import keeps unattached blobs charged and releases ZIP reservation" do
     export = export_with_blobs
     import = import_from(export.path)
