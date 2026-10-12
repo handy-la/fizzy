@@ -22,14 +22,15 @@ class ActionPack::WebAuthn::PublicKeyCredential::CreationOptionsTest < ActiveSup
     assert_match(/\A[A-Za-z0-9_-]+\z/, @options.challenge)
   end
 
-  test "generates signed challenge containing nonce and its expiry" do
+  test "generates signed challenge containing nonce, user verification policy and expiry" do
     freeze_time
     signed_message = Base64.urlsafe_decode64(@options.challenge)
     payload = ActionPack::WebAuthn.challenge_verifier.verified(signed_message, purpose: "registration")
 
     assert_not_nil payload
-    nonce, expires_at = payload.split(":", 2)
+    nonce, user_verification, expires_at = payload.split(":", 3)
     assert_equal 32, Base64.strict_decode64(nonce).bytesize
+    assert_equal "preferred", user_verification
     assert_equal Rails.configuration.action_pack.web_authn.creation_challenge_expiration.from_now.to_i, Integer(expires_at)
   end
 

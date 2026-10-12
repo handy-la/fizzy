@@ -1,6 +1,8 @@
 require "test_helper"
 
 class ActionPack::PasskeyTest < ActiveSupport::TestCase
+  include WebauthnTestHelper
+
   setup do
     @identity = identities(:kevin)
     @private_key = OpenSSL::PKey::EC.generate("prime256v1")
@@ -14,6 +16,15 @@ class ActionPack::PasskeyTest < ActiveSupport::TestCase
       sign_count: 0,
       transports: [ "internal" ]
     )
+
+    @web_authn_config = Rails.configuration.action_pack.web_authn
+    @default_request_options = @web_authn_config.default_request_options
+    @default_creation_options = @web_authn_config.default_creation_options
+  end
+
+  teardown do
+    @web_authn_config.default_request_options = @default_request_options
+    @web_authn_config.default_creation_options = @default_creation_options
   end
 
   test "authenticate with valid assertion" do
@@ -113,6 +124,67 @@ class ActionPack::PasskeyTest < ActiveSupport::TestCase
     assert_equal 0, ActionPack::Passkey::ConsumedChallenge.count
   end
 
+  # user_verification policy (handy-945): the server enforces the policy it asked the browser
+  # for, and never trusts the browser to apply it. Authorship notes:
+  # docs/test-audits/handy-945.md.
+  test "rejects an assertion without user verification when the configured policy requires it" do
+    @web_authn_config.default_request_options = { user_verification: :required }
+    challenge = preferred_challenge(purpose: "authentication")
+
+    assert_nil ActionPack::Passkey.authenticate(build_assertion(challenge: challenge, user_verified: false))
+    assert_equal @passkey, ActionPack::Passkey.authenticate(build_assertion(challenge: challenge, user_verified: true))
+  end
+
+  test "rejects an assertion without user verification when the holder's policy requires it" do
+    Identity.any_instance.stubs(:passkey_authentication_options).returns({ user_verification: "required" })
+    challenge = preferred_challenge(purpose: "authentication")
+
+    assert_nil ActionPack::Passkey.authenticate(build_assertion(challenge: challenge, user_verified: false))
+    assert_equal @passkey, ActionPack::Passkey.authenticate(build_assertion(challenge: challenge, user_verified: true))
+  end
+
+  test "a challenge signed with a required policy stays required after the policy is relaxed" do
+    challenge = ActionPack::Passkey.authentication_options(holder: @identity, user_verification: :required).challenge
+
+    assert_nil ActionPack::Passkey.authenticate(build_assertion(challenge: challenge, user_verified: false))
+    assert_equal @passkey, ActionPack::Passkey.authenticate(build_assertion(challenge: challenge, user_verified: true))
+  end
+
+  test "a policy tightened after the challenge was issued applies at validation" do
+    challenge = ActionPack::Passkey.authentication_options(holder: @identity).challenge
+    Identity.any_instance.stubs(:passkey_authentication_options).returns({ user_verification: :required })
+
+    assert_nil ActionPack::Passkey.authenticate(build_assertion(challenge: challenge, user_verified: false))
+  end
+
+  test "accepts an assertion without user verification when no policy requires it" do
+    challenge = ActionPack::Passkey.authentication_options(holder: @identity).challenge
+
+    assert_equal @passkey, ActionPack::Passkey.authenticate(build_assertion(challenge: challenge, user_verified: false))
+  end
+
+  test "rejects a registration without user verification when the configured policy requires it" do
+    @web_authn_config.default_creation_options = { user_verification: :required }
+    challenge = preferred_challenge(purpose: "registration")
+
+    assert_raises ActionPack::WebAuthn::InvalidResponseError do
+      @identity.passkeys.register(build_registration(challenge: challenge, user_verified: false))
+    end
+
+    assert_difference -> { @identity.passkeys.count }, 1 do
+      @identity.passkeys.register(build_registration(challenge: challenge, user_verified: true))
+    end
+  end
+
+  test "rejects a registration without user verification when the holder's policy requires it" do
+    Identity.any_instance.stubs(:passkey_registration_options).returns({ user_verification: :required })
+    challenge = preferred_challenge(purpose: "registration")
+
+    assert_raises ActionPack::WebAuthn::InvalidResponseError do
+      @identity.passkeys.register(build_registration(challenge: challenge, user_verified: false))
+    end
+  end
+
   test "persists a spec-legal uint32-max sign count" do
     # WebAuthn sign counts are unsigned 32-bit; the column must hold the full
     # range. A signed INT4 column overflowed at 2147483647 with a RangeError.
@@ -132,7 +204,24 @@ class ActionPack::PasskeyTest < ActiveSupport::TestCase
   end
 
   private
-    def build_assertion(challenge:, sign_count: 1, backed_up: false)
+    # A challenge as the unauthenticated challenge endpoint issued it before handy-945: it
+    # carries no policy, so only the server's own policy can require verification.
+    def preferred_challenge(purpose:)
+      ActionPack::WebAuthn::PublicKeyCredential::Options.new(challenge_purpose: purpose, challenge_expiration: 5.minutes).challenge
+    end
+
+    def build_registration(challenge:, user_verified:)
+      auth_data = build_attestation_auth_data(credential_id: SecureRandom.random_bytes(32))
+      auth_data[32] = [ user_verified ? 0x45 : 0x41 ].pack("C") # UP + AT, plus UV when verified
+
+      {
+        client_data_json: webauthn_client_data_json(challenge: challenge, type: "webauthn.create"),
+        attestation_object: Base64.urlsafe_encode64(ATTESTATION_OBJECT_CBOR_PREFIX + auth_data, padding: false),
+        transports: [ "internal" ]
+      }
+    end
+
+    def build_assertion(challenge:, sign_count: 1, backed_up: false, user_verified: true)
       origin = ActionPack::WebAuthn::Current.origin
 
       client_data_json = {
@@ -141,7 +230,7 @@ class ActionPack::PasskeyTest < ActiveSupport::TestCase
         type: "webauthn.get"
       }.to_json
 
-      authenticator_data = build_authenticator_data(sign_count: sign_count, backed_up: backed_up)
+      authenticator_data = build_authenticator_data(sign_count: sign_count, backed_up: backed_up, user_verified: user_verified)
       signature = sign(authenticator_data, client_data_json)
 
       {
@@ -152,9 +241,10 @@ class ActionPack::PasskeyTest < ActiveSupport::TestCase
       }
     end
 
-    def build_authenticator_data(sign_count:, backed_up: false)
+    def build_authenticator_data(sign_count:, backed_up: false, user_verified: true)
       rp_id_hash = Digest::SHA256.digest(ActionPack::WebAuthn::Current.host)
-      flags = 0x01 | 0x04 # user present + user verified
+      flags = 0x01 # user present
+      flags |= 0x04 if user_verified
       flags |= 0x08 | 0x10 if backed_up # backup eligible + backup state
 
       bytes = []

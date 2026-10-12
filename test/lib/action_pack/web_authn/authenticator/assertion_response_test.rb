@@ -216,6 +216,21 @@ class ActionPack::WebAuthn::Authenticator::AssertionResponseTest < ActiveSupport
     assert_equal "User verification is required", error.message
   end
 
+  test "raises for an unknown user_verification policy instead of verifying nothing" do
+    authenticator_data = build_authenticator_data(user_verified: false)
+
+    assert_raises(ActionPack::WebAuthn::InvalidOptionsError) do
+      ActionPack::WebAuthn::Authenticator::AssertionResponse.new(
+        client_data_json: @client_data_json,
+        authenticator_data: authenticator_data,
+        signature: sign(authenticator_data, @client_data_json),
+        credential: @credential,
+        origin: @origin,
+        user_verification: "require"
+      )
+    end
+  end
+
   private
     def build_authenticator_data(user_verified:)
       rp_id_hash = Digest::SHA256.digest("example.com")

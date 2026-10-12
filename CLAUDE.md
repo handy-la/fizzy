@@ -229,11 +229,18 @@ El challenge sigue firmado y sin estado, pero `ActionPack::Passkey#authenticate`
 lo consume en `action_pack_passkey_consumed_challenges` (índice único) en la
 misma transacción que avanza `sign_count` con un `UPDATE` condicionado. No
 vuelvas a `update!`: con contador cero, sólo el consumo detiene un replay. El
-mensaje firmado es `<nonce>:<vence en>`; `cleanup` borra una fila sólo cuando
+mensaje firmado es `<nonce>:<user verification>:<vence en>`; `cleanup` borra una fila sólo cuando
 su challenge ya venció, y por eso `consume!` comprueba el vencimiento después
 de insertar: una petición detenida hasta después de la limpieza no reutiliza
 el challenge. Los campos WebAuthn y `passkey.id` se filtran en
 `filter_parameter_logging.rb`. Evidencia: `docs/test-audits/handy-778.md`.
+
+El servidor exige UV por su cuenta: `userVerification` en las opciones es sólo
+una petición al navegador. `ActionPack::Passkey` recalcula la política (valores
+globales más el holder, leído después de encontrar la credencial) y la pasa a la
+respuesta; ésta exige UV si esa política o la firmada en el challenge es
+`required`. No llames a `PublicKeyCredential#authenticate` sin `user_verification:`.
+Evidencia: `docs/test-audits/handy-945.md`.
 
 ## Cuota y borrado de cargas directas
 

@@ -62,9 +62,11 @@ class ActionPack::WebAuthn::PublicKeyCredential::Options
   # an embedded timestamp. The challenge is generated once and memoized for the
   # lifetime of this object.
   #
-  # The signed message is "<nonce>:<expires at>", so the server can keep a
-  # consumed challenge exactly as long as it stays valid; an empty expiry means
-  # the challenge never expires.
+  # The signed message is "<nonce>:<user verification>:<expires at>", so the
+  # server can keep a consumed challenge exactly as long as it stays valid (an
+  # empty expiry means the challenge never expires), and the policy asked of the
+  # browser is part of the signed ceremony state: the response cannot satisfy a
+  # weaker policy than the one this challenge was issued with.
   #
   # The timestamp allows the server to reject stale challenges. The expiration
   # window is configurable per-ceremony via
@@ -77,7 +79,7 @@ class ActionPack::WebAuthn::PublicKeyCredential::Options
 
       Base64.urlsafe_encode64(
         ActionPack::WebAuthn.challenge_verifier.generate(
-          "#{Base64.strict_encode64(SecureRandom.random_bytes(CHALLENGE_LENGTH))}:#{expires_at&.to_i}",
+          "#{Base64.strict_encode64(SecureRandom.random_bytes(CHALLENGE_LENGTH))}:#{user_verification}:#{expires_at&.to_i}",
           expires_at: expires_at,
           purpose: challenge_purpose
         ),

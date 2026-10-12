@@ -76,14 +76,17 @@ class ActionPack::WebAuthn::PublicKeyCredential
     end
 
     # Verifies an attestation response from the browser and returns a new
-    # PublicKeyCredential with the registered credential data.
+    # PublicKeyCredential with the registered credential data. Pass the
+    # server's effective +user_verification+ policy: the one sent to the
+    # browser is only a request.
     #
     # Raises +InvalidResponseError+ if the attestation is invalid.
-    def register(params, origin: ActionPack::WebAuthn::Current.origin)
+    def register(params, origin: ActionPack::WebAuthn::Current.origin, user_verification: nil)
       response = ActionPack::WebAuthn::Authenticator::AttestationResponse.new(
         client_data_json: params[:client_data_json],
         attestation_object: params[:attestation_object],
-        origin: origin
+        origin: origin,
+        user_verification: user_verification
       )
 
       response.validate!
@@ -122,16 +125,18 @@ class ActionPack::WebAuthn::PublicKeyCredential
 
   # Verifies an assertion response against this credential's public key.
   # Updates +sign_count+ and +backed_up+ and returns the validated
-  # AssertionResponse on success.
+  # AssertionResponse on success. Pass the server's effective
+  # +user_verification+ policy: the one sent to the browser is only a request.
   #
   # Raises +InvalidResponseError+ if the assertion is invalid.
-  def authenticate(params, origin: ActionPack::WebAuthn::Current.origin)
+  def authenticate(params, origin: ActionPack::WebAuthn::Current.origin, user_verification: nil)
     response = ActionPack::WebAuthn::Authenticator::AssertionResponse.new(
       client_data_json: params[:client_data_json],
       authenticator_data: params[:authenticator_data],
       signature: params[:signature],
       credential: self,
-      origin: origin
+      origin: origin,
+      user_verification: user_verification
     )
 
     response.validate!

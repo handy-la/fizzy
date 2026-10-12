@@ -51,9 +51,14 @@ class ActionPack::Passkey < Rails.configuration.action_pack.passkey.parent_class
     # +clientDataJSON+ response and verified server-side. Any additional +attributes+ (e.g. +holder+)
     # are passed through to +create!+.
     #
+    # The +user_verification+ policy is computed again here, from the global defaults and the
+    # holder's options, instead of trusting the browser to have applied what it was asked for.
+    # The holder comes from +attributes+ or from the association this is called on.
+    #
     # Raises ActionPack::WebAuthn::InvalidResponseError if the attestation is invalid.
     def register(passkey, **attributes)
-      credential = ActionPack::WebAuthn::PublicKeyCredential.register(passkey)
+      user_verification = new(**attributes).registration_user_verification
+      credential = ActionPack::WebAuthn::PublicKeyCredential.register(passkey, user_verification: user_verification)
 
       create!(**credential.to_h, **attributes)
     end
@@ -82,13 +87,16 @@ class ActionPack::Passkey < Rails.configuration.action_pack.passkey.parent_class
   # +sign_count+ and +backed_up+ attributes. Returns +self+ on success, or +nil+ if the
   # response is invalid.
   #
+  # The sign-in page knows no holder, so the +user_verification+ policy is read again from the
+  # global defaults and from this passkey's holder once the credential is known.
+  #
   # Each challenge authenticates once: it is consumed in the same transaction that advances the
   # sign count, so an exact replay fails even for authenticators whose counter stays at zero. The
   # counter is updated only if it still holds the value this record was loaded with, so two
   # concurrent assertions cannot both advance it.
   def authenticate(passkey)
     credential = to_public_key_credential
-    response = credential.authenticate(passkey)
+    response = credential.authenticate(passkey, user_verification: authentication_user_verification)
 
     transaction do
       ConsumedChallenge.consume!(response.verified_challenge, expires_at: response.challenge_expires_at)
@@ -111,7 +119,27 @@ class ActionPack::Passkey < Rails.configuration.action_pack.passkey.parent_class
     )
   end
 
+  # The +user_verification+ policy a registration of this passkey must satisfy.
+  def registration_user_verification
+    effective_user_verification \
+      Rails.configuration.action_pack.web_authn.default_creation_options,
+      holder&.passkey_registration_options
+  end
+
+  # The +user_verification+ policy an authentication with this passkey must satisfy.
+  def authentication_user_verification
+    effective_user_verification \
+      Rails.configuration.action_pack.web_authn.default_request_options,
+      holder&.passkey_authentication_options
+  end
+
   private
+    # Mirrors the merge order of +registration_options+ and +authentication_options+: the
+    # holder's options override the global defaults.
+    def effective_user_verification(defaults, holder_options)
+      defaults.to_h.merge(holder_options.to_h).with_indifferent_access[:user_verification]
+    end
+
     def advance_sign_count_from(loaded_sign_count, to:, backed_up:)
       updated = self.class.where(id: id, sign_count: loaded_sign_count)
         .update_all(sign_count: to, backed_up: backed_up, updated_at: Time.current)

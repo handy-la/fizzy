@@ -29,8 +29,18 @@ class ActionPack::Passkey::ChallengesController < ActionController::Base
     def create_passkey_challenge
       ActionPack::WebAuthn::PublicKeyCredential::Options.new(
         challenge_expiration: challenge_expiration,
-        challenge_purpose: challenge_purpose
+        challenge_purpose: challenge_purpose,
+        user_verification: user_verification
       ).challenge
+    end
+
+    # The configured default for the ceremony. This endpoint knows no holder, so
+    # the holder's own policy is applied again when the response is verified.
+    def user_verification
+      config = Rails.configuration.action_pack.web_authn
+      options = challenge_purpose == "registration" ? config.default_creation_options : config.default_request_options
+
+      options.to_h.with_indifferent_access[:user_verification] || :preferred
     end
 
     def challenge_purpose

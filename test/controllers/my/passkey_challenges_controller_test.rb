@@ -39,6 +39,23 @@ class My::PasskeyChallengesControllerTest < ActionDispatch::IntegrationTest
     end
   end
 
+  test "signs the configured user verification policy into the challenge" do
+    config = Rails.configuration.action_pack.web_authn
+    default_request_options = config.default_request_options
+    config.default_request_options = { user_verification: "required" }
+
+    untenanted do
+      post my_passkey_challenge_url
+
+      signed_message = Base64.urlsafe_decode64(response.parsed_body["challenge"])
+      payload = ActionPack::WebAuthn.challenge_verifier.verified(signed_message, purpose: "authentication")
+
+      assert_equal "required", payload.split(":", 3).second
+    end
+  ensure
+    config.default_request_options = default_request_options
+  end
+
   test "uses authentication challenge expiration by default" do
     untenanted do
       post my_passkey_challenge_url

@@ -14,7 +14,9 @@
 #
 # * Challenge verification - ensures the response matches the server-generated challenge
 # * Origin verification - ensures the response comes from the expected origin
-# * User verification - optionally requires biometric or PIN verification
+# * User verification - requires biometric or PIN verification when either the
+#   +user_verification+ policy given here or the policy signed into the
+#   challenge is +:required+. The browser is never trusted to apply it.
 #
 # == Example
 #
@@ -44,7 +46,7 @@ class ActionPack::WebAuthn::Authenticator::Response
   validate :user_must_be_present
   validate :user_must_be_verified_when_required
 
-  def initialize(client_data_json:, origin: nil, user_verification: :preferred)
+  def initialize(client_data_json:, origin: nil, user_verification: nil)
     # Strong parameters permit scalars, so a JSON request body can deliver a
     # non-string here (e.g. a number or object). Reject it at the boundary
     # rather than crashing later on JSON.parse/#encoding with an uncaught error.
@@ -54,7 +56,12 @@ class ActionPack::WebAuthn::Authenticator::Response
 
     @client_data_json = client_data_json
     @origin = origin
-    @user_verification = user_verification.to_sym
+    @user_verification = (user_verification || :preferred).to_sym
+
+    # A misspelt policy ("require") would otherwise verify nothing, silently.
+    unless ActionPack::WebAuthn::PublicKeyCredential::Options::USER_VERIFICATION_OPTIONS.include?(@user_verification)
+      raise ActionPack::WebAuthn::InvalidOptionsError, "Unknown user verification policy: #{user_verification}"
+    end
   end
 
   def validate!
@@ -84,6 +91,20 @@ class ActionPack::WebAuthn::Authenticator::Response
 
   def authenticator_data
     nil
+  end
+
+  # Returns the user verification policy signed into the verified challenge, or
+  # +nil+ when the challenge was issued before the policy was embedded in it.
+  def challenge_user_verification
+    parts = verified_challenge.to_s.split(":", -1)
+    parts[1].to_sym if parts.size == 3
+  end
+
+  # Whether the response must carry the UV flag: the stricter of the policy the
+  # server holds now and the one signed when the challenge was issued, so a
+  # policy changed between the two can only make the ceremony stricter.
+  def user_verification_required?
+    user_verification == :required || challenge_user_verification == :required
   end
 
   # Returns when the verified challenge stops verifying, or +nil+ when it never
@@ -167,7 +188,7 @@ class ActionPack::WebAuthn::Authenticator::Response
     end
 
     def user_must_be_verified_when_required
-      if user_verification == :required && !authenticator_data&.user_verified?
+      if user_verification_required? && !authenticator_data&.user_verified?
         errors.add(:base, "User verification is required")
       end
     end
