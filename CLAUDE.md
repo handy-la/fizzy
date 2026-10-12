@@ -87,6 +87,12 @@ Models join the index with `has_search`, and the store adapter owns every
 read and write. Don't reach for a search table directly — go through
 `ActiveSearch.index(:searchable)`.
 
+El `board_id` de un comentario en el índice puede quedar atrasado al mover su
+tarjeta. `User#search` autoriza por `card_id` con una subconsulta de
+`accessible_cards`, antes de paginar o hidratar. No uses el tablero del índice
+como permiso: el reindex asíncrono sólo mantiene el índice.
+Evidencia: `docs/test-audits/handy-939.md`.
+
 ## Imports and exports
 
 La admisión de exportaciones usa `Export.start_for`: el UPDATE del principal

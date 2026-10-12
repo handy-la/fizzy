@@ -64,6 +64,68 @@ class SearchesControllerTest < ActionDispatch::IntegrationTest
     assert_equal "Layout is broken", body.first["title"]
   end
 
+  %w[ pending failed discarded ].each do |job_state|
+    test "HTML search authorizes a moved comment while reindex is #{job_state}" do
+      owner, destination = create_private_destination
+      comment = @comment_card.comments.sole
+
+      get search_path(q: "overflowing", script_name: "/#{@account.external_account_id}")
+      assert_select "li .search__excerpt--comment", text: /overflowing text issue/
+
+      Current.set(account: @account, user: @user) do
+        assert_enqueued_with(job: Card::ReindexCommentsJob) { @comment_card.move_to(destination) }
+        @comment_card.update!(title: "Confidential destination title")
+
+        case job_state
+        when "failed"
+          @comment_card.expects(:reindex_comments).raises(StandardError, "index unavailable")
+          assert_raises(StandardError) { Card::ReindexCommentsJob.perform_now(@comment_card) }
+        when "discarded"
+          clear_enqueued_jobs
+        end
+      end
+
+      assert_equal @board.id, find_search_record(@account.id, type: "Comment", id: comment.id).board_id,
+        "the comment index must still name the old board"
+      assert_not @user.accessible_cards.exists?(@comment_card.id)
+      assert owner.accessible_cards.exists?(@comment_card.id)
+
+      get search_path(q: "overflowing", script_name: "/#{@account.external_account_id}")
+      assert_response :success
+      assert_select "li .search__result", count: 0
+      assert_select ".search__blank-slate", text: "No matches"
+      assert_not_includes response.body, "overflowing text issue"
+      assert_not_includes response.body, "Confidential destination title"
+      assert_not_includes response.body, destination.name
+
+      untenanted { logout_and_sign_in_as owner }
+      get search_path(q: "overflowing", script_name: "/#{@account.external_account_id}")
+      assert_response :success
+      assert_select "li .search__title", text: /Confidential destination title/
+      assert_select "li .search__excerpt--comment", text: /overflowing text issue/
+      assert_includes response.body, destination.name
+    end
+  end
+
+  test "HTML search excludes stale inaccessible hits before pagination" do
+    _owner, destination = create_private_destination
+
+    Current.set(account: @account, user: @user) do
+      @comment_card.comments.sole.update!(body: "paginationneedle allowed")
+      moved_card = @board.cards.create!(title: "Confidential pagination title", status: "published", creator: @user)
+      16.times { moved_card.comments.create!(body: "paginationneedle private", creator: @user) }
+      moved_card.move_to(destination)
+    end
+
+    get search_path(q: "paginationneedle", script_name: "/#{@account.external_account_id}")
+    assert_response :success
+    assert_select "li .search__title", text: /Some card/, count: 1
+    assert_select "li .search__result", count: 1
+    assert_select "a#filtered_search_results-pagination-link-2", count: 0
+    assert_not_includes response.body, "Confidential pagination title"
+    assert_not_includes response.body, destination.name
+  end
+
   test "search by card number as JSON returns array" do
     get search_path(q: @card.number, script_name: "/#{@account.external_account_id}"), as: :json
     assert_response :success
@@ -185,6 +247,16 @@ class SearchesControllerTest < ActionDispatch::IntegrationTest
   end
 
   private
+    def create_private_destination
+      Current.set(account: @account, user: @user) do
+        User.create!(name: "System", account: @account, role: :system)
+        owner = User.create!(name: "Destination Member", account: @account,
+          identity: Identity.create!(email_address: "destination@example.com"))
+        destination = Board.create!(name: "Confidential Destination Board", account: @account, creator: owner)
+        [ owner, destination ]
+      end
+    end
+
     def search_result_titles
       css_select("li .search__title").map { |element| element.text.strip }
     end

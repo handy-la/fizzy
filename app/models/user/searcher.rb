@@ -10,9 +10,9 @@ module User::Searcher
   HIGHLIGHT_CLOSING_MARK = "</mark>"
   HIGHLIGHT_MARKERS = [ HIGHLIGHT_OPENING_MARK, HIGHLIGHT_CLOSING_MARK ].freeze
 
-  # Always a lazy relation, so callers can page it. An unusable query filters to no board.
+  # Always a lazy relation, so callers can page it. An unusable query filters to no card.
   def search(terms)
-    build_search_relation(terms)
+    build_search_relation(terms, authorize_cards: true)
       .highlight(
         title: { markers: HIGHLIGHT_MARKERS },
         content: { markers: HIGHLIGHT_MARKERS, snippet: { words: 20 } }
@@ -27,12 +27,18 @@ module User::Searcher
   end
 
   private
-    def build_search_relation(terms)
+    def build_search_relation(terms, authorize_cards: false)
       query = Search::Query.wrap(terms)
-      boards = query.valid? ? board_ids : []
-
-      ActiveSearch.index(:searchable)
+      search = ActiveSearch.index(:searchable)
         .search(query.to_s)
-        .filter(account_id: account_id, board_id: boards)
+        .filter(account_id: account_id)
+
+      if authorize_cards
+        cards = query.valid? ? accessible_cards : accessible_cards.none
+        # Indexed board_id can lag behind a move. Authorize before paging or hydration.
+        search.native { |scope| scope.where(card_id: cards.select(:id)) }
+      else
+        search.filter(board_id: query.valid? ? board_ids : [])
+      end
     end
 end
