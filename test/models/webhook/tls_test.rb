@@ -2,6 +2,10 @@ require "test_helper"
 require "socket"
 
 class Webhook::TlsTest < ActiveSupport::TestCase
+  setup do
+    webhook_deliveries(:in_progress).completed!
+  end
+
   test "pinned connection uses the logical hostname for SNI and certificate verification" do
     with_tls_endpoint(certificate_hostname: "webhook.example.invalid", trusted: true) do |delivery, observed|
       delivery.deliver

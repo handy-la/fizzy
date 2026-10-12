@@ -62,6 +62,7 @@ class Webhook::Delivery < ApplicationRecord
         self.request[:attempts] = request[:attempts].to_i + 1
         self.request[:payload] ||= payload
         self.request[:headers] ||= headers
+        self.request[:headers].merge!(attempt_headers)
         save!
         # A DNS failure must be resolved again on the next attempt.
         remove_instance_variable(:@resolved_ip) if defined?(@resolved_ip)
@@ -96,7 +97,7 @@ class Webhook::Delivery < ApplicationRecord
   end
 
   def sanitized_request
-    if headers = request&.dig("headers")&.except("X-Webhook-Signature")
+    if headers = request&.dig("headers")&.except("X-Webhook-Signature", "X-Webhook-Attempt-Signature")
       { headers: headers }
     end
   end
@@ -225,13 +226,21 @@ class Webhook::Delivery < ApplicationRecord
       {
         "User-Agent" => USER_AGENT,
         "Content-Type" => content_type,
-        "X-Webhook-Signature" => signature,
-        "X-Webhook-Timestamp" => event.created_at.utc.iso8601
+        "X-Webhook-Signature" => signature
       }
     end
 
     def signature
-      OpenSSL::HMAC.hexdigest("SHA256", webhook.signing_secret, payload)
+      OpenSSL::HMAC.hexdigest("SHA256", webhook.signing_secret, request[:payload])
+    end
+
+    def attempt_headers
+      timestamp = Time.current.utc.iso8601(6)
+      {
+        "X-Webhook-Timestamp" => timestamp,
+        "X-Webhook-Attempt-Signature" => OpenSSL::HMAC.hexdigest("SHA256", webhook.signing_secret,
+          "#{timestamp}.#{request[:payload]}")
+      }
     end
 
     def content_type

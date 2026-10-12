@@ -247,7 +247,7 @@ viven fuera de la fila reutilizable de solicitud. Contrato y recuperación:
 
 ## Reintentos de webhooks
 
-Una entrega pendiente conserva el cuerpo y las cabeceras del primer intento en
+Una entrega pendiente conserva el cuerpo y la firma del evento del primer intento en
 `request` (texto largo, como los cuerpos de ActionText); los reintentos usan esos mismos bytes. Dédalo deduplica por el `id`
 JSON del evento, no por una cabecera nueva. La espera crece de 1 a 30 minutos,
 durante 24 horas desde el primer intento. Los 4xx y los destinos privados son
@@ -271,6 +271,14 @@ también debe rechazar HTTP antes de DNS y de `Net::HTTP`, aunque conserve
 un mensaje para reintentar. Conserva `Net::HTTP.new(hostname, port)` e
 `ipaddr` por separado para mantener SNI y verificación del certificado.
 Pruebas y dependencia del receptor: `docs/test-audits/handy-941.md`.
+
+Cada intento renueva `X-Webhook-Timestamp` y firma `<fecha>.<cuerpo persistido>`
+en `X-Webhook-Attempt-Signature` (ADR-0053 de Dédalo). La firma original del
+cuerpo se conserva. No reutilices la fecha inicial: el receptor exige hasta
+cinco minutos de antigüedad y 60 segundos hacia el futuro. La primera firma
+de intento válida activa el rechazo de fechas sin firmar en el receptor;
+volver a un emisor antiguo después de eso produce 401. Ambas firmas se
+ocultan en el historial.
 
 Las propuestas de comentario llegan por `CardSuggestionChannel`, privado por
 usuario, cuenta y token. El canal vuelve a comprobar acceso al recuperar o

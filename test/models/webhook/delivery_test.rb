@@ -47,13 +47,14 @@ class Webhook::DeliveryTest < ActiveSupport::TestCase
     assert_not delivery.succeeded?, "the response can't have an error"
   end
 
-  test "sanitized_request strips signature header" do
+  test "sanitized_request strips signature headers" do
     delivery = webhook_deliveries(:successfully_completed)
     delivery.update!(request: {
       headers: {
         "User-Agent" => "fizzy/1.0.0 Webhook",
         "Content-Type" => "application/json",
         "X-Webhook-Signature" => "super-secret-signature",
+        "X-Webhook-Attempt-Signature" => "super-secret-attempt-signature",
         "X-Webhook-Timestamp" => "2025-12-05T19:36:35.401Z"
       }
     })
@@ -61,6 +62,7 @@ class Webhook::DeliveryTest < ActiveSupport::TestCase
     result = delivery.sanitized_request
     assert_equal %w[ User-Agent Content-Type X-Webhook-Timestamp ], result[:headers].keys
     assert_not result[:headers].key?("X-Webhook-Signature")
+    assert_not result[:headers].key?("X-Webhook-Attempt-Signature")
   end
 
   test "sanitized_request returns nil when request is blank" do
@@ -96,8 +98,11 @@ class Webhook::DeliveryTest < ActiveSupport::TestCase
 
   test "deliver" do
     delivery = webhook_deliveries(:pending)
+    delivery.event.update_column(:created_at, 1.day.ago)
+    sent = nil
 
     stub_request(:post, delivery.webhook.url)
+      .with { |request| sent = request; true }
       .to_return(status: 200, headers: { "content-type" => "application/json" })
 
     assert_equal "pending", delivery.state
@@ -115,6 +120,11 @@ class Webhook::DeliveryTest < ActiveSupport::TestCase
     assert_equal 200, delivery.response[:code]
     assert delivery.response[:error].blank?
     assert delivery.succeeded?
+    assert_equal Time.current.utc.iso8601(6), sent.headers["X-Webhook-Timestamp"]
+    assert_equal OpenSSL::HMAC.hexdigest("SHA256", delivery.webhook.signing_secret, sent.body),
+      sent.headers["X-Webhook-Signature"]
+    assert_equal OpenSSL::HMAC.hexdigest("SHA256", delivery.webhook.signing_secret,
+      "#{sent.headers['X-Webhook-Timestamp']}.#{sent.body}"), sent.headers["X-Webhook-Attempt-Signature"]
   end
 
   test "deliver a comment whose body has a content attachment" do
@@ -302,15 +312,23 @@ class Webhook::DeliveryTest < ActiveSupport::TestCase
     delivery = webhook_deliveries(:pending)
     bodies = []
     signatures = []
+    timestamps = []
+    attempt_signatures = []
     stub_request(:post, delivery.webhook.url).to_return do |request|
       bodies << request.body
       signatures << request.headers["X-Webhook-Signature"]
+      timestamps << request.headers["X-Webhook-Timestamp"]
+      attempt_signatures << request.headers["X-Webhook-Attempt-Signature"]
       { status: bodies.size == 1 ? 530 : 200 }
     end
 
     delivery.deliver
+    # An old pending request has only the body signature and the event date.
+    legacy_headers = delivery.reload.request[:headers].except("X-Webhook-Attempt-Signature")
+    legacy_headers["X-Webhook-Timestamp"] = delivery.event.created_at.utc.iso8601
+    delivery.update!(request: delivery.request.merge(headers: legacy_headers))
     events(:shipping_closed).eventable.update_column(:title, "Changed after first attempt")
-    travel 1.minute do
+    travel 6.minutes do
       delivery.reload.deliver
     end
 
@@ -319,6 +337,12 @@ class Webhook::DeliveryTest < ActiveSupport::TestCase
     assert_equal bodies.first, bodies.last
     assert_equal delivery.event_id, JSON.parse(bodies.last)["id"]
     assert_equal signatures.first, signatures.last
+    assert_equal [ Time.current.utc.iso8601(6), 6.minutes.from_now.utc.iso8601(6) ], timestamps
+    2.times do |index|
+      assert_equal OpenSSL::HMAC.hexdigest("SHA256", delivery.webhook.signing_secret,
+        "#{timestamps[index]}.#{bodies[index]}"), attempt_signatures[index]
+    end
+    assert_not_equal attempt_signatures.first, attempt_signatures.last
     assert_equal 0, delivery.webhook.delinquency_tracker.reload.consecutive_failures_count
 
     delivery.deliver
@@ -382,8 +406,10 @@ class Webhook::DeliveryTest < ActiveSupport::TestCase
   test "an interrupted request preserves bytes and its active lease is respected" do
     delivery = webhook_deliveries(:pending)
     bodies = []
+    attempt_headers = []
     stub_request(:post, delivery.webhook.url).to_return do |request|
       bodies << request.body
+      attempt_headers << request.headers.slice("X-Webhook-Timestamp", "X-Webhook-Attempt-Signature")
       raise SystemExit if bodies.size == 1
       { status: 200 }
     end
@@ -400,6 +426,10 @@ class Webhook::DeliveryTest < ActiveSupport::TestCase
     assert delivery.reload.succeeded?
     assert_equal 2, bodies.size
     assert_equal bodies.first, bodies.last
+    assert_equal 6.minutes.from_now.utc.iso8601(6), attempt_headers.last["X-Webhook-Timestamp"]
+    assert_equal OpenSSL::HMAC.hexdigest("SHA256", delivery.webhook.signing_secret,
+      "#{attempt_headers.last['X-Webhook-Timestamp']}.#{bodies.last}"), attempt_headers.last["X-Webhook-Attempt-Signature"]
+    assert_not_equal attempt_headers.first, attempt_headers.last
   end
 
   test "large payloads are persisted and retried without truncation" do

@@ -1,5 +1,5 @@
 require "test_helper"
-require Rails.root.join("db/migrate/20261012180000_deactivate_http_webhooks")
+require Rails.root.join("db/migrate/20261012212000_deactivate_http_webhooks")
 
 class Webhook::HttpsMigrationTest < ActiveSupport::TestCase
   test "deactivates HTTP destinations across accounts and preserves HTTPS and history" do
