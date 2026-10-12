@@ -280,3 +280,45 @@ No se cambia el contrato de cuota ni los límites aprobados. Los ajustes de
 fixtures existentes conservan sus aserciones de conservación y cargo, usando
 la nueva fuente de autoridad del servidor. Las dos observaciones informativas
 siguen en sus tarjetas de seguimiento; no hay hallazgos bloqueantes pendientes.
+
+### RED y GREEN del cargo del avatar
+
+RED real sobre `4ee5e5128353e9a1488b04f0684aaaa1b13aaf64`, con el caso
+`imported_avatar` de este lote: un caso, una aserción, un fallo y cero errores.
+La primera aserción detecta la restauración de `quota_*` en el blob importado.
+La preparación elimina variantes, vínculos y blobs de la cuenta de origen
+antes de importar, para evitar conflictos de IDs. Los intentos previos con
+conflictos de preparación no cuentan como RED. La imagen puede generar
+variantes; el saldo esperado incluye también sus bytes exportados.
+
+GREEN sobre `origin/main` `0de30b69d7035f090ab1937f663b30f5daf7a7a8` más este
+lote: `SAAS=false PARALLEL_WORKERS=4 bin/rails test`, con Ruby 3.4.8 vía mise
+ y entorno de gems limpio. 2.013 casos, 8.355 aserciones, cero fallos, cero
+errores y seis omisiones. Incluye el ciclo del avatar, metadata portable en
+Hash y String, cuotas de cargas directas e importaciones, Disk y S3.
+RuboCop sobre los cinco archivos Ruby de esta integración: sin infracciones.
+
+La transferencia final crea filas locales para todos los blobs de datos,
+antes de conciliar, y excluye los archivos internos de importación y
+exportación. Las reservas adjuntas no suman bytes otra vez. La conciliación
+y los callbacks de avatares reconocen la fila local en la misma cuenta; no
+crean ni recuperan autoridad desde metadata del ZIP.
+
+### Base posterior: cargo de avatar sin campos importados
+
+La base avanzó a `a49aafa26` antes de la revisión. Su prueba de avatar ya
+verifica cargo tras conciliación y purga, pero espera cero reservas nuevas.
+Este lote transfiere el cargo de admisión a reservas locales. Se actualiza sólo
+esa expectativa: cada blob de datos tiene una reserva de bytes comprobados y
+la purga conserva el cargo hasta vencer el margen de la reserva, y la limpieza
+elimina después el objeto y la reserva del avatar. Se conservan las aserciones de cargo,
+conciliación y saneado de identidad y fecha. No se retira ninguna frontera ni
+se agrega un seam. El marcador de metadata generado en AttachmentRecordSet se
+sustituye por la fila del servidor; la prueba adicional de desvinculación y
+fallo de servicio exige conservar el cargo antes del borrado físico.
+
+Verificación final sobre `a49aafa26` más el lote integrado: suite completa con
+cuatro procesos, 2.014 casos, 8.376 aserciones, cero fallos, cero errores y seis
+omisiones. RuboCop de los seis archivos Ruby de integración: sin infracciones.
+La prueba heredada de avatar conserva ahora también el cargo durante el
+margen de purga y verifica su liberación por cleanup después de tres horas.

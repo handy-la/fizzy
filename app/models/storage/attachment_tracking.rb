@@ -23,7 +23,7 @@ module Storage::AttachmentTracking
 
     def record_storage_attach
       tracked = storage_tracked_record
-      return unless tracked || blob.metadata["quota_upload"]
+      return unless tracked || storage_reserved_blob?
 
       Storage::Entry.record \
         account: tracked&.account || blob.account,
@@ -58,13 +58,17 @@ module Storage::AttachmentTracking
       return unless blob
 
       tracked = storage_tracked_record
-      return unless tracked || blob.metadata["quota_upload"]
+      return unless tracked || storage_reserved_blob?
 
       @storage_snapshot = {
         account: tracked&.account || blob.account,
         board: tracked&.board_for_storage_tracking,
         recordable: tracked || record
       }
+    end
+
+    def storage_reserved_blob?
+      blob.metadata["quota_upload"] || Storage::UploadReservation.exists?(account_id: blob.account_id, blob_id: blob_id)
     end
 
     def storage_tracked_record

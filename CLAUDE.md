@@ -123,7 +123,7 @@ Al terminar, la conciliación y el traspaso a cargo de adjuntos o reservas de
 blobs sin adjunto ocurren bajo el mismo lock. Los errores terminales purgan
 ZIP y datos parciales; primero se borra el objeto, después se libera su cargo.
 No uses `purge_later` para esta limpieza. Los metadatos de cuota importados se
-reemplazan por los del servidor. Evidencia: `docs/test-audits/handy-943.md`.
+eliminan; el servidor crea filas de reserva con los bytes comprobados. Evidencia: `docs/test-audits/handy-943.md`.
 
 `ZipKit::FileReader#read_zip_structure` lee todo el tramo final y confía en el
 tamaño del EOCD ZIP64. Usa `ZipFile::Reader::Structure`: valida los metadatos
@@ -321,11 +321,14 @@ borrado sólo actualiza esa fila, sin crear otra desde metadata. Su identidad,
 tamaño y fecha de emisión vienen de la reserva; la identidad debe tener un
 usuario en la cuenta al emitirla. La importación reconstruye sólo metadata
 portable y admite tanto el objeto JSON como la cadena JSON del export. Nunca
-restaures quota_* ni reconstruyas reservas antiguas desde esos datos.
-Para que el recálculo cuente un avatar importado, `AttachmentRecordSet` marca
-`quota_upload` en los blobs de adjuntos `User`; esa marca no crea reservas.
+restaures quota_* ni reconstruyas reservas antiguas desde esos datos. Al completar
+una importación, crea reservas locales con la identidad del importador y los
+bytes comprobados. Conserva esas filas también para blobs adjuntos: los avatares
+usan su presencia al conciliar y al desvincular. Sólo las filas sin adjuntos
+suman bytes; crear campos quota_* en metadata rompe este contrato.
 Evidencia y límites: `docs/test-audits/handy-779.md`,
-`docs/test-audits/handy-931.md` y `docs/test-audits/handy-950.md`.
+`docs/test-audits/handy-931.md`, `docs/test-audits/handy-950.md` y
+`docs/test-audits/handy-943.md`.
 
 ## Caché offline y cambios de sesión
 

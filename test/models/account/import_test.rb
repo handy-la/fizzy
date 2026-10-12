@@ -262,7 +262,7 @@ class Account::ImportTest < ActiveSupport::TestCase
     export_tempfile&.unlink
   end
 
-  test "imported avatar is charged by reconciliation and released on purge without a reservation" do
+  test "imported avatar is charged by reconciliation and released on purge with server reservations" do
     data = file_fixture("moon.jpg").binread
     source_account = accounts("37s")
     Current.set(account: source_account) do
@@ -274,6 +274,7 @@ class Account::ImportTest < ActiveSupport::TestCase
 
     export = Account::Export.create!(account: source_account, user: users(:david))
     export.build
+    data_blob_count = ActiveStorage::Blob.where(account: source_account).where.not(id: export.file.blob_id).count
     tempfile = Tempfile.new([ "export", ".zip" ])
     export.file.open { |f| FileUtils.cp(f.path, tempfile.path) }
     ActiveStorage::VariantRecord.where(blob: ActiveStorage::Blob.where(account: source_account)).delete_all
@@ -283,7 +284,7 @@ class Account::ImportTest < ActiveSupport::TestCase
 
     import = import_from(tempfile.path)
     import.check
-    assert_no_difference "Storage::UploadReservation.count" do
+    assert_difference "Storage::UploadReservation.count", data_blob_count do
       import.process
     end
     assert import.completed?
@@ -302,9 +303,17 @@ class Account::ImportTest < ActiveSupport::TestCase
     assert_no_difference "Storage::UploadReservation.count" do
       User.find(avatar.record_id).avatar.purge
     end
-    assert_equal charged - data.bytesize, account.reload.bytes_used_exact
+    assert_equal charged, account.reload.bytes_used_exact
     assert account.reconcile_storage
-    assert_equal charged - data.bytesize, account.reload.bytes_used_exact
+    assert_equal charged, account.reload.bytes_used_exact
+    travel 3.hours do
+      assert_difference "Storage::UploadReservation.count", -1 do
+        Storage::UploadReservation.cleanup
+      end
+      assert_equal charged - data.bytesize, account.reload.bytes_used_exact
+      assert account.reconcile_storage
+      assert_equal charged - data.bytesize, account.reload.bytes_used_exact
+    end
   ensure
     tempfile&.close!
   end
@@ -524,8 +533,11 @@ class Account::ImportTest < ActiveSupport::TestCase
     users(:david).avatar.attach(source_blob)
     export = Account::Export.create!(account: Current.account, user: users(:david))
     export.build
+    exported_bytes = ActiveStorage::Blob.where(account: Current.account).where.not(id: export.file.blob_id).sum(:byte_size)
     tempfile = Tempfile.new([ "avatar-export", ".zip" ])
     export.file.open { |file| FileUtils.cp(file.path, tempfile.path) }
+    ActiveStorage::VariantRecord.where(blob_id: ActiveStorage::Blob.where(account: Current.account).select(:id)).delete_all
+    ActiveStorage::Attachment.where(account: Current.account).delete_all
     ActiveStorage::Blob.where(account: Current.account).delete_all
     Current.account.destroy!
 
@@ -536,22 +548,22 @@ class Account::ImportTest < ActiveSupport::TestCase
     assert blob.metadata.keys.none? { |key| key.start_with?("quota_") }
     reservation = Storage::UploadReservation.find_by!(blob: blob)
     assert_equal import.identity, reservation.identity
-    assert_equal data.bytesize, import.account.bytes_used_exact
+    assert_equal exported_bytes, import.account.bytes_used_exact
     assert_not Storage::UploadReservation.pending.exists?(id: reservation.id)
     assert import.account.reconcile_storage
-    assert_equal data.bytesize, import.account.bytes_used_exact
+    assert_equal exported_bytes, import.account.bytes_used_exact
 
     blob.attachments.first.destroy!
-    assert_equal data.bytesize, import.account.bytes_used_exact
+    assert_equal exported_bytes, import.account.bytes_used_exact
     assert Storage::UploadReservation.pending.exists?(id: reservation.id)
     blob.service.stubs(:delete).raises(IOError)
     assert_raises(IOError) { reservation.purge }
     assert ActiveStorage::Blob.exists?(blob.id)
-    assert_equal data.bytesize, import.account.bytes_used_exact
+    assert_equal exported_bytes, import.account.bytes_used_exact
     blob.service.unstub(:delete)
     reservation.purge
     assert_not blob.service.exist?(blob.key)
-    assert_equal 0, import.account.bytes_used_exact
+    assert_equal exported_bytes - data.bytesize, import.account.bytes_used_exact
   ensure
     tempfile&.close!
   end

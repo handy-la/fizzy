@@ -30,7 +30,14 @@ module Account::Storage
     end
 
     def untracked_direct_upload_bytes
-      ActiveStorage::Attachment.where(account_id: id).where.not(record_type: Storage::TRACKED_RECORD_TYPES)
-        .includes(:blob).find_each.sum { |attachment| attachment.blob.metadata["quota_upload"] ? attachment.blob.byte_size : 0 }
+      attachments = ActiveStorage::Attachment.where(account_id: id).where.not(record_type: Storage::TRACKED_RECORD_TYPES)
+      reserved_blob_ids = storage_upload_reservations.where(blob_id: attachments.select(:blob_id)).pluck(:blob_id).to_set
+      attachments.includes(:blob).find_each.sum do |attachment|
+        if attachment.blob.metadata["quota_upload"] || reserved_blob_ids.include?(attachment.blob_id)
+          attachment.blob.byte_size
+        else
+          0
+        end
+      end
     end
 end
