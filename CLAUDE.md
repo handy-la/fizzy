@@ -337,6 +337,12 @@ Evidencia y límites: `docs/test-audits/handy-779.md`,
 `docs/test-audits/handy-931.md`, `docs/test-audits/handy-950.md` y
 `docs/test-audits/handy-943.md`.
 
+`pending` deriva su estado de los adjuntos reales con `NOT IN`. No lo
+sustituyas por una marca «adjunta» en la fila: `detach` y `delete_all` quitan
+adjuntos sin callbacks, y una marca desfasada baja el saldo y oculta la fila a
+la limpieza. Su costo es lineal en las filas de la cuenta (unos 23 ms con
+100 000). Medición y umbral: `docs/test-audits/handy-951.md`.
+
 ## Caché offline y cambios de sesión
 
 El worker sólo guarda recursos estáticos públicos del mismo origen en
