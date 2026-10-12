@@ -70,6 +70,7 @@ class Account::DataTransfer::ActiveStorage::BlobRecordSetTest < ActiveSupport::T
         key: key,
         metadata: metadata
       }.to_json)
+      writer.add_file("storage/#{key}", "x" * byte_size, compress: false)
       writer.close
 
       tempfile.rewind

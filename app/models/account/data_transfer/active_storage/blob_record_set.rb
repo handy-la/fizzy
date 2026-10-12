@@ -23,26 +23,26 @@ class Account::DataTransfer::ActiveStorage::BlobRecordSet < Account::DataTransfe
       data = load(file_path)
       size = data["byte_size"]
       storage_file = "storage/#{data['key']}"
-      actual_size = zip.exists?(storage_file) ? zip.read(storage_file) { |stream| stream.size } : 0
-      unless data["metadata"].is_a?(Hash)
-        raise IntegrityError, "Blob metadata must be an object"
-      end
-      unless size.is_a?(Integer) && size >= 0 && size == actual_size
+      actual_size = zip.read(storage_file) { |stream| stream.size } if zip.exists?(storage_file)
+      portable_metadata(data["metadata"])
+      unless size.is_a?(Integer) && size >= 0 && (actual_size.nil? || size == actual_size)
         raise IntegrityError, "Blob size does not match its storage entry"
       end
+    rescue JSON::ParserError => error
+      raise IntegrityError, error.message
     end
 
     def import_batch(files)
       batch_data = files.map do |file|
         data = load(file)
+        has_file = zip.exists?("storage/#{data['key']}")
         data.slice(*attributes).merge(
           "account_id" => account.id,
           "metadata" => portable_metadata(data["metadata"]),
+          "byte_size" => has_file ? data["byte_size"] : 0,
+          "checksum" => has_file ? data["checksum"] : nil,
           "key" => ::ActiveStorage::Blob.generate_unique_secure_token(length: ::ActiveStorage::Blob::MINIMUM_TOKEN_LENGTH),
-          "service_name" => ::ActiveStorage::Blob.service.name,
-          "metadata" => data.fetch("metadata", {}).except("quota_upload", "quota_identity_id", "quota_expires_at").merge(
-            "quota_upload" => true, "quota_identity_id" => account.imports.first&.identity_id,
-            "quota_expires_at" => Time.current.iso8601(6))
+          "service_name" => ::ActiveStorage::Blob.service.name
         )
       end
 

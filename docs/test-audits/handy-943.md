@@ -152,3 +152,131 @@ volver a 50.000/16 MiB debe fallar. Los casos existentes de ZIP64 y límites
 artificiales no fijan esta política nueva. Se usa el lector productivo y el
 RecordingIO existente, sin seam nuevo; los límites esperados son literales,
 independientes de las constantes del código que se comprueba.
+
+## Autoría del caso de archivo ausente, antes de editar
+
+Base de esta corrección: `385b1d3023cf8121c1b97cc4eee2f85818f40f1f`.
+
+- **Contrato:** FileRecordSet sólo exporta objetos existentes. Una fila de blob
+  de carga pendiente o de archivo perdido puede aparecer en una exportación
+  legítima sin storage/key. Se conserva la fila y sus vínculos, pero se importan
+  cero bytes y ningún objeto. Dueños: BlobRecordSet y el proceso completo de
+  importación. Frontera: exportación real, ZIP, filas y servicio Disk.
+- **Regresión:** exigir una entrada de storage para todo byte_size positivo
+  rechaza una exportación emitida por el propio servidor.
+- **Cobertura:** el caso de tamaño discrepante exige una entrada existente y
+  protege la cuota. Los round-trip existentes sólo incluyen archivos subidos;
+  no prueban una carga pendiente con un adjunto. Se agrega un round-trip con
+  archivo ausente y se mantiene el rechazo de metadata discrepante con un
+  objeto presente.
+- **Seam:** ninguno. Se crea y adjunta un blob con la API productiva de Active
+  Storage, se elimina su objeto y se exporta; no se reemplaza el lector ni el importador.
+
+Antes de ajustar el ZIP de BlobRecordSetTest: el caso de conservación de
+metadata debe tener el objeto presente para conservar byte_size y checksum.
+Su fixture sólo tenía la fila JSON. Se agrega storage/key al helper, con el
+número exacto de bytes esperado; no se cambia ninguna aserción ni se retira el
+caso. El contrato y su frontera siguen siendo la lectura del ZIP y la fila
+importada. Un cambio de filename, checksum o tamaño de un objeto presente
+seguiría fallando. No hay seam nuevo. **Excepción RED de este ajuste de datos:**
+la conservación de metadata con objeto presente ya funciona en la base; la
+nueva regresión de archivo ausente se demuestra con el round-trip separado.
+
+### RED y GREEN del archivo ausente
+
+Se exportó el SHA de la primera revisión a `.context/handy-943-review-red` y
+se copió sólo import_test.rb. Mismo entorno OSS/Ruby/SQLite que antes:
+
+```bash
+mise exec -- bash -c 'cd ../.context/handy-943-review-red && bin/rails test test/models/account/import_test.rb --name "/missing_storage/"'
+```
+
+RED válido: salida 1, un caso y un error por `IntegrityError: Blob size does
+not match its storage entry` en import.check. El objeto ausente es una forma
+emitida por la exportación productiva. Las dos primeras construcciones del
+fixture fallaron antes por archivo ausente al adjuntar o por una fila de origen
+que aún existía; **no se consideran RED**. El fixture final elimina el objeto
+después de adjuntar y elimina las filas de origen antes de importar, como los
+round-trip existentes.
+
+GREEN usa el mismo comando y selector desde el checkout corregido, sin el cd:
+salida 0, un caso y siete aserciones. Conserva fila, vínculo y metadata ajena a
+cuota. El blob ausente se importa con byte_size 0 y checksum nil; no se crea un
+objeto ni se cobra espacio inexistente. Para una entrada presente se conserva
+la exigencia de igualdad de bytes, que sigue cubriendo el metadata forjado.
+SHA-256 de import_test.rb, idéntico en esta base y el arreglo:
+`13e5a1b1769dc55e68564e8da0bb13786e32a6df46d4479fc09f5201c1ff9663`.
+
+Suite completa final: salida 0, **1.950 casos, 7.907 aserciones, cero fallos,
+cero errores y seis omisiones**, mismo entorno con PARALLEL_WORKERS=4.
+RuboCop de los tres archivos Ruby de esta corrección: salida 0. Diff check:
+salida 0. Las observaciones no bloqueantes no originaron cambios en este lote;
+el único cambio de esta ronda responde al bloqueo de compatibilidad de Dédalo.
+
+Rebase final sobre `ec2d82847086b8ced1213d5715628e3ced029fc6`: había dos
+migraciones con versión 20261012120000. Se cambió sólo la versión de la nueva
+migración de admisión a 20261012182000 y los dos encabezados de schema. El
+primer intento de suite por ese choque de versiones no se registra como RED.
+La suite posterior pasó: **1.958 casos, 7.995 aserciones, cero fallos, cero
+errores y seis omisiones**, salida 0 con el mismo entorno de cuatro workers.
+
+### Evidencia de integración antes de llegar a main
+
+Base completa: `2b3572b618d4134517a738014b499d91c8e7236e`.
+Se resolvió el rebase sin retirar los controles ni las pruebas de la base.
+`Account::Import.start` llama ahora a Admission.claim, que también comprueba
+imports antiguos pending/processing cuando admite una petición HTTP. El worker
+conserva la clave y duración de Solid Queue ya publicadas. El índice de entradas
+ZIP publicado se conserva. Los límites más estrictos de esta tarjeta se mantienen.
+
+RED del presupuesto nuevo: exportación de esa base a `.context/handy-943-land-red`,
+con sólo StructureTest candidato. Con el mismo entorno limpio OSS/Ruby 3.4.8:
+
+```bash
+mise exec -- bash -c 'cd ../.context/handy-943-land-red && bin/rails test test/models/zip_file/structure_test.rb --name "/20001|4_MiB/"'
+```
+
+Salida 1: dos casos, dos aserciones, dos fallos y cero errores. La base llama
+al parser del directorio para 20.001 entradas y para el directorio mayor de
+4 MiB. No hay un error de dependencia o preparación. El mismo selector desde
+el checkout corregido da salida 0: dos casos y 12 aserciones. Huella idéntica
+RED/GREEN: `9b74317ab4ba9ae98c72ef2cb28dbdf54700082e6bbebe52cbccd21ff53ec5a8`.
+
+Lote integrado: los dos archivos HTTP de importación, los dos de reserva y
+concurrencia del modelo, ImportTest, DataImportJobTest y StructureTest. Salida 0:
+66 casos, 452 aserciones, sin fallos ni errores. La prueba HTTP concurrente
+usa un ZIP real en las dos sesiones y conserva [302, 429] y una sola cuenta.
+
+Suite completa con `PARALLEL_WORKERS=4`, mismo entorno y `mise exec -- bin/rails test`:
+**1.967 casos, 8.058 aserciones, cero fallos, cero errores y seis omisiones**,
+salida 0. RuboCop de los siete archivos Ruby de integración: salida 0, sin
+infracciones. Diff check: salida 0. No cambia la interfaz ni hay pasos manuales.
+
+## Integración con reservas conservadas al adjuntar
+
+Antes de editar pruebas, sobre origin/main `0de30b69d7035f090ab1937f663b30f5daf7a7a8`:
+
+- **Contrato:** la importación conserva sólo metadata portable, también cuando
+  llega como cadena JSON. La autoridad de cuota procede de filas creadas por
+  el servidor. Los blobs importados, adjuntos o sin adjunto, tienen reserva
+  local. Sólo las reservas sin adjuntos suman bytes. Los avatares importados
+  siguen cobrando sus bytes al adjuntar, conciliar y quitar su último vínculo;
+  se libera el cargo después del borrado del objeto. Dueños: Import,
+  Account::Storage y AttachmentTracking. Fronteras: ZIP real, User.avatar,
+  ledger, reservas SQL y servicio Disk.
+- **Regresión:** reponer quota_* desde metadata viola el saneado de la nueva
+  base; contar reservas adjuntas duplica la cuota; no crear filas locales para
+  un avatar permite liberar su cargo antes del borrado o perderlo al conciliar.
+- **Cobertura:** se conservan los dos casos de metadata portable de la base.
+  El round-trip de archivo ausente conserva ahora un atributo permitido,
+  width, en vez de custom. El caso de blobs sin adjunto comprueba reservas
+  locales y ausencia de quota_*; se agrega el ciclo de avatar porque tiene
+  una frontera distinta a un blob sin adjunto o una imagen de tarjeta.
+- **Seam:** ninguno. Se usan exportación, importación, avatar, ledger y reserva
+  productivos. El fallo de borrado se inyecta sólo en el servicio. La prueba
+  no reemplaza callbacks, locks ni el cálculo de cuota.
+
+No se cambia el contrato de cuota ni los límites aprobados. Los ajustes de
+fixtures existentes conservan sus aserciones de conservación y cargo, usando
+la nueva fuente de autoridad del servidor. Las dos observaciones informativas
+siguen en sus tarjetas de seguimiento; no hay hallazgos bloqueantes pendientes.

@@ -462,7 +462,7 @@ class Account::ImportTest < ActiveSupport::TestCase
     assert_equal 12, import.account.bytes_used_exact
     assert_equal 2, Storage::UploadReservation.where(account: import.account).count
     blobs = ActiveStorage::Blob.where(account: import.account).to_a
-    assert blobs.all? { |blob| blob.metadata["quota_upload"] == true }
+    assert blobs.all? { |blob| blob.metadata.keys.none? { |key| key.start_with?("quota_") } }
     Storage::UploadReservation.cleanup
     assert blobs.all? { |blob| blob.service.exist?(blob.key) }
   ensure
@@ -488,6 +488,72 @@ class Account::ImportTest < ActiveSupport::TestCase
   ensure
     tampered&.close!
     export&.close!
+  end
+
+  test "missing storage file in a legitimate export preserves its blob and attachment without charging bytes" do
+    blob = ActiveStorage::Blob.create_and_upload!(io: StringIO.new("pending"), filename: "pending.txt",
+      content_type: "text/plain", metadata: { "width" => 90 })
+    cards(:logo).image.attach(blob)
+    blob.delete
+    export = Account::Export.create!(account: Current.account, user: users(:david))
+    export.build
+    tempfile = Tempfile.new([ "pending-export", ".zip" ])
+    export.file.open { |file| FileUtils.cp(file.path, tempfile.path) }
+    ActiveStorage::Blob.where(account: Current.account).delete_all
+    Current.account.destroy!
+
+    import = import_from(tempfile.path)
+    import.check
+    import.process
+    assert import.reload.completed?
+    imported_blob = ActiveStorage::Blob.find_by!(account: import.account, filename: "pending.txt")
+    assert_equal 0, imported_blob.byte_size
+    assert_nil imported_blob.checksum
+    assert_equal 90, imported_blob.metadata["width"]
+    assert_equal 1, imported_blob.attachments.count
+    assert_not imported_blob.service.exist?(imported_blob.key)
+    assert_equal 0, import.account.bytes_used_exact
+  ensure
+    tempfile&.close!
+  end
+
+  test "imported avatar uses a server reservation through attachment reconciliation and deletion" do
+    data = file_fixture("avatar.png").binread
+    source_blob = ActiveStorage::Blob.create_and_upload!(io: StringIO.new(data), filename: "imported-avatar.png",
+      content_type: "image/png")
+    users(:david).avatar.attach(source_blob)
+    export = Account::Export.create!(account: Current.account, user: users(:david))
+    export.build
+    tempfile = Tempfile.new([ "avatar-export", ".zip" ])
+    export.file.open { |file| FileUtils.cp(file.path, tempfile.path) }
+    ActiveStorage::Blob.where(account: Current.account).delete_all
+    Current.account.destroy!
+
+    import = import_from(tempfile.path)
+    import.check
+    import.process
+    blob = ActiveStorage::Blob.find_by!(account: import.account, filename: "imported-avatar.png")
+    assert blob.metadata.keys.none? { |key| key.start_with?("quota_") }
+    reservation = Storage::UploadReservation.find_by!(blob: blob)
+    assert_equal import.identity, reservation.identity
+    assert_equal data.bytesize, import.account.bytes_used_exact
+    assert_not Storage::UploadReservation.pending.exists?(id: reservation.id)
+    assert import.account.reconcile_storage
+    assert_equal data.bytesize, import.account.bytes_used_exact
+
+    blob.attachments.first.destroy!
+    assert_equal data.bytesize, import.account.bytes_used_exact
+    assert Storage::UploadReservation.pending.exists?(id: reservation.id)
+    blob.service.stubs(:delete).raises(IOError)
+    assert_raises(IOError) { reservation.purge }
+    assert ActiveStorage::Blob.exists?(blob.id)
+    assert_equal data.bytesize, import.account.bytes_used_exact
+    blob.service.unstub(:delete)
+    reservation.purge
+    assert_not blob.service.exist?(blob.key)
+    assert_equal 0, import.account.bytes_used_exact
+  ensure
+    tempfile&.close!
   end
 
   private

@@ -34,6 +34,8 @@ class Account::Import < ApplicationRecord
   scope :expired, -> { where(completed_at: ...24.hours.ago).or(where(status: :failed, created_at: ...7.days.ago)) }
 
   def self.start(identity:, file:)
+    import = nil
+    started = false
     admission = Admission.claim(identity: identity)
     preflight(file)
     signup = Signup.new(identity: identity, full_name: "Import", skip_account_seeding: true)
