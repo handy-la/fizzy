@@ -275,7 +275,11 @@ class Account::Import < ApplicationRecord
         # before reconciliation; pending excludes attached blobs from the charge.
         internal_blob_ids = ActiveStorage::Attachment.where(account: account,
           record_type: Account::DataTransfer::RecordSet::INTERNAL_RECORD_TYPES).select(:blob_id)
-        ActiveStorage::Blob.where(account: account).where.not(id: internal_blob_ids).find_each do |blob|
+        original_blob_ids = ActiveStorage::Attachment.where(account: account)
+          .where.not(record_type: Storage::DERIVED_RECORD_TYPES).select(:blob_id)
+        derived_blob_ids = ActiveStorage::Attachment.where(account: account, record_type: Storage::DERIVED_RECORD_TYPES)
+          .where.not(blob_id: original_blob_ids).select(:blob_id)
+        ActiveStorage::Blob.where(account: account).where.not(id: internal_blob_ids).where.not(id: derived_blob_ids).find_each do |blob|
           Storage::UploadReservation.create_or_find_by!(blob: blob) do |reservation|
             reservation.account = account
             reservation.identity = identity

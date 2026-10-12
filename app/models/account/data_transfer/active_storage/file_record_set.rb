@@ -46,7 +46,7 @@ class Account::DataTransfer::ActiveStorage::FileRecordSet < Account::DataTransfe
         raise IntegrityError, "Blob #{blob_id} not found for storage key #{old_key}" unless blob
 
         zip.read(file) do |stream|
-          blob.upload(stream)
+          blob.upload_without_unfurling(stream)
         end
       end
     end

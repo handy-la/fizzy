@@ -22,6 +22,8 @@ module Storage::AttachmentTracking
     end
 
     def record_storage_attach
+      return if derived_storage_attachment?
+
       tracked = storage_tracked_record
       return unless tracked || storage_reserved_blob?
 
@@ -56,6 +58,7 @@ module Storage::AttachmentTracking
     # after_destroy_commit runs. The records may be destroyed but .id still works.
     def snapshot_storage_context
       return unless blob
+      return if derived_storage_attachment?
 
       tracked = storage_tracked_record
       return unless tracked || storage_reserved_blob?
@@ -69,6 +72,10 @@ module Storage::AttachmentTracking
 
     def storage_reserved_blob?
       blob.metadata["quota_upload"] || Storage::UploadReservation.exists?(account_id: blob.account_id, blob_id: blob_id)
+    end
+
+    def derived_storage_attachment?
+      record_type.in?(Storage::DERIVED_RECORD_TYPES)
     end
 
     def storage_tracked_record

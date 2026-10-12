@@ -146,6 +146,7 @@ ActiveRecord::Schema[8.2].define(version: 2026_10_12_212000) do
     t.string "service_name", null: false
     t.index ["account_id"], name: "index_active_storage_blobs_on_account_id"
     t.index ["key"], name: "index_active_storage_blobs_on_key", unique: true
+    t.check_constraint "byte_size >= 0", name: "active_storage_blobs_nonnegative_byte_size"
   end
 
   create_table "active_storage_variant_records", id: :uuid, charset: "utf8mb4", collation: "utf8mb4_0900_ai_ci", force: :cascade do |t|

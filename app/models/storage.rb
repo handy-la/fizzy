@@ -12,6 +12,9 @@ module Storage
   # no-reuse validation won't protect it.
   TRACKED_RECORD_TYPES = %w[Card ActionText::RichText].freeze
 
+  # Variants and previews are generated from originals, not customer uploads.
+  DERIVED_RECORD_TYPES = %w[ActiveStorage::VariantRecord ActiveStorage::Blob].freeze
+
   # Account ID for template/demo blobs that can be reused cross-tenant.
   # Set to nil to disable the whitelist (no exemptions).
   TEMPLATE_ACCOUNT_ID = nil

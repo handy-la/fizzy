@@ -125,8 +125,8 @@ class Account::DataTransfer::ActiveStorage::FileRecordSetTest < ActiveSupport::T
       writer.add_file("data/active_storage_blobs/#{blob_id}.json", {
         id: blob_id,
         account_id: ActiveRecord::Type::Uuid.generate,
-        byte_size: 10,
-        checksum: "",
+        byte_size: "file data".bytesize,
+        checksum: Digest::MD5.base64digest("file data"),
         content_type: "text/plain",
         created_at: Time.current.iso8601,
         filename: "test.txt",
@@ -149,8 +149,8 @@ class Account::DataTransfer::ActiveStorage::FileRecordSetTest < ActiveSupport::T
       writer.add_file("data/active_storage_blobs/#{blob_id_1}.json", {
         id: blob_id_1,
         account_id: ActiveRecord::Type::Uuid.generate,
-        byte_size: 10,
-        checksum: "",
+        byte_size: "file data".bytesize,
+        checksum: Digest::MD5.base64digest("file data"),
         content_type: "text/plain",
         created_at: Time.current.iso8601,
         filename: "file1.txt",
@@ -160,8 +160,8 @@ class Account::DataTransfer::ActiveStorage::FileRecordSetTest < ActiveSupport::T
       writer.add_file("data/active_storage_blobs/#{blob_id_2}.json", {
         id: blob_id_2,
         account_id: ActiveRecord::Type::Uuid.generate,
-        byte_size: 10,
-        checksum: "",
+        byte_size: "file data".bytesize,
+        checksum: Digest::MD5.base64digest("file data"),
         content_type: "text/plain",
         created_at: Time.current.iso8601,
         filename: "file2.txt",

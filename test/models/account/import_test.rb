@@ -254,11 +254,13 @@ class Account::ImportTest < ActiveSupport::TestCase
     exporter = users(:david)
     identity = exporter.identity
 
-    ActiveStorage::Blob.create_and_upload!(
+    source_blob = ActiveStorage::Blob.create_and_upload!(
       io: StringIO.new("test image data"),
       filename: "logo.png",
       content_type: "image/png"
     )
+
+    source_account.cards.first.image.attach(source_blob)
 
     source_blob_count = ActiveStorage::Blob.where(account: source_account).count
     source_blob_keys = ActiveStorage::Blob.where(account: source_account).pluck(:key)
@@ -290,6 +292,19 @@ class Account::ImportTest < ActiveSupport::TestCase
     assert_not_nil imported_blob
     assert_not_includes source_blob_keys, imported_blob.key
     assert_equal "test image data", imported_blob.download
+    assert_equal "test image data".bytesize, imported_blob.byte_size
+    assert_equal Digest::MD5.base64digest("test image data"), imported_blob.checksum
+    expected_bytes = ActiveStorage::Attachment.where(account: target_account).where.not(record_type: "Account::Import").joins(:blob).sum("active_storage_blobs.byte_size")
+    assert_operator expected_bytes, :>=, "test image data".bytesize
+    assert_equal expected_bytes, target_account.reload.bytes_used_exact
+
+    ActiveStorage::Attachment.find_by!(blob: imported_blob).destroy!
+    assert_equal expected_bytes, target_account.reload.bytes_used_exact
+    assert Storage::UploadReservation.exists?(blob: imported_blob)
+    travel 3.hours do
+      Storage::UploadReservation.cleanup
+      assert_equal expected_bytes - imported_blob.byte_size, target_account.reload.bytes_used_exact
+    end
   ensure
     export_tempfile&.close
     export_tempfile&.unlink
@@ -449,7 +464,7 @@ class Account::ImportTest < ActiveSupport::TestCase
 
     assert_match(/#{Regexp.escape(forged_entry)} expands past the 1 bytes it declares/, error.message)
     assert import.reload.failed_due_to_invalid_export?
-    assert_operator uploaded_keys.size, :>, 0
+    assert_empty uploaded_keys
     uploaded_keys.each { |key| assert_not ActiveStorage::Blob.service.exist?(key), "partial blob file #{key} was left on storage" }
     assert_empty ActiveStorage::Blob.where(account: import.account)
     assert_empty Card.where(account: import.account)
@@ -640,6 +655,142 @@ class Account::ImportTest < ActiveSupport::TestCase
     tempfile&.close!
   end
 
+  test "process rejects forged blob sizes and checksums and discards partial records and objects" do
+    [ -1, 1, 999, "bad-checksum" ].each do |forged_value|
+      export = export_with_blobs
+      invalid = rewrite_zip(export.path) do |name, content, storage_entries|
+        if name.start_with?("data/active_storage_blobs/")
+          data = JSON.parse(content)
+          if data["key"] == storage_entries.last.delete_prefix("storage/")
+            data[forged_value.is_a?(String) ? "checksum" : "byte_size"] = forged_value
+            content = data.to_json
+          end
+        end
+        [ content, !name.start_with?("storage/") ]
+      end
+      import = import_from(invalid.path)
+      uploaded_keys = []
+      subscriber = ActiveSupport::Notifications.subscribe("service_upload.active_storage") { |*, payload| uploaded_keys << payload[:key] }
+
+      assert_raises(Account::DataTransfer::RecordSet::IntegrityError) { import.process }
+      assert import.reload.failed_due_to_invalid_export?
+      assert_empty ActiveStorage::Blob.where(account: import.account)
+      assert_empty Card.where(account: import.account)
+      assert_empty Board.where(account: import.account)
+      assert_empty ActiveStorage::Attachment.where(account: import.account).where.not(record_type: "Account::Import")
+      uploaded_keys.each { |key| assert_not ActiveStorage::Blob.service.exist?(key) }
+      assert_empty uploaded_keys
+    ensure
+      ActiveSupport::Notifications.unsubscribe(subscriber) if subscriber
+      export&.close!
+      invalid&.close!
+    end
+  end
+
+  test "process purges uploaded objects when a later storage file has no metadata" do
+    export = export_with_blobs
+    invalid = Tempfile.new([ "orphan_export", ".zip" ])
+    invalid.binmode
+    writer = ZipFile::Writer.new(invalid)
+    File.open(export.path, "rb") do |file|
+      reader = ZipFile::Reader.new(file)
+      reader.glob("*").each do |entry|
+        writer.add_file(entry, reader.read(entry), compress: false) unless entry.end_with?("/")
+      end
+    end
+    writer.add_file("storage/zzzz-orphan", "orphan", compress: false)
+    writer.close
+    invalid.rewind
+    import = import_from(invalid.path)
+    uploaded_keys = []
+    subscriber = ActiveSupport::Notifications.subscribe("service_upload.active_storage") { |*, payload| uploaded_keys << payload[:key] }
+
+    assert_raises(Account::DataTransfer::RecordSet::IntegrityError) { import.process }
+    assert import.reload.failed_due_to_invalid_export?
+    assert_operator uploaded_keys.size, :>, 0
+    uploaded_keys.each { |key| assert_not ActiveStorage::Blob.service.exist?(key), "uploaded object was left behind" }
+    assert_empty ActiveStorage::Blob.where(account: import.account)
+    assert_empty ActiveStorage::Attachment.where(account: import.account).where.not(record_type: "Account::Import")
+    assert_empty Card.where(account: import.account)
+  ensure
+    ActiveSupport::Notifications.unsubscribe(subscriber) if subscriber
+    export&.close!
+    invalid&.close!
+  end
+
+  test "process accepts an export containing an abandoned direct upload without an object" do
+    export = export_with_blobs(pending_upload: true)
+    import = import_from(export.path)
+
+    import.check
+    import.process
+
+    assert import.reload.completed?
+    assert_not ActiveStorage::Blob.exists?(account: import.account, filename: "abandoned.txt")
+    assert_equal 2, ActiveStorage::Blob.where(account: import.account).count
+  ensure
+    export&.close!
+  end
+
+  test "export and import charge originals and exclude variants and previews through detach" do
+    source_account = accounts("37s")
+    exporter = users(:david)
+    identity = exporter.identity
+    image_path = file_fixture("avatar.png")
+    original_bytes = File.size(image_path)
+    avatar_blob = nil
+
+    Storage::UploadReservation.reserve(account: source_account, identity: identity,
+      attributes: { filename: "avatar-original.png", byte_size: original_bytes, checksum: Digest::MD5.file(image_path).base64digest, content_type: "image/png" }) do |blob|
+      File.open(image_path, "rb") { |file| blob.upload_without_unfurling(file) }
+      avatar_blob = blob
+    end
+    exporter.avatar.attach(avatar_blob)
+    variant = avatar_blob.variant(resize_to_limit: [ 32, 32 ]).processed
+    card_blob = nil
+    File.open(image_path, "rb") do |file|
+      card_blob = ActiveStorage::Blob.create_and_upload!(io: file, filename: "card-original.png", content_type: "image/png")
+    end
+    source_account.cards.first.image.attach(card_blob)
+    card_blob.preview_image.attach(io: StringIO.new("preview bytes"), filename: "preview.jpg", content_type: "image/jpeg")
+
+    expected_bytes = original_bytes * 2
+    source_account.boards.each(&:reconcile_storage)
+    source_account.reconcile_storage
+    assert_equal expected_bytes, source_account.reload.bytes_used_exact
+    assert variant.image.attached?
+
+    export = Account::Export.create!(account: source_account, user: exporter)
+    export.build
+    tempfile = Tempfile.new([ "derivatives-export", ".zip" ])
+    export.file.open { |file| FileUtils.cp(file.path, tempfile.path) }
+    ActiveStorage::VariantRecord.where(account: source_account).delete_all
+    ActiveStorage::Blob.where(account: source_account).delete_all
+    source_account.destroy!
+    ActiveStorage::Attachment.where(account: source_account).delete_all
+    import = import_from(tempfile.path)
+
+    import.check
+    import.process
+
+    assert import.reload.completed?
+    assert_equal expected_bytes, import.account.reload.bytes_used_exact
+    derivatives = ActiveStorage::Attachment.where(account: import.account, record_type: [ "ActiveStorage::VariantRecord", "ActiveStorage::Blob" ])
+    assert_operator derivatives.count, :>=, 2
+    derivatives.each(&:destroy!)
+    assert_equal expected_bytes, import.account.reload.bytes_used_exact
+
+    imported_avatar = ActiveStorage::Attachment.find_by!(account: import.account, record_type: "User", name: "avatar")
+    imported_avatar.destroy!
+    assert_equal expected_bytes, import.account.reload.bytes_used_exact
+    travel 3.hours do
+      Storage::UploadReservation.cleanup
+      assert_equal original_bytes, import.account.reload.bytes_used_exact
+    end
+  ensure
+    tempfile&.close!
+  end
+
   private
     def with_oversized_tag(export_tempfile)
       bomb = Tempfile.new([ "oversized_export", ".zip" ])
@@ -694,10 +845,15 @@ class Account::ImportTest < ActiveSupport::TestCase
       tempfile
     end
 
-    def export_with_blobs
+    def export_with_blobs(pending_upload: false)
       source_account = accounts("37s")
       2.times do |index|
         ActiveStorage::Blob.create_and_upload!(io: StringIO.new("blob #{index}"), filename: "file#{index}.txt", content_type: "text/plain")
+      end
+
+      if pending_upload
+        Storage::UploadReservation.reserve(account: source_account, identity: users(:david).identity,
+          attributes: { filename: "abandoned.txt", byte_size: 7, checksum: Digest::MD5.base64digest("pending"), content_type: "text/plain" }) { |blob| }
       end
 
       export = Account::Export.create!(account: source_account, user: users(:david))

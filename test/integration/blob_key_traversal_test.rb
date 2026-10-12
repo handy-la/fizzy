@@ -29,14 +29,15 @@ class Account::DataTransfer::ActiveStorage::BlobKeyTraversalTest < ActionDispatc
       writer.add_file("data/active_storage_blobs/#{id}.json", {
         id: id,
         account_id: ActiveRecord::Type::Uuid.generate,
-        byte_size: 32,
-        checksum: "",
+        byte_size: "zip content".bytesize,
+        checksum: Digest::MD5.base64digest("zip content"),
         content_type: "text/plain",
         created_at: Time.current.iso8601,
         filename: "traversal.txt",
         key: key,
         metadata: {}
       }.to_json)
+      writer.add_file("storage/#{key}", "zip content", compress: false)
       writer.close
 
       tempfile.rewind

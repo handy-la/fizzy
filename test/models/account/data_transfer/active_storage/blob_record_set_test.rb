@@ -13,7 +13,7 @@ class Account::DataTransfer::ActiveStorage::BlobRecordSetTest < ActiveSupport::T
     assert_equal 28, blob.key.length
   end
 
-  test "import preserves blob metadata" do
+  test "import persists measured size and checksum without imported quota authority" do
     blob_id = ActiveRecord::Type::Uuid.generate
 
     zip = build_zip_with_blob(
@@ -21,16 +21,72 @@ class Account::DataTransfer::ActiveStorage::BlobRecordSetTest < ActiveSupport::T
       key: "some-key",
       filename: "report.pdf",
       content_type: "application/pdf",
-      byte_size: 12345,
-      checksum: "abc123checksum"
+      file_content: "valid file content",
+      metadata: { analyzed: true, width: 999, quota_upload: false }
     )
     Account::DataTransfer::ActiveStorage::BlobRecordSet.new(Current.account).import(from: zip)
 
     blob = ActiveStorage::Blob.find(blob_id)
     assert_equal "report.pdf", blob.filename.to_s
     assert_equal "application/pdf", blob.content_type
-    assert_equal 12345, blob.byte_size
-    assert_equal "abc123checksum", blob.checksum
+    assert_equal "valid file content".bytesize, blob.byte_size
+    assert_equal Digest::MD5.base64digest("valid file content"), blob.checksum
+    assert_equal({ "analyzed" => true, "width" => 999 }, blob.metadata)
+  end
+
+  test "import rejects negative and non integer sizes before upload" do
+    [ -1, "1", 1.5, nil ].each do |size|
+      blob_id = ActiveRecord::Type::Uuid.generate
+      zip = build_zip_with_blob(id: blob_id, key: "invalid-size", byte_size: size)
+      ActiveStorage::Blob.service.expects(:upload).never
+
+      assert_raises(Account::DataTransfer::RecordSet::IntegrityError) do
+        Account::DataTransfer::ActiveStorage::BlobRecordSet.new(Current.account).import(from: zip)
+      end
+      assert_not ActiveStorage::Blob.exists?(blob_id)
+    end
+  end
+
+  test "check rejects a negative size before processing" do
+    zip = build_zip_with_blob(id: ActiveRecord::Type::Uuid.generate, key: "negative", byte_size: -1)
+
+    assert_raises(Account::DataTransfer::RecordSet::IntegrityError) do
+      Account::DataTransfer::ActiveStorage::BlobRecordSet.new(Current.account).check(from: zip)
+    end
+  end
+
+  test "import rejects sizes smaller or larger than the body and checksum mismatches" do
+    [ { byte_size: 1 }, { byte_size: 100 }, { checksum: Digest::MD5.base64digest("different") } ].each do |override|
+      blob_id = ActiveRecord::Type::Uuid.generate
+      zip = build_zip_with_blob(id: blob_id, key: "mismatched", **override)
+
+      assert_raises(Account::DataTransfer::RecordSet::IntegrityError) do
+        Account::DataTransfer::ActiveStorage::BlobRecordSet.new(Current.account).import(from: zip)
+      end
+      assert_not ActiveStorage::Blob.exists?(blob_id)
+    end
+  end
+
+  test "import rejects a referenced blob with a missing body" do
+    zip = build_zip_with_blob(id: ActiveRecord::Type::Uuid.generate, key: "missing", include_file: false, referenced: true)
+
+    assert_raises(Account::DataTransfer::RecordSet::IntegrityError) do
+      Account::DataTransfer::ActiveStorage::BlobRecordSet.new(Current.account).import(from: zip)
+    end
+  end
+
+  test "import accepts an empty file" do
+    blob_id = ActiveRecord::Type::Uuid.generate
+    zip = build_zip_with_blob(id: blob_id, key: "empty", file_content: "")
+    Account::DataTransfer::ActiveStorage::BlobRecordSet.new(Current.account).import(from: zip)
+
+    assert_equal 0, ActiveStorage::Blob.find(blob_id).byte_size
+    assert_equal Digest::MD5.base64digest(""), ActiveStorage::Blob.find(blob_id).checksum
+  end
+
+  test "database rejects a negative blob size" do
+    blob = ActiveStorage::Blob.create_and_upload!(io: StringIO.new("valid"), filename: "valid.txt")
+    assert_raises(ActiveRecord::StatementInvalid) { blob.update_column(:byte_size, -1) }
   end
 
   [ false, true ].each do |serialized|
@@ -54,7 +110,7 @@ class Account::DataTransfer::ActiveStorage::BlobRecordSetTest < ActiveSupport::T
   end
 
   private
-    def build_zip_with_blob(id:, key:, filename: "test.txt", content_type: "text/plain", byte_size: 32, checksum: "", metadata: {})
+    def build_zip_with_blob(id:, key:, filename: "test.txt", content_type: "text/plain", file_content: "hello world", byte_size: file_content.bytesize, checksum: Digest::MD5.base64digest(file_content), metadata: {}, include_file: true, referenced: false)
       tempfile = Tempfile.new([ "test_export", ".zip" ])
       tempfile.binmode
 
@@ -70,7 +126,10 @@ class Account::DataTransfer::ActiveStorage::BlobRecordSetTest < ActiveSupport::T
         key: key,
         metadata: metadata
       }.to_json)
-      writer.add_file("storage/#{key}", "x" * byte_size, compress: false)
+      if referenced
+        writer.add_file("data/active_storage_attachments/missing.json", { blob_id: id }.to_json)
+      end
+      writer.add_file("storage/#{key}", file_content, compress: false) if include_file
       writer.close
 
       tempfile.rewind

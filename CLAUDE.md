@@ -29,6 +29,11 @@ sandboxes: a Ruby shim resolves configuration from the sandbox's directory,
 which can change the selected Ruby or fail its trust check. Evidence and commands:
 `docs/test-audits/handy-610.md`.
 
+Al recargar SQLite de prueba, `db:schema:load` sobre una base existente puede
+fallar con `search_records_fts already exists`. Reconstruye las bases de prueba
+con `RAILS_ENV=test bin/rails db:drop db:create db:schema:load`, bajo el Ruby
+seleccionado por mise. Evidencia: `docs/test-audits/handy-933.md`.
+
 ## SaaS mode
 
 For local agent work, `tmp/saas.txt` is the checkout-level SaaS switch used by `bin/setup`. When present, read `saas/AGENTS.md` before continuing. Otherwise, do not apply its instructions.
@@ -173,6 +178,17 @@ el controlador debe usar esa operación antes de crear cuenta, blob o trabajo.
 reintentos y trabajos admitidos antes de esta política.
 Una consulta por cuenta no protege una identidad que crea otra cuenta.
 Evidencia y presupuesto medido: `docs/test-audits/handy-936.md`.
+
+Los blobs de importación se miden en `BlobRecordSet` mediante lecturas acotadas.
+Tamaño y checksum deben coincidir con el manifiesto; se guardan los valores
+medidos antes de cargar archivos o crear adjuntos. `Blob#upload` no guarda
+atributos de un blob ya insertado: usa `upload_without_unfurling` con el
+checksum medido. La metadata portable sólo conserva datos de presentación;
+los campos quota_* no se importan. Las reservas de `mark_completed` usan los
+valores medidos y excluyen los blobs que sólo pertenecen a derivados.
+La cuota excluye `Storage::DERIVED_RECORD_TYPES` en reconciliación y callbacks.
+El purge de `mark_as_failed` elimina objetos antes de borrar filas o liberar
+reservas. Evidencia y límites: `docs/test-audits/handy-933.md`.
 
 ## Medios externos y saneado de Action Text
 
