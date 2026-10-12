@@ -116,6 +116,95 @@ HTTP y los 304 existentes. El comando enfocado completo se repitió sobre ese
 ajuste: salida 0, 7 casos, 41 aserciones, sin fallos ni errores. Log:
 `.context/handy-927-after-review.log`.
 
+## Integración con Handy 925: autoría antes de editar las pruebas
+
+Base nueva: `ec2d82847086b8ced1213d5715628e3ced029fc6`. La política aprobada
+en Handy 927 elimina el almacenamiento de HTML autenticado. Se conservan los
+controles HTTP y de credenciales de Handy 925; su caché positiva de documentos
+deja de ser un contrato del producto con esta integración.
+
+- **Contrato:** una tarjeta o tablero nunca entra en Cache Storage ni se
+  recupera sin red después de una revocación. Las cabeceras de credenciales
+  tampoco se guardan con una solicitud de recurso estático. El test de metadata
+  protege la clave URL-only con una cabecera X-Api-Key, aunque los guards de
+  Authorization y CSRF sigan activos. Es una solicitud real de fetch con una
+  cabecera permitida: la seguridad no debe depender del nombre de cada llave.
+  Los tests de 925 miraban URLs y cuerpos, no los headers del request guardado.
+  Un primer probe de referrer pasó también en la base y no es RED. No se usa
+  como evidencia de un fallo de privacidad ni se atribuye su resultado al
+  comportamiento de las cabeceras. La migración
+  elimina páginas de `fizzy-pages-v2-*` y vacía el registro IndexedDB aunque
+  otra pestaña tenga una conexión abierta. Dueños: worker y limpieza de página.
+  Frontera: Chromium, Cache Storage, IndexedDB y CDP reales.
+- **Regresión:** conservar el fallback de Handy 925 permite leer un tablero
+  después de revocar su sesión y desconectar el worker. Recuperar la versión
+  anterior de Handy 927 sin el guard de credenciales puede guardar cabeceras
+  Authorization del request de un asset. Omitir la migración conserva las
+  páginas de v2; usar deleteDatabase en vez de la transacción conserva URLs
+  privadas mientras haya una conexión abierta.
+- **Cobertura:** se conservan los casos de credenciales, exports, JSON, blobs,
+  logout nativo/JSON, transferencia, passkey, escrituras tardías y migración de
+  `test/system/offline_cache_test.rb` de Handy 925. Se cambia su comprobación
+  positiva de cachear tableros por ausencia de caché y fallo de red tras
+  revocación. El caso de dos cuentas comprueba ausencia de cachés en ambas.
+  Las pruebas de Handy 927 se conservan como `PrivateOfflineCacheTest` en
+  `test/system/private_offline_cache_test.rb`: su tarjeta original puede tener
+  no-store por los controles HTTP de 925; por eso hace falta el caso de tablero.
+- **Seam:** no se agrega una API productiva. Se usan los helpers de navegador y
+  el control del fetch del worker ya presente en las pruebas de Handy 925.
+
+### Cambio del contrato positivo de caché de Handy 925
+
+Historia: commit `ec2d82847086b8ced1213d5715628e3ced029fc6`,
+`docs/test-audits/handy-925.md`. Los casos positivos demostraban recuperación
+offline de HTML autorizado y separación por sesión/cuenta. Esa funcionalidad
+se retira por la política aprobada de Handy 927. No se retiran los negativos
+de seguridad ni el acceso HTTP: el servidor conserva sus protecciones. El
+riesgo perdido es detectar fallos de una función que deja de existir; las
+pruebas restantes exigen la propiedad más fuerte de no guardar HTML privado.
+Los helpers que comprobaban presencia se cambian por ausencia y conservan
+sus consumidores de test; no se retira un seam productivo.
+
+### Evidencia de la integración
+
+Con el prefijo Ruby/SQLite descrito arriba, desde `fizzy-custom/`:
+
+- Antes de cambiar el worker de `ec2d82847086b8ced1213d5715628e3ced029fc6`,
+  `bin/rails test test/system/offline_cache_test.rb -n /revoked/` dio salida 1:
+  1 caso, 9 aserciones, 1 fallo, sin errores. Se esperaba fallo de red (false)
+  tras destruir la sesión y desconectar ambos targets; se recibió HTTP 200 del
+  tablero cacheado (true). El worker era idéntico al de la base nueva; el replay
+  de los commits propios sólo había agregado documentación y limpieza de
+  formularios. Log: `.context/handy-927-rebase-red.log`.
+- Se exportó la versión aprobada anterior `a6a497cea` con `git archive` a
+  `.context/handy-927-approved-base`, y se copió el test nuevo de credenciales.
+  `mise exec -- bash -c 'cd ../.context/handy-927-approved-base && bin/rails test test/system/private_offline_cache_test.rb -n /static_requests/'`
+  dio salida 1: 1 caso, 3 aserciones, 1 fallo. La cabecera Authorization del
+  asset se encontraba en las claves de Cache Storage. Es RED de la fusión
+  ingenua con el código aprobado anterior; el guard de 925 se conserva.
+  Log: `.context/handy-927-asset-red.log`.
+- Con el ajuste, `bin/rails test test/controllers/pwa_controller_test.rb test/system/offline_cache_test.rb test/system/private_offline_cache_test.rb`
+  dio salida 0: 18 casos, 116 aserciones, sin fallos ni errores. Después se
+  cambió el namespace público a v3 para descartar también requests antiguos
+  con cabeceras, sin reutilizar el asset cache v2. Las claves nuevas sólo
+  contienen URL y se excluyen Authorization y X-CSRF-Token.
+- La suite general `PARALLEL_WORKERS=4 … bin/rails test` dio salida 0:
+  1.941 casos, 7.847 aserciones, sin fallos ni errores, 6 omisiones.
+  Log: `.context/handy-927-integrated-suite.log`.
+- En una exportación aislada de la base nueva, con la prueba candidata:
+  `mise exec -- bash -c 'cd ../.context/handy-927-incoming-base && bin/rails test test/system/private_offline_cache_test.rb -n /request_metadata/'`
+  dio salida 1: 1 caso, 3 aserciones, 1 fallo. X-Api-Key quedaba en las claves
+  de assets aunque los guards de Authorization y CSRF estaban activos.
+  Log: `.context/handy-927-metadata-red.log`.
+- La suite completa de interfaz después de cambiar el namespace a v3 pasó:
+  salida 0, 60 casos, 433 aserciones. Después se añadió el caso de metadata;
+  el archivo final `bin/rails test test/system/private_offline_cache_test.rb`
+  pasó con 7 casos, 40 aserciones. Logs: `.context/handy-927-integrated-system.log`
+  y `.context/handy-927-final-private-tests.log`.
+- Rubocop sobre el controlador y ambos archivos de pruebas: salida 0, sin
+  infracciones. No se modificó la lógica HTTP ni la redacción de credenciales
+  del servidor heredadas de Handy 925.
+
 ## Límites
 
 - La revocación se simula borrando las sesiones en el servidor, antes de que
@@ -128,6 +217,6 @@ ajuste: salida 0, 7 casos, 41 aserciones, sin fallos ni errores. Log:
 - La actualización requiere red. Un navegador que todavía usa la versión
   antigua y permanece desconectado no puede recibir el arreglo.
 - No se prueba la eliminación retrospectiva de la caché HTTP ni el historial
-  de Turbo. El worker no intercepta las solicitudes privadas: conserva la
-  política HTTP del servidor y no escribe Cache Storage. No se agrega
+  de Turbo. El worker envía las solicitudes privadas a la red, conserva la
+  política HTTP del servidor y no escribe sus respuestas en Cache Storage. No se agrega
   almacenamiento autenticado, cifrado ni por cuenta.

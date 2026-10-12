@@ -263,20 +263,6 @@ por cuenta antes del DNS y reparte workers por turnos. Conserva el límite de
 lectura para filas antiguas; `find_each` omite el orden de esa selección.
 Política de descarte y evidencia: `docs/test-audits/handy-940.md`.
 
-## Caché offline y pérdida de sesión
-
-El worker sólo guarda recursos estáticos públicos del mismo origen en
-`fizzy-static-v1`. Nunca agregues documentos, respuestas de API ni adjuntos:
-no hay almacenamiento offline protegido por usuario. El worker debe servirse
-sin sesión para poder actualizarse tras una revocación. Al activar borra las
-cachés antiguas `main`, `storage`, `assets` y su registro de IndexedDB.
-La inicialización y los formularios de sesión también borran esas cachés;
-Turbo cambia de usuario sin volver a ejecutar los módulos. Una passkey usa
-`form.submit()`, que no emite `submit`: espera el borrado dentro del componente.
-`Turbo.offline.start` debe comenzar con `readyState` completo: su espera de
-DOMContentLoaded puede perder el evento tras una operación asíncrona.
-Evidencia y límites: `docs/test-audits/handy-927.md`.
-
 ## Passkeys: un challenge autentica una vez
 
 El challenge sigue firmado y sin estado, pero `ActionPack::Passkey#authenticate`
@@ -328,15 +314,18 @@ Evidencia y límites: `docs/test-audits/handy-779.md` y
 
 ## Caché offline y cambios de sesión
 
-No agregues una regla general ni uses `caches.match` entre particiones. El
-servidor sólo autoriza HTML completo de tableros y tarjetas mediante cabeceras
-de sesión y cuenta. El worker confirma el ámbito por cliente en red; después
-de reiniciarse requiere otra respuesta en red antes de permitir lecturas
-offline. Las transiciones de sesión esperan el borrado y avanzan una generación
-para impedir escrituras tardías. Vacía el registro IndexedDB legado mediante
-una transacción: `deleteDatabase` se bloquea con conexiones antiguas abiertas.
-`fresh_when` puede reemplazar Cache-Control: la
-política `no-store` de respuestas sensibles se aplica también en after_action.
-No reactives el preloader de TurboOffline: elude esta política. Los blobs
-y enlaces firmados requieren red. Evidencia y límites:
-`docs/test-audits/handy-925.md`.
+El worker sólo guarda recursos estáticos públicos del mismo origen en
+`fizzy-assets-v3`. Nunca guardes HTML autenticado, JSON ni adjuntos: una
+revocación no se puede comprobar sin red. Conserva los controles HTTP de
+credenciales de `OfflineCaching` y su after_action: `fresh_when` puede
+reemplazar Cache-Control. Las solicitudes con Authorization o X-CSRF-Token
+no se cachean; las claves de assets se construyen sólo con su URL pública.
+Al activar, borra toda caché anterior excepto la pública actual. Vacía el
+registro IndexedDB por transacción, también con conexiones antiguas abiertas.
+Las transiciones de sesión y las respuestas sensibles esperan ese borrado;
+la generación evita que una respuesta tardía restaure el ámbito anterior.
+Turbo cambia de usuario sin ejecutar módulos otra vez: limpia en turbo:load
+y pageshow. Una passkey usa form.submit(), que no emite submit.
+No reactives el preloader de TurboOffline. Preserva la limpieza de snapshots
+antes del logout y los controles de credenciales de Handy 925.
+Evidencia: `docs/test-audits/handy-925.md` y `docs/test-audits/handy-927.md`.

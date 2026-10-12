@@ -110,15 +110,16 @@ class OfflineCacheTest < ApplicationSystemTestCase
     assert_equal false, result["transferCached"], result.inspect
   end
 
-  test "a confirmed window can revisit a permitted document offline" do
+  test "a revoked session cannot recover a private board offline" do
     path = board_path(boards(:writebook))
     visit path
     assert_text boards(:writebook).name
+    identities(:kevin).sessions.destroy_all
     set_offline(true)
-    # Rails visit also waits for Cable connections; those cannot connect offline.
-    page.visit path
-    assert_equal path, URI(page.current_url).path
-    assert_equal boards(:writebook).name, page.evaluate_script("document.querySelector('h1').textContent.trim()")
+    assert_equal false, page.evaluate_async_script(<<~JS, path)
+      const [path, done] = arguments
+      fetch(path).then(response => done(response.ok)).catch(() => done(false))
+    JS
   end
 
   test "exports notifications JSON and private blobs are never cached" do
@@ -177,7 +178,7 @@ class OfflineCacheTest < ApplicationSystemTestCase
         done({ cached: before.length > 0, status: response.status, remaining: remaining.length })
       })().catch(error => done({ error: error.message }))
     JS
-    assert_equal true, result["cached"], result.inspect
+    assert_equal false, result["cached"], result.inspect
     assert_equal 204, result["status"], result.inspect
     assert_equal 0, result["remaining"], result.inspect
 
@@ -189,7 +190,7 @@ class OfflineCacheTest < ApplicationSystemTestCase
     JS
   end
 
-  test "permitted HTML stays within its session and account; JSON stays out" do
+  test "private HTML and JSON stay out of Cache Storage across accounts" do
     other_account = accounts(:initech)
     user = User.create!(identity: users(:kevin).identity, account: other_account, name: "Kevin Elsewhere", role: "admin")
     board = Current.set(account: other_account, user: user) { Board.create!(name: "Other account", creator: user) }
@@ -217,11 +218,10 @@ class OfflineCacheTest < ApplicationSystemTestCase
         done({ partitions, headers })
       })().catch(error => done({ error: error.message }))
     JS
-    assert_equal [ 1, 1 ], stored["partitions"].map(&:size), stored.inspect
-    assert_not_equal stored["partitions"][0], stored["partitions"][1]
+    assert_equal [ 0, 0 ], stored["partitions"].map(&:size), stored.inspect
 
     set_offline(true)
-    assert_equal [ true, true, false, false ], page.evaluate_async_script(<<~JS, paths)
+    assert_equal [ false, false, false, false ], page.evaluate_async_script(<<~JS, paths)
       const [paths, done] = arguments
       const html = path => fetch(path, { headers: { Accept: "text/html" } }).then(response => response.ok).catch(() => false)
       const json = fetch(paths[0], { headers: { Accept: "application/json" } }).then(() => true).catch(() => false)
@@ -229,11 +229,15 @@ class OfflineCacheTest < ApplicationSystemTestCase
     JS
   end
 
-  test "no-store revokes an already cached page" do
+  test "no-store responses remove a legacy private page" do
     path = board_path(boards(:writebook))
     page.evaluate_async_script(<<~JS, path)
       const [path, done] = arguments
-      fetch(path, { headers: { Accept: "text/html" } }).then(() => done(true))
+      ;(async () => {
+        await fetch(path, { headers: { Accept: "text/html" } })
+        await (await caches.open("fizzy-pages-v2-retired-session")).put(path, new Response("previous account"))
+        done(true)
+      })()
     JS
     worker_command("Runtime.evaluate", expression: <<~JS)
       globalThis.originalFetch = fetch
@@ -326,7 +330,7 @@ class OfflineCacheTest < ApplicationSystemTestCase
 
   private
     def cache_board
-      assert_equal true, page.evaluate_async_script(<<~JS, board_path(boards(:writebook)))
+      assert_equal false, page.evaluate_async_script(<<~JS, board_path(boards(:writebook)))
         const [path, done] = arguments
         ;(async () => {
           await fetch(path, { headers: { Accept: "text/html" } })

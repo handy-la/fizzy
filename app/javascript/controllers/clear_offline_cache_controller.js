@@ -11,7 +11,7 @@ export default class extends Controller {
     // whose page is not controlled yet, and submit only after deletion succeeds.
     if ("caches" in window) {
       const names = await caches.keys()
-      await Promise.all(names.filter(name => name !== "fizzy-assets-v2").map(name => caches.delete(name)))
+      await Promise.all(names.filter(name => name !== "fizzy-assets-v3").map(name => caches.delete(name)))
     }
     this.cleared = true
     this.element.requestSubmit(event.submitter)

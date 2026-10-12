@@ -1,7 +1,7 @@
-// These names belong to the retired worker, which cached private responses.
-// Keep them aligned with service_worker.js.erb during the migration.
+// Matches the worker's public-only namespace. Includes every retired private cache.
 export async function clearOfflineCache() {
   if ("caches" in window) {
-    await Promise.all([ "main", "storage", "assets" ].map(name => caches.delete(name)))
+    const names = await caches.keys()
+    await Promise.all(names.filter(name => name !== "fizzy-assets-v3").map(name => caches.delete(name)))
   }
 }

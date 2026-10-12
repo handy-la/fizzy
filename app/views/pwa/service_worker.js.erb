@@ -1,7 +1,4 @@
-const ASSET_CACHE = "fizzy-assets-v2"
-const PRIVATE_PREFIX = "fizzy-pages-v2-"
-const MAX_AGE = 3 * 24 * 60 * 60 * 1000
-const clientScopes = new Map()
+const ASSET_CACHE = "fizzy-assets-v3"
 let activeSession = null
 let generation = 0
 let cacheOperations = Promise.resolve()
@@ -17,7 +14,6 @@ function withCaches(operation) {
 function clearPrivateCaches() {
   generation++
   activeSession = null
-  clientScopes.clear()
   return withCaches(async () => {
     const names = await caches.keys()
     await Promise.all(names.filter(name => name !== ASSET_CACHE).map(name => caches.delete(name)))
@@ -69,69 +65,21 @@ async function handleRequest(event, url) {
   // links and email/identity changes without depending on a DOM submit event.
   if (changesSession(request, url)) await clearPrivateCaches()
   const requestGeneration = generation
-  const account = pageAccount(request, url)
-  let response
 
-  try {
-    // Revalidate rather than getting a previous identity from the HTTP cache.
-    response = await fetch(request, { cache: "no-store" })
-  } catch (error) {
-    if (account && requestGeneration === generation) {
-      const clientId = event.clientId || event.replacesClientId
-      const scope = clientScopes.get(`${clientId}:${account}`)
-      if (scope && scope.session === activeSession) {
-        const cached = await withCaches(async () => {
-          if (requestGeneration !== generation) return
-          const cache = await caches.open(scope.cacheName)
-          const entry = await cache.match(request)
-          if (entry && Date.now() - Number(entry.headers.get("X-Fizzy-Cached-At")) < MAX_AGE) return entry
-          await cache.delete(request)
-        })
-        if (cached && requestGeneration === generation && scope.session === activeSession) {
-          if (event.resultingClientId) clientScopes.set(`${event.resultingClientId}:${account}`, scope)
-          return cached
-        }
-      }
-    }
-    throw error
-  }
+  // Private requests keep the server's HTTP policy. They are never written
+  // to Cache Storage and cannot fall back to a previous authenticated page.
+  const response = await fetch(request)
 
   if (requestGeneration !== generation) return response
 
   const session = response.headers.get("X-Fizzy-Offline-Session")
   if (response.headers.get("X-Fizzy-Clear-Offline-Cache") === "true" ||
-      (session && session !== activeSession)) {
+      (session && session !== activeSession) ||
+      /\bno-store\b/i.test(response.headers.get("Cache-Control") || "")) {
     const clearedGeneration = generation + 1
     await clearPrivateCaches()
     if (generation !== clearedGeneration) return response
     activeSession = session === "none" ? null : session
-  }
-  const responseGeneration = generation
-
-  if (account && activeSession && response.headers.get("X-Fizzy-Offline-Account") === account &&
-      canStore(response, "text/html") && !response.redirected) {
-    const scope = { session: activeSession, cacheName: `${PRIVATE_PREFIX}${activeSession}-${account}` }
-    const clientId = event.resultingClientId || event.clientId
-    await withCaches(async () => {
-      if (responseGeneration !== generation) return
-      const body = await response.clone().arrayBuffer()
-      if (body.byteLength > 1024 * 1024) return
-      const headers = new Headers(response.headers)
-      headers.set("X-Fizzy-Cached-At", Date.now().toString())
-      const cache = await caches.open(scope.cacheName)
-      await cache.put(request, new Response(body, { status: response.status, headers }))
-      if (clientId) clientScopes.set(`${clientId}:${account}`, scope)
-      // Bound storage as well as lifetime; eviction never searches other scopes.
-      const keys = await cache.keys()
-      await Promise.all(keys.slice(0, Math.max(0, keys.length - 100)).map(key => cache.delete(key)))
-    })
-  } else if (account && activeSession) {
-    // A no-store response or a denial also revokes a previous copy of this URL.
-    await withCaches(async () => {
-      if (responseGeneration !== generation) return
-      const cache = await caches.open(`${PRIVATE_PREFIX}${activeSession}-${account}`)
-      await cache.delete(request)
-    })
   }
   return response
 }
@@ -143,14 +91,9 @@ function changesSession(request, url) {
     /^\/users\/[^/]+\/email_addresses\//.test(path)
 }
 
-function pageAccount(request, url) {
-  if (request.method !== "GET" || request.headers.get("Authorization") ||
-      request.headers.get("Accept")?.includes("json") || request.headers.get("Turbo-Frame")) return
-  return url.pathname.match(/^\/(\d+)\/(?:boards|cards)(?:\/[a-z0-9]+)?$/)?.[1]
-}
-
 function isAsset(request, url) {
-  return request.method === "GET" && !request.headers.get("Authorization") &&
+  return request.method === "GET" && !url.search &&
+    !request.headers.has("Authorization") && !request.headers.has("X-CSRF-Token") &&
     /^\/assets\/.+[-.][0-9a-f]+\.(js|css|svg|png|jpg|webp|woff2?|ico)$/.test(url.pathname)
 }
 
@@ -162,13 +105,13 @@ function canStore(response, contentType) {
 
 async function fetchAsset(request) {
   const cache = await caches.open(ASSET_CACHE)
-  const cached = await cache.match(request)
+  const cached = await cache.match(request.url)
   if (cached) return cached
-  const response = await fetch(request)
-  if (canStore(response) && !response.redirected) {
+  const response = await fetch(request, { credentials: "omit" })
+  if (canStore(response) && !response.redirected && !response.headers.get("Content-Type")?.includes("text/html")) {
     const body = await response.clone().arrayBuffer()
     if (body.byteLength <= 1024 * 1024) {
-      await cache.put(request, response.clone())
+      await cache.put(request.url, response.clone())
       const keys = await cache.keys()
       await Promise.all(keys.slice(0, Math.max(0, keys.length - 500)).map(key => cache.delete(key)))
     }
