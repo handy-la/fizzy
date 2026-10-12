@@ -9,11 +9,11 @@ module Account::Storage
   end
 
   def bytes_used
-    super + storage_upload_reservations.sum(:byte_size)
+    super + storage_upload_reservations.pending.sum(:byte_size)
   end
 
   def bytes_used_exact
-    super + storage_upload_reservations.sum(:byte_size)
+    super + storage_upload_reservations.pending.sum(:byte_size)
   end
 
   private

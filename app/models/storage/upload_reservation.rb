@@ -20,7 +20,8 @@ class Storage::UploadReservation < ApplicationRecord
   belongs_to :identity, optional: true
   belongs_to :blob, class_name: "ActiveStorage::Blob"
 
-  scope :in_flight, -> { where(created_at: (ActiveStorage.service_urls_for_direct_uploads_expire_in + PURGE_GRACE).ago..) }
+  scope :pending, -> { where.not(blob_id: ActiveStorage::Attachment.select(:blob_id)) }
+  scope :in_flight, -> { pending.where(created_at: (ActiveStorage.service_urls_for_direct_uploads_expire_in + PURGE_GRACE).ago..) }
 
   def self.reserve(account:, identity:, attributes:)
     size = Integer(attributes[:byte_size].to_s, 10) rescue nil
@@ -32,15 +33,17 @@ class Storage::UploadReservation < ApplicationRecord
       # Lock the global identity before the account, before any quota reads.
       Identity.where(id: identity.id).update_all("updated_at = updated_at")
       serialize_account(account) do
+        raise Rejected.new(:forbidden) unless account.users.exists?(identity_id: identity.id)
+
         raise Rejected.new(:too_many_requests) if in_flight.where(identity: identity).count >= MAX_IDENTITY_UPLOADS
         raise Rejected.new(:too_many_requests) if in_flight.where(account: account).count >= MAX_ACCOUNT_UPLOADS
         limit = account.respond_to?(:storage_limit) ? account.storage_limit : DEFAULT_ACCOUNT_BYTES
         raise Rejected.new(:unprocessable_entity) if account.bytes_used_exact + size > limit
 
-        expires_at = ActiveStorage.service_urls_for_direct_uploads_expire_in.from_now
-        metadata = (attributes[:metadata] || {}).merge("quota_upload" => true,
-          "quota_identity_id" => identity.id, "quota_expires_at" => expires_at.iso8601(6))
-        blob = ActiveStorage::Blob.create_before_direct_upload!(**attributes.merge(byte_size: size, metadata: metadata))
+        metadata = (attributes[:metadata] || {}).reject { |key, _| key.to_s.start_with?("quota_") }.merge("quota_upload" => true)
+        blob = Current.with_account(account) do
+          ActiveStorage::Blob.create_before_direct_upload!(**attributes.merge(byte_size: size, metadata: metadata))
+        end
         create!(account: account, identity: identity, blob: blob, byte_size: size,
           expires_at: DRAFT_RETENTION.from_now)
         yield blob
@@ -56,14 +59,14 @@ class Storage::UploadReservation < ApplicationRecord
   end
 
   def self.cleanup
-    where(expires_at: ..PURGE_GRACE.ago).find_each(&:purge)
+    pending.where(expires_at: ..PURGE_GRACE.ago).find_each(&:purge)
 
     # A successful upload can live in a local-save draft before it is attached.
     # Empty uploads need no draft retention once their URL and grace expire.
-    where(created_at: ..(ActiveStorage.service_urls_for_direct_uploads_expire_in + PURGE_GRACE).ago)
+    pending.where(created_at: ..(ActiveStorage.service_urls_for_direct_uploads_expire_in + PURGE_GRACE).ago)
       .where(expires_at: PURGE_GRACE.ago..).find_each do |reservation|
         blob = reservation.blob
-        url_expires_at = Time.iso8601(blob.metadata["quota_expires_at"])
+        url_expires_at = reservation.upload_url_expires_at
         if url_expires_at + PURGE_GRACE <= Time.current && !blob.service.exist?(blob.key)
           reservation.purge
         end
@@ -79,6 +82,10 @@ class Storage::UploadReservation < ApplicationRecord
         end
       end
     end
+  end
+
+  def upload_url_expires_at
+    created_at + ActiveStorage.service_urls_for_direct_uploads_expire_in
   end
 
   def purge

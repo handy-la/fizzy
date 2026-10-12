@@ -13,7 +13,8 @@ class Storage::UploadReservationTest < ActiveSupport::TestCase
     blob.upload(StringIO.new("hello"))
     cards(:logo).image.attach(blob)
 
-    assert_not Storage::UploadReservation.exists?(blob: blob)
+    assert Storage::UploadReservation.exists?(blob: blob)
+    assert_not Storage::UploadReservation.pending.exists?(blob: blob)
     assert_equal 5, @account.reload.bytes_used_exact
     assert_equal 5, boards(:writebook).bytes_used_exact
     @account.materialize_storage
@@ -27,7 +28,8 @@ class Storage::UploadReservationTest < ActiveSupport::TestCase
     users(:david).avatar.attach(blob)
 
     assert users(:david).avatar.attached?
-    assert_not Storage::UploadReservation.exists?(blob: blob)
+    assert Storage::UploadReservation.exists?(blob: blob)
+    assert_not Storage::UploadReservation.pending.exists?(blob: blob)
     assert_equal data.bytesize, @account.bytes_used_exact
     assert @account.reconcile_storage
     assert_equal data.bytesize, @account.bytes_used_exact
@@ -94,7 +96,7 @@ class Storage::UploadReservationTest < ActiveSupport::TestCase
 
     cards(:logo).image.attach(blob)
     assert blob.attachments.exists?
-    assert_not Storage::UploadReservation.exists?(blob: blob)
+    assert_not Storage::UploadReservation.pending.exists?(blob: blob)
     Storage::UploadReservation.cleanup
     assert ActiveStorage::Blob.exists?(blob.id)
     assert_equal 5, @account.bytes_used_exact
@@ -112,6 +114,7 @@ class Storage::UploadReservationTest < ActiveSupport::TestCase
   test "identity limit applies across accounts" do
     20.times { reserve }
     other = accounts(:initech)
+    other.users.create!(name: "Shared uploader", identity: @identity)
     assert_raises(Storage::UploadReservation::Rejected) do
       reserve(account: other)
     end
@@ -185,7 +188,7 @@ class Storage::UploadReservationTest < ActiveSupport::TestCase
       assert_equal 5, @account.bytes_used_exact
       cards(:logo).update!(description: "<p>Draft</p>#{html}")
       assert cards(:logo).description.embeds.attached?
-      assert_not Storage::UploadReservation.exists?(blob: blob)
+      assert_not Storage::UploadReservation.pending.exists?(blob: blob)
       assert_equal 5, @account.reload.bytes_used_exact
     end
   end
@@ -198,7 +201,7 @@ class Storage::UploadReservationTest < ActiveSupport::TestCase
     assert blob.service.exist?(blob.key)
   end
 
-  test "detaching imported upload metadata does not require the original identity" do
+  test "detaching an issued upload ignores an absent identity in metadata" do
     blob = reserve
     blob.upload(StringIO.new("hello"))
     cards(:logo).image.attach(blob)
@@ -247,6 +250,7 @@ class Storage::UploadReservationTest < ActiveSupport::TestCase
   test "retained drafts release account slots without releasing their bytes" do
     [ :david, :jason, :kevin, :mike, :jz ].each do |name|
       @identity = identities(name)
+      @account.users.find_or_create_by!(identity: @identity) { |user| user.name = "Shared uploader" }
       20.times { reserve.upload(StringIO.new("hello")) }
     end
 
@@ -269,6 +273,65 @@ class Storage::UploadReservationTest < ActiveSupport::TestCase
       error = assert_raises(Storage::UploadReservation::Rejected) { reserve }
       assert_equal :unprocessable_entity, error.status
       assert_equal 10.gigabytes, @account.bytes_used_exact
+    end
+  end
+
+  test "forged metadata cannot create a reservation on detach" do
+    blob = ActiveStorage::Blob.create_and_upload!(io: StringIO.new("hello"), filename: "forged.txt",
+      metadata: { "quota_upload" => true, "quota_identity_id" => identities(:mike).id,
+        "quota_expires_at" => 1.hour.from_now.iso8601 })
+    cards(:logo).image.attach(blob)
+
+    assert_no_difference "Storage::UploadReservation.count" do
+      cards(:logo).image.attachment.destroy!
+    end
+    assert_not Storage::UploadReservation.exists?(identity: identities(:mike))
+  end
+
+  test "reservation rejects an identity outside the account" do
+    @identity = identities(:mike)
+    assert_no_difference [ "ActiveStorage::Blob.count", "Storage::UploadReservation.count" ] do
+      error = assert_raises(Storage::UploadReservation::Rejected) { reserve }
+      assert_equal :forbidden, error.status
+    end
+  end
+
+  test "detach uses the persisted issuance instead of forged metadata" do
+    blob = reserve
+    issuance = Storage::UploadReservation.find_by!(blob: blob)
+    blob.upload(StringIO.new("hello"))
+    cards(:logo).image.attach(blob)
+    blob.update!(metadata: blob.metadata.merge("quota_identity_id" => identities(:mike).id,
+      "quota_expires_at" => 10.years.from_now.iso8601))
+
+    travel 3.hours do
+      cards(:logo).image.attachment.destroy!
+      reservation = Storage::UploadReservation.find_by!(blob: blob)
+      assert_equal issuance.id, reservation.id
+      assert_equal @identity.id, reservation.identity_id
+      assert_equal 5, reservation.byte_size
+      assert_in_delta issuance.created_at + ActiveStorage.service_urls_for_direct_uploads_expire_in,
+        reservation.expires_at, 0.01
+      assert_not Storage::UploadReservation.in_flight.exists?(blob: blob)
+      assert_equal 5, @account.reload.bytes_used_exact
+    end
+  end
+
+  test "attached uploads retain issuance without occupying slots" do
+    blobs = 20.times.map do
+      blob = reserve
+      blob.upload(StringIO.new("hello"))
+      ActiveStorage::Attachment.create!(record: cards(:logo), name: "image", blob: blob)
+      blob
+    end
+    assert_equal 20, Storage::UploadReservation.where(identity: @identity).count
+    reserve
+    assert_equal 105, @account.reload.bytes_used_exact
+
+    travel 31.days do
+      Storage::UploadReservation.cleanup
+      assert_equal 20, ActiveStorage::Blob.where(id: blobs.map(&:id)).count
+      assert_equal 100, @account.reload.bytes_used_exact
     end
   end
 

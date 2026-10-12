@@ -6,6 +6,7 @@ class Storage::UploadReservationConcurrencyTest < ActiveSupport::TestCase
   setup do
     @account = Account.create!(name: "Concurrent upload quota")
     @identities = 2.times.map { |i| Identity.create!(email_address: "quota-#{@account.id}-#{i}@example.test") }
+    @identities.each { |identity| @account.users.create!(name: "Uploader", identity: identity) }
     Storage::Entry.record(account: @account, delta: 10.gigabytes - 5, operation: "attach")
   end
 

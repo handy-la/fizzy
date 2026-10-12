@@ -1,4 +1,6 @@
 class Account::DataTransfer::ActiveStorage::BlobRecordSet < Account::DataTransfer::RecordSet
+  PORTABLE_METADATA = %w[identified analyzed width height duration angle display_aspect_ratio audio video].freeze
+
   def initialize(account)
     super(
       account: account,
@@ -21,11 +23,17 @@ class Account::DataTransfer::ActiveStorage::BlobRecordSet < Account::DataTransfe
         data = load(file)
         data.slice(*attributes).merge(
           "account_id" => account.id,
+          "metadata" => portable_metadata(data["metadata"]),
           "key" => ::ActiveStorage::Blob.generate_unique_secure_token(length: ::ActiveStorage::Blob::MINIMUM_TOKEN_LENGTH),
           "service_name" => ::ActiveStorage::Blob.service.name
         )
       end
 
       model.insert_all!(batch_data)
+    end
+
+    def portable_metadata(metadata)
+      metadata = JSON.parse(metadata) if metadata.is_a?(String)
+      metadata.is_a?(Hash) ? metadata.slice(*PORTABLE_METADATA) : {}
     end
 end

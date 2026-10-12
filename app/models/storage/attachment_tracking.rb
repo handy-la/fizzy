@@ -32,8 +32,6 @@ module Storage::AttachmentTracking
         blob: blob,
         delta: blob.byte_size,
         operation: "attach"
-
-      Storage::UploadReservation.where(blob_id: blob_id).destroy_all
     end
 
     def record_storage_detach
@@ -47,13 +45,10 @@ module Storage::AttachmentTracking
         delta: -blob.byte_size,
         operation: "detach"
 
-      if blob.metadata["quota_upload"] && !blob.attachments.exists?
-        Storage::UploadReservation.create_or_find_by!(blob_id: blob_id) do |reservation|
-          reservation.account = blob.account
-          reservation.identity_id = blob.metadata["quota_identity_id"]
-          reservation.byte_size = blob.byte_size
-          reservation.expires_at = Time.iso8601(blob.metadata["quota_expires_at"])
-        end
+      if !blob.attachments.exists? && (reservation = Storage::UploadReservation.find_by(blob_id: blob_id, account_id: blob.account_id))
+        # Keep the server-issued identity, size and creation time. Metadata
+        # from an imported blob can never create or renew a reservation.
+        reservation.update!(expires_at: reservation.upload_url_expires_at)
       end
     end
 

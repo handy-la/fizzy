@@ -302,9 +302,15 @@ seguir en un borrador local: conserva la reserva 30 días, separados de la URL.
 Puede adjuntarse mientras exista. Si no hay objeto después de vencer la URL y
 el margen, la limpieza libera la reserva. Los blobs antiguos sin reserva usan
 la misma conservación de 30 días, que cubre sus URLs anteriores de 48 horas.
-La identidad de una reserva de borrado es opcional: una importación conserva
-metadata del autor, pero ese autor puede no existir aquí. Evidencia y límites:
-`docs/test-audits/handy-779.md`.
+La fila de reserva emitida por el servidor se conserva al adjuntar; mientras
+el blob tenga adjuntos, no suma bytes ni ocupa cupos de subida. El último
+borrado sólo actualiza esa fila, sin crear otra desde metadata. Su identidad,
+tamaño y fecha de emisión vienen de la reserva; la identidad debe tener un
+usuario en la cuenta al emitirla. La importación reconstruye sólo metadata
+portable y admite tanto el objeto JSON como la cadena JSON del export. Nunca
+restaures quota_* ni reconstruyas reservas antiguas desde esos datos.
+Evidencia y límites: `docs/test-audits/handy-779.md` y
+`docs/test-audits/handy-931.md`.
 
 ## Caché offline y cambios de sesión
 
