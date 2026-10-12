@@ -168,7 +168,9 @@ class Webhook::Delivery < ApplicationRecord
     end
 
     def perform_request
-      if resolved_ip.nil?
+      if uri.scheme != "https"
+        { error: :insecure_uri }
+      elsif resolved_ip.nil?
         { error: :private_uri }
       else
         request = Net::HTTP::Post.new(uri, self.request[:headers]).tap { |request| request.body = self.request[:payload] }
@@ -213,7 +215,7 @@ class Webhook::Delivery < ApplicationRecord
     def http
       Net::HTTP.new(uri.host, uri.port).tap do |http|
         http.ipaddr = resolved_ip
-        http.use_ssl = (uri.scheme == "https")
+        http.use_ssl = true
         http.open_timeout = ENDPOINT_TIMEOUT
         http.read_timeout = ENDPOINT_TIMEOUT
       end

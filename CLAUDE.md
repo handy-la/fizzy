@@ -265,6 +265,13 @@ El barrido por minuto recupera leases de cinco minutos y despierta reintentos
 vencidos. `webhooks` queda separada para drenar jobs antiguos. Contrato y
 límites: `docs/webhook-resources.md`; evidencia: `docs/test-audits/handy-942.md`.
 
+Los webhooks sólo aceptan HTTPS. La migración desactiva las URLs HTTP antiguas
+sin convertirlas: el mismo destino puede no ofrecer TLS. Una entrega antigua
+también debe rechazar HTTP antes de DNS y de `Net::HTTP`, aunque conserve
+un mensaje para reintentar. Conserva `Net::HTTP.new(hostname, port)` e
+`ipaddr` por separado para mantener SNI y verificación del certificado.
+Pruebas y dependencia del receptor: `docs/test-audits/handy-941.md`.
+
 Las propuestas de comentario llegan por `CardSuggestionChannel`, privado por
 usuario, cuenta y token. El canal vuelve a comprobar acceso al recuperar o
 recibir una notificación; el broadcast no contiene texto. La huella del contexto

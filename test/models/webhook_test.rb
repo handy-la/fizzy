@@ -20,18 +20,15 @@ class WebhookTest < ActiveSupport::TestCase
 
     webhook = Webhook.new name: "NOTHING", board: boards(:writebook), url: "example.com/webhook"
     assert_not webhook.valid?
-    assert_includes webhook.errors[:url], "must use http or https"
+    assert_includes webhook.errors[:url], "must use https"
 
     webhook = Webhook.new name: "BLANK", board: boards(:writebook), url: "//example.com/webhook"
     assert_not webhook.valid?
-    assert_includes webhook.errors[:url], "must use http or https"
+    assert_includes webhook.errors[:url], "must use https"
 
     webhook = Webhook.new name: "GOPHER", board: boards(:writebook), url: "gopher://example.com/webhook"
     assert_not webhook.valid?
-    assert_includes webhook.errors[:url], "must use http or https"
-
-    webhook = Webhook.new name: "HTTP", board: boards(:writebook), url: "http://example.com/webhook"
-    assert webhook.valid?
+    assert_includes webhook.errors[:url], "must use https"
 
     webhook = Webhook.new name: "HTTPS", board: boards(:writebook), url: "https://example.com/webhook"
     assert webhook.valid?
@@ -39,6 +36,22 @@ class WebhookTest < ActiveSupport::TestCase
     webhook = Webhook.new name: "TRAILING SPACE", board: boards(:writebook), url: "https://example.com/webhook "
     assert webhook.valid?
     assert_equal "https://example.com/webhook", webhook.url
+  end
+
+  test "rejects creating a webhook with HTTP" do
+    webhook = Webhook.new name: "HTTP", board: boards(:writebook), url: "http://example.com/webhook"
+
+    assert_not webhook.save
+    assert_includes webhook.errors[:url], "must use https"
+  end
+
+  test "rejects updating a webhook to HTTP" do
+    webhook = webhooks(:active)
+    original_url = webhook.url
+
+    assert_not webhook.update(url: "http://example.com/webhook")
+    assert_includes webhook.errors[:url], "must use https"
+    assert_equal original_url, webhook.reload.url
   end
 
   test "deactivate" do

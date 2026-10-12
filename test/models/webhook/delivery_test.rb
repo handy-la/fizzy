@@ -652,13 +652,14 @@ class Webhook::DeliveryTest < ActiveSupport::TestCase
 
     stub_dns_resolution(PUBLIC_TEST_IP)
 
-    # Verify Net::HTTP.new is called with the pinned IP
+    # Keep the logical hostname for SNI and certificate verification, and pin
+    # only the connection address.
     response_mock = stub(code: "200")
     response_mock.stubs(:read_body)
 
     http_mock = mock("http")
-    http_mock.stubs(:use_ssl=)
-    http_mock.stubs(:ipaddr=)
+    http_mock.expects(:use_ssl=).with(true)
+    http_mock.expects(:ipaddr=).with(PUBLIC_TEST_IP)
     http_mock.stubs(:open_timeout=)
     http_mock.stubs(:read_timeout=)
     http_mock.stubs(:request).yields(response_mock).returns(response_mock)
@@ -668,6 +669,45 @@ class Webhook::DeliveryTest < ActiveSupport::TestCase
     delivery.deliver
 
     assert delivery.succeeded?
+  end
+
+  test "blocks legacy HTTP deliveries before DNS or HTTP" do
+    delivery = webhook_deliveries(:pending)
+    delivery.webhook.update_columns(url: "http://example.com/webhook")
+
+    Surfguard.expects(:resolve_public_ips).never
+    Net::HTTP.expects(:new).never
+
+    assert_no_enqueued_jobs only: Webhook::DeliveryJob do
+      delivery.deliver
+    end
+
+    assert_equal "completed", delivery.reload.state
+    assert_equal "insecure_uri", delivery.response[:error]
+    assert_not delivery.succeeded?
+  end
+
+  test "blocks legacy HTTP retries with an already persisted message" do
+    delivery = webhook_deliveries(:pending)
+    delivery.webhook.update_columns(url: "http://example.com/webhook")
+    delivery.update!(request: {
+      payload: '{"id":"old-event"}',
+      headers: { "X-Webhook-Signature" => "old-signature" },
+      attempts: 1,
+      first_attempt_at: 1.minute.ago.iso8601,
+      next_attempt_at: 1.second.ago.iso8601
+    })
+
+    Surfguard.expects(:resolve_public_ips).never
+    Net::HTTP.expects(:new).never
+
+    assert_no_enqueued_jobs only: Webhook::DeliveryJob do
+      delivery.deliver
+    end
+
+    assert_equal "completed", delivery.reload.state
+    assert_equal "insecure_uri", delivery.response[:error]
+    assert_not delivery.succeeded?
   end
 
   test "handles response too large error" do

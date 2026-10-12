@@ -8,7 +8,7 @@ class Webhook < ApplicationRecord
   CAMPFIRE_WEBHOOK_URL_REGEX = %r{/rooms/\d+/\d+-[^\/]+/messages\Z}i
   BASECAMP_CAMPFIRE_WEBHOOK_URL_REGEX = %r{/\d+/integrations/[^\/]+/buckets/\d+/chats/\d+/lines\Z}i
 
-  PERMITTED_SCHEMES = %w[ http https ].freeze
+  PERMITTED_SCHEMES = %w[ https ].freeze
   PERMITTED_ACTIONS = %w[
     card_assigned
     card_closed
