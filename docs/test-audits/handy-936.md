@@ -142,8 +142,8 @@ sin ofensas. No hay cambios visuales ni pasos manuales de configuración.
 
 ## Autoría del límite de ejecución
 
-La revisión propia encontró un segundo camino dentro del contrato de esta
-misma tarjeta: las excepciones transitorias marcan el registro failed y el
+La revisión propia de la base auditada encontró un segundo camino dentro del
+contrato de esta tarjeta: las excepciones transitorias marcaban el registro failed y el
 trabajo continuable programa un reintento. Esa identidad puede crear otra
 importación antes de que el reintento vuelva a processing. La admisión HTTP
 por sí sola no serializa esos dos trabajos.
@@ -185,3 +185,19 @@ mantiene la transacción de escritura de SQLite durante la lectura del archivo;
 una importación atascada en pending/processing requiere intervención para
 liberar el cupo. Este control adicional responde a la comprobación propia de
 reintentos dentro del contrato, sin corregir esas observaciones informativas.
+
+## Validación tras reanudar la tarjeta
+
+El 12 de octubre de 2026 se hizo rebase sobre
+`1cde149e8e7b1f71fdcd25479ccb7ac3f5578f00`. Los conflictos de documentación y de
+`DataImportJobTest` se resolvieron conservando las reglas y las pruebas de ambos
+cambios. La base actual limita las reanudaciones y conserva la importación
+activa ante errores transitorios; el semáforo por identidad de esta tarjeta
+sigue protegiendo trabajos anteriores y reintentos de distintas cuentas.
+
+La suite completa se repitió con el entorno limpio descrito arriba y
+`PARALLEL_WORKERS=4`: salida 0; **1 933 pruebas, 7 806 aserciones, cero fallos,
+cero errores y seis omisiones**. Log local:
+`.context/handy-936-suite-resume.log`. RuboCop sobre los nueve archivos Ruby
+del lote: salida 0, sin ofensas. No se cambiaron las pruebas de regresión ni
+los límites medidos. Las limitaciones de medición anteriores siguen vigentes.
