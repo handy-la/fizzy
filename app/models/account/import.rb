@@ -4,6 +4,8 @@ class Account::Import < ApplicationRecord
   class InsufficientStorageSpaceError < StandardError; end
 
   REQUIRED_STORAGE_SPACE_FACTOR = 2
+  TRANSIENT_ERRORS = [ ActiveRecord::Deadlocked, ActiveRecord::LockWaitTimeout,
+    Net::OpenTimeout, Net::ReadTimeout, Errno::ECONNRESET, Errno::ETIMEDOUT ].freeze
 
   LIMITS = ZipFile::Limits.new(
     max_entries: 1_000_000,
@@ -52,6 +54,8 @@ class Account::Import < ApplicationRecord
   rescue InsufficientStorageSpaceError => e
     mark_as_failed(:insufficient_storage_space)
     raise e
+  rescue *TRANSIENT_ERRORS
+    raise
   rescue => e
     mark_as_failed
     raise e
@@ -87,9 +91,20 @@ class Account::Import < ApplicationRecord
   rescue InsufficientStorageSpaceError => e
     mark_as_failed(:insufficient_storage_space)
     raise e
+  rescue *TRANSIENT_ERRORS
+    raise
   rescue => e
     mark_as_failed
     raise e
+  end
+
+  def mark_as_failed(failure_reason = nil)
+    with_lock do
+      unless failed? || completed?
+        update!(status: :failed, failure_reason: failure_reason)
+        ImportMailer.failed(self).deliver_later
+      end
+    end
   end
 
   def cleanup
@@ -130,11 +145,6 @@ class Account::Import < ApplicationRecord
     def mark_completed
       update!(status: :completed, completed_at: Time.current)
       ImportMailer.completed(identity, account).deliver_later
-    end
-
-    def mark_as_failed(failure_reason = nil)
-      update!(status: :failed, failure_reason: failure_reason)
-      ImportMailer.failed(self).deliver_later
     end
 
     def reconcile_cards_count

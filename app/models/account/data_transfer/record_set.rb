@@ -179,8 +179,19 @@ class Account::DataTransfer::RecordSet
     end
 
     def load(file_path)
-      JSON.parse(zip.read(file_path))
-    rescue ArgumentError => e
+      content = zip.read(file_path)
+      data = JSON.parse(content)
+
+      unless content.dup.force_encoding(Encoding::UTF_8).valid_encoding?
+        raise IntegrityError, "#{file_path} contains invalid UTF-8"
+      end
+
+      unless data.is_a?(Hash)
+        raise IntegrityError, "#{file_path} must contain a JSON object"
+      end
+
+      data
+    rescue JSON::ParserError, TypeError, EncodingError, ArgumentError => e
       raise IntegrityError, e.message
     end
 

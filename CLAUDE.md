@@ -113,6 +113,13 @@ directorio a 256 MiB por defecto. Un tamaño declarado incorrecto se rechaza;
 no agregues una lectura hasta EOF como recuperación.
 Evidencia: `docs/test-audits/handy-829.md`.
 
+`Account::DataImportJob` permite tres reanudaciones y sólo los errores de
+`Account::Import::TRANSIENT_ERRORS`, además de una interrupción del worker.
+Un paso reanudado puede fallar sin avanzar: captura esos errores en `perform`,
+porque `Continuable` no los reintenta por sí solo. JSON debe ser un objeto
+con UTF-8 válido; el estado fallido y su correo se guardan sólo al terminar.
+Evidencia: `docs/test-audits/handy-932.md`.
+
 ## Coding style
 
 Before editing or reviewing code, read STYLE.md.

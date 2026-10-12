@@ -133,6 +133,36 @@ class Account::DataTransfer::RecordSetTest < ActiveSupport::TestCase
     assert Board::Publication.exists?(id: publication_data["id"], key: publication_data["key"])
   end
 
+  [ "{", "null", "[]", "true", "123", '"text"', "{\"title\":\"\xFF\"}".b ].each do |content|
+    [ :check, :import ].each do |operation|
+      test "#{operation} rejects invalid JSON record #{content.inspect}" do
+        tempfile = Tempfile.new([ "invalid_record", ".zip" ])
+        tempfile.binmode
+        writer = ZipFile::Writer.new(tempfile)
+        writer.add_file("data/board_publications/invalid.json", content)
+        writer.close
+        tempfile.rewind
+
+        assert_raises(Account::DataTransfer::RecordSet::IntegrityError) do
+          publication_record_set.public_send(operation, from: ZipFile::Reader.new(tempfile))
+        end
+      ensure
+        tempfile&.close!
+      end
+    end
+  end
+
+  [ TypeError, Encoding::InvalidByteSequenceError, Encoding::UndefinedConversionError ].each do |error_class|
+    test "check converts #{error_class} from the reader to an integrity error" do
+      reader = build_reader(dir: "board_publications", data: build_publication_data(key: "fresh"))
+      reader.stubs(:read).raises(error_class)
+
+      assert_raises(Account::DataTransfer::RecordSet::IntegrityError) do
+        publication_record_set.check(from: reader)
+      end
+    end
+  end
+
   private
     def importing_account
       @importing_account ||= Account.create!(name: "Importing Account", external_account_id: 99999999)
