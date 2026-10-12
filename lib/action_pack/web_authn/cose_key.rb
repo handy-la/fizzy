@@ -38,6 +38,8 @@
 class ActionPack::WebAuthn::CoseKey
   P256_COORDINATE_LENGTH = 32
   MINIMUM_RSA_KEY_BITS = 2048
+  MAXIMUM_RSA_KEY_BITS = 4096
+  RSA_PUBLIC_EXPONENT = [ 0x01, 0x00, 0x01 ].pack("C*") # 65537
 
   # COSE key labels
   KEY_TYPE_LABEL = 1
@@ -164,16 +166,20 @@ class ActionPack::WebAuthn::CoseKey
       e_bytes = parameters[RSA_E_LABEL]
       raise ActionPack::WebAuthn::InvalidKeyError, "Missing RSA key parameters" unless n_bytes.is_a?(String) && e_bytes.is_a?(String)
 
-      n = OpenSSL::BN.new(n_bytes, 2)
-      e = OpenSSL::BN.new(e_bytes, 2)
+      # Bound both numbers before OpenSSL sees them. The key is persisted and
+      # every assertion verifies with it, so an oversized modulus or exponent
+      # costs CPU on each sign in. Leading zero bytes do not count.
+      n_bytes = n_bytes.b.sub(/\A\x00+/n, "")
+      raise ActionPack::WebAuthn::InvalidKeyError, "RSA key must be at most #{MAXIMUM_RSA_KEY_BITS} bits" if n_bytes.bytesize > MAXIMUM_RSA_KEY_BITS / 8
+      # Only 65537 is accepted, as authenticators use for RS256. This also
+      # rejects degenerate exponents such as e=1, which make signatures forgeable.
+      raise ActionPack::WebAuthn::InvalidKeyError, "Invalid RSA public exponent" unless e_bytes.b.sub(/\A\x00+/n, "") == RSA_PUBLIC_EXPONENT
 
-      # Validate the *actual* modulus size, not the encoded byte length: a
-      # leading-zero encoding can pad a much smaller modulus up to 2048 bytes.
+      n = OpenSSL::BN.new(n_bytes, 2)
+      e = OpenSSL::BN.new(RSA_PUBLIC_EXPONENT, 2)
+
+      # Validate the *actual* modulus size, not the encoded byte length.
       raise ActionPack::WebAuthn::InvalidKeyError, "RSA key must be at least #{MINIMUM_RSA_KEY_BITS} bits" if n.num_bits < MINIMUM_RSA_KEY_BITS
-      # Reject degenerate public exponents (e.g. e=1, which makes signatures
-      # trivially forgeable) and require the standard odd exponent form.
-      exponent = e.to_i
-      raise ActionPack::WebAuthn::InvalidKeyError, "Invalid RSA public exponent" if exponent < 3 || exponent.even?
 
       asn1 = OpenSSL::ASN1::Sequence([
         OpenSSL::ASN1::Sequence([

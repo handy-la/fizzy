@@ -272,6 +272,41 @@ class ActionPack::WebAuthn::CoseKeyTest < ActiveSupport::TestCase
     assert_match(/public exponent/i, error.message)
   end
 
+  test "converts a 4096-bit RSA key, including one encoded with a leading zero byte" do
+    rsa_key = OpenSSL::PKey::RSA.generate(4096)
+
+    [ rsa_key.n.to_s(2), "\x00".b + rsa_key.n.to_s(2) ].each do |modulus|
+      key = ActionPack::WebAuthn::CoseKey.new(key_type: 3, algorithm: -257, parameters: @rsa_parameters.merge(-1 => modulus))
+
+      assert_equal rsa_key.public_to_der, key.to_openssl_key.public_to_der
+    end
+  end
+
+  test "rejects an RSA modulus above 4096 bits before building OpenSSL numbers" do
+    OpenSSL::BN.expects(:new).never
+    OpenSSL::ASN1.expects(:Integer).never
+
+    [ "\x01".b + ("\x00".b * 512), "\xff".b * 1.megabyte ].each do |modulus|
+      key = ActionPack::WebAuthn::CoseKey.new(key_type: 3, algorithm: -257, parameters: @rsa_parameters.merge(-1 => modulus))
+
+      error = assert_raises(ActionPack::WebAuthn::InvalidKeyError) { key.to_openssl_key }
+      assert_match(/at most 4096 bits/i, error.message)
+    end
+  end
+
+  test "rejects RSA public exponents other than 65537 before building OpenSSL numbers" do
+    OpenSSL::BN.expects(:new).never
+    OpenSSL::ASN1.expects(:Integer).never
+
+    huge = "\x01".b + ("\xff".b * 1.megabyte)
+    [ huge, [ 65536 ].pack("N"), "\x03".b, "\x01\x00\x00\x00\x01".b, "".b ].each do |exponent|
+      key = ActionPack::WebAuthn::CoseKey.new(key_type: 3, algorithm: -257, parameters: @rsa_parameters.merge(-2 => exponent))
+
+      error = assert_raises(ActionPack::WebAuthn::InvalidKeyError) { key.to_openssl_key }
+      assert_match(/public exponent/i, error.message)
+    end
+  end
+
   test "raises error for non-string EC2 coordinates" do
     parameters = @ec2_parameters.merge(-2 => 12345) # integer instead of bytes
     key = ActionPack::WebAuthn::CoseKey.new(key_type: 2, algorithm: -7, parameters: parameters)
