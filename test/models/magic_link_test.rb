@@ -45,6 +45,26 @@ class MagicLinkTest < ActiveSupport::TestCase
     assert_nil MagicLink.consume(nil)
   end
 
+  test "consume accepts only one holder of the same link" do
+    magic_link = MagicLink.create!(identity: identities(:kevin))
+    first = MagicLink.active.find_by!(code: magic_link.code)
+    second = MagicLink.active.find_by!(code: magic_link.code)
+
+    assert_equal magic_link, first.consume
+    assert_nil second.consume
+  end
+
+  test "consume rejects a link that expires after loading" do
+    magic_link = MagicLink.create!(identity: identities(:kevin))
+    loaded = MagicLink.active.find_by!(code: magic_link.code)
+
+    travel MagicLink::EXPIRATION_TIME + 1.second do
+      assert_nil loaded.consume
+    end
+
+    assert MagicLink.exists?(magic_link.id)
+  end
+
   test "cleanup" do
     active_link = MagicLink.create!(identity: identities(:kevin))
     expired_link = MagicLink.create!(identity: identities(:kevin))

@@ -25,8 +25,7 @@ class MagicLink < ApplicationRecord
   end
 
   def consume
-    destroy
-    self
+    self if self.class.active.where(id: id).delete_all == 1
   end
 
   private

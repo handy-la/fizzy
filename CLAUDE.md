@@ -321,6 +321,11 @@ Política de descarte y evidencia: `docs/test-audits/handy-940.md`.
 
 ## Passkeys: un challenge autentica una vez
 
+`MagicLink#consume` acepta el canje sólo si un DELETE por id y vigencia borra
+una fila. Comprobar la vigencia sólo al leer o devolver el objeto después de
+`destroy` permite dos canjes concurrentes o un canje vencido. Conserva el
+control del correo en el controlador. Evidencia: `docs/test-audits/handy-935.md`.
+
 El challenge sigue firmado y sin estado, pero `ActionPack::Passkey#authenticate`
 lo consume en `action_pack_passkey_consumed_challenges` (índice único) en la
 misma transacción que avanza `sign_count` con un `UPDATE` condicionado. No
