@@ -262,6 +262,53 @@ class Account::ImportTest < ActiveSupport::TestCase
     export_tempfile&.unlink
   end
 
+  test "imported avatar is charged by reconciliation and released on purge without a reservation" do
+    data = file_fixture("moon.jpg").binread
+    source_account = accounts("37s")
+    Current.set(account: source_account) do
+      users(:kevin).avatar.attach(io: file_fixture("moon.jpg").open, filename: "moon.jpg", content_type: "image/jpeg")
+    end
+    users(:kevin).avatar.blob.update!(metadata: users(:kevin).avatar.blob.metadata.merge(
+      "quota_upload" => true, "quota_identity_id" => identities(:david).id,
+      "quota_expires_at" => 1.day.from_now.iso8601(6)))
+
+    export = Account::Export.create!(account: source_account, user: users(:david))
+    export.build
+    tempfile = Tempfile.new([ "export", ".zip" ])
+    export.file.open { |f| FileUtils.cp(f.path, tempfile.path) }
+    ActiveStorage::VariantRecord.where(blob: ActiveStorage::Blob.where(account: source_account)).delete_all
+    ActiveStorage::Attachment.where(account: source_account).delete_all
+    ActiveStorage::Blob.where(account: source_account).delete_all
+    source_account.destroy!
+
+    import = import_from(tempfile.path)
+    import.check
+    assert_no_difference "Storage::UploadReservation.count" do
+      import.process
+    end
+    assert import.completed?
+
+    account = import.account
+    avatar = ActiveStorage::Attachment.find_by!(account: account, record_type: "User", name: "avatar")
+    assert_equal data.bytesize, avatar.blob.byte_size
+    assert_not avatar.blob.metadata.key?("quota_identity_id")
+    assert_not avatar.blob.metadata.key?("quota_expires_at")
+    charged = account.bytes_used_exact
+    assert_equal account.send(:calculate_real_storage_bytes), charged
+    assert_operator charged, :>=, data.bytesize
+    assert account.reconcile_storage
+    assert_equal charged, account.reload.bytes_used_exact
+
+    assert_no_difference "Storage::UploadReservation.count" do
+      User.find(avatar.record_id).avatar.purge
+    end
+    assert_equal charged - data.bytesize, account.reload.bytes_used_exact
+    assert account.reconcile_storage
+    assert_equal charged - data.bytesize, account.reload.bytes_used_exact
+  ensure
+    tempfile&.close!
+  end
+
   test "check reserves storage space for the validated uncompressed size" do
     import = import_with_attached(compressible_zip)
     import.stubs(:available_storage_space).returns(import.file.blob.byte_size * Account::Import::REQUIRED_STORAGE_SPACE_FACTOR)

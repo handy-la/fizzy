@@ -309,8 +309,10 @@ tamaño y fecha de emisión vienen de la reserva; la identidad debe tener un
 usuario en la cuenta al emitirla. La importación reconstruye sólo metadata
 portable y admite tanto el objeto JSON como la cadena JSON del export. Nunca
 restaures quota_* ni reconstruyas reservas antiguas desde esos datos.
-Evidencia y límites: `docs/test-audits/handy-779.md` y
-`docs/test-audits/handy-931.md`.
+Para que el recálculo cuente un avatar importado, `AttachmentRecordSet` marca
+`quota_upload` en los blobs de adjuntos `User`; esa marca no crea reservas.
+Evidencia y límites: `docs/test-audits/handy-779.md`,
+`docs/test-audits/handy-931.md` y `docs/test-audits/handy-950.md`.
 
 ## Caché offline y cambios de sesión
 
