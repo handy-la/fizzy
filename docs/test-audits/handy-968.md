@@ -39,6 +39,14 @@ INSERT con índice único es exclusivo en MySQL y SQLite, y el DELETE por id só
 borra la fila propia. Los contadores de ritmo y los veredictos siguen en la
 caché: una escritura perdida sólo cuesta un intento más.
 
+Ronda 2 del gate: `with_writing_role` sobre `Storage::RepresentationSlot` llama
+`connected_to` en un modelo concreto, y Rails lanza `NotImplementedError`
+cuando hay réplica (SaaS). Las escrituras usan ahora
+`ApplicationRecord.with_writing_role`. RED: el caso «acquires and releases
+when a replica is configured» (réplica simulada con
+`ActiveRecord::Base.stubs(:replica_configured?)`) falló con ese
+`NotImplementedError` sobre el commit anterior; GREEN después del cambio.
+
 Desviación de la tarjeta: la clave incluye el id del blob además del checksum.
 El checksum es MD5 y se pueden fabricar colisiones; sin el id, un archivo
 fabricado en una cuenta bloquearía la vista previa de otra cuenta. Repetir el
@@ -51,9 +59,9 @@ expiración de 1 día limita ese caso.
 ## Respuestas de autoría
 
 Pruebas: `test/integration/active_storage_representation_admission_test.rb`
-(7 casos), `test/models/storage/representation_slot_test.rb` (4 casos:
+(7 casos), `test/models/storage/representation_slot_test.rb` (5 casos:
 exclusividad, otra cuenta, liberación, toma de un slot vencido sin que la
-liberación tardía borre al nuevo dueño) y un caso nuevo en
+liberación tardía borre al nuevo dueño, y réplica configurada) y un caso nuevo en
 `saas/test/integration/unprocessable_representation_test.rb`.
 
 1. **Contrato.** Respuesta HTTP de los controladores de representación y número

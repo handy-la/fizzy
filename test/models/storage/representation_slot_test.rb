@@ -39,6 +39,17 @@ class Storage::RepresentationSlotTest < ActiveSupport::TestCase
     assert_nil acquire, "the late release must not have deleted the new holder's row"
   end
 
+  # SaaS configures a replica, and a GET may run on it; connected_to only works on the abstract class.
+  test "acquires and releases when a replica is configured" do
+    ActiveRecord::Base.stubs(:replica_configured?).returns(true)
+
+    slot = acquire
+    assert slot
+
+    slot.release
+    assert_not Storage::RepresentationSlot.exists?(slot.id)
+  end
+
   private
     def acquire
       Storage::RepresentationSlot.acquire(@account_id, positions: 2, expires_in: 3.minutes)
