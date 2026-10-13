@@ -31,6 +31,21 @@ class Fizzy::Saas::UnprocessableRepresentationTest < ActionDispatch::Integration
     get rails_representation_path(@blob.representation(resize_to_limit: [ 100, 100 ]))
   end
 
+  # Handy #968: docs/test-audits/handy-968.md.
+  test "a permanent verdict is remembered, so a repeated request does not reach the cell" do
+    Rails.stubs(:cache).returns(ActiveSupport::Cache::MemoryStore.new)
+    transforms = []
+    ActiveStorage::Variation.any_instance.stubs(:transform).with { |*| transforms << true }
+      .raises(Fizzy::Saas::Cell::UnprocessableAttachment.new("killed: fsize"))
+
+    2.times do
+      get rails_representation_path(@blob.representation(resize_to_limit: [ 100, 100 ]))
+      assert_response :unprocessable_entity
+    end
+
+    assert_equal 1, transforms.size
+  end
+
   test "a transient failure is left to raise for the retry" do
     transforms_raise Fizzy::Saas::Cell::ProcessingUnavailable.new("capacity")
 

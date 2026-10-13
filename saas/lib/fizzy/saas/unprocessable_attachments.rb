@@ -9,7 +9,9 @@ module Fizzy
     # there 500s a GET for a file the cell will never convert — `rescue_from` on their shared base class
     # (Redirect and Proxy both inherit it) answers 422 instead. None of the three catches the transient
     # class, which the client gem already retries. Every catch reports, because it is where the raise
-    # stops; everywhere else it reaches Sentry on its own.
+    # stops; everywhere else it reaches Sentry on its own. On that third path the verdict is also
+    # remembered (lib/rails_ext/active_storage_representation_admission.rb, Handy #968), so a repeated GET
+    # answers 422 without reaching the cell again.
     module UnprocessableAttachments
       # Rails' own loop, with the rescue inside it rather than around it: one variant failing must not skip
       # the rest, and the loop's last line marks the variants as processed — miss it and Rails re-runs every
@@ -40,6 +42,8 @@ module Fizzy
         %w[ ActiveStorage::CreateVariantsJob ActiveStorage::TransformJob ].each do |job|
           job.constantize.discard_on Cell::UnprocessableAttachment, report: true
         end
+
+        ActiveStorage::RepresentationAdmission.permanent_errors |= [ Cell::UnprocessableAttachment ]
 
         ActiveStorage::Representations::BaseController.rescue_from Cell::UnprocessableAttachment do |error|
           Rails.error.report error, handled: true, severity: :info

@@ -336,6 +336,16 @@ estado de cuenta y usuario en `lib/rails_ext/active_storage_authorization.rb`;
 un blob público también exige que la cuenta del adjunto siga activa.
 Evidencia: `docs/test-audits/handy-784.md`.
 
+Una representación se procesa en el GET, contra un procesador compartido (en
+SaaS, la celda HotCell). `lib/rails_ext/active_storage_representation_admission.rb`
+guarda el veredicto de un fallo permanente (`permanent_errors`; SaaS registra
+`Cell::UnprocessableAttachment`) y responde 422 sin procesar. También limita a
+cada identidad a 30 procesamientos por minuto y a cada cuenta a 2 a la vez
+(429). Sólo cuenta trabajo pendiente: una representación ya procesada pasa.
+Todo vive en `Rails.cache`; en test es `:null_store` y las pruebas usan un
+`MemoryStore`. Nunca guardes un error transitorio como veredicto.
+Evidencia: `docs/test-audits/handy-968.md`.
+
 ## Cuotas y envío push
 
 `Push::Subscription.register_for` bloquea al usuario con UPDATE antes de leer
