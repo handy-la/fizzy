@@ -16,12 +16,14 @@
 # Verdicts and rate counters live in Rails.cache, which is Solid Cache and therefore shared by every
 # process in production; a lost write there costs at most one more attempt. Slots must be exclusive,
 # which a cache write is not, so they are rows under a unique index (Storage::RepresentationSlot). A
-# slot left behind by a dead process expires after SLOT_TTL, longer than the cell's own timeout.
+# working holder renews its slot every SLOT_RENEWAL; a slot left behind by a dead process expires
+# SLOT_TTL after its last renewal.
 module ActiveStorage::RepresentationAdmission
   CONCURRENCY_PER_ACCOUNT = 2
   PROCESSINGS_PER_MINUTE = 30
   VERDICT_TTL = 1.day
   SLOT_TTL = 3.minutes
+  SLOT_RENEWAL = 1.minute
 
   PROCESSOR_GEMS = %w[ activestorage activestorage-hotcell-client hotcell-client image_processing ruby-vips ]
 
@@ -102,7 +104,9 @@ module ActiveStorage::RepresentationAdmission
           refuse_representation
         elsif slot = admission.acquire_slot(@blob.account_id)
           begin
-            @representation = representation.processed
+            slot.hold(expires_in: SLOT_TTL, renew_every: SLOT_RENEWAL) do
+              @representation = representation.processed
+            end
           rescue => error
             admission.record_verdict(@blob, representation.variation) if admission.permanent?(error)
             raise

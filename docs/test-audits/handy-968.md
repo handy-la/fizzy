@@ -26,8 +26,10 @@ procesada; una representación ya procesada no consume cupo.
    identidad, la clave es la IP del cliente.
 3. **Concurrencia por cuenta.** 2 procesamientos a la vez por cuenta del blob.
    Cada uno toma una fila de `storage_representation_slots` (índice único
-   `account_id, position`) que vence en 3 minutos (más que el timeout de 135 s
-   de la celda), y la borra por id en `ensure`. Un rechazo responde 429 con
+   `account_id, position`) que vence en 3 minutos, y la borra por id en
+   `ensure`. Mientras procesa, `Storage::RepresentationSlot#hold` renueva el
+   vencimiento cada minuto en un hilo propio; sólo vence el cupo de un proceso
+   muerto. Un rechazo responde 429 con
    `Retry-After`. Las escrituras usan el rol de escritura: un GET puede ir a la
    réplica.
 
@@ -44,6 +46,14 @@ Ronda 2 del gate: `with_writing_role` sobre `Storage::RepresentationSlot` llama
 cuando hay réplica (SaaS). Las escrituras usan ahora
 `ApplicationRecord.with_writing_role`. Su RED está en la sección RED.
 
+Ronda 4 (concedida por una persona): un cupo vencía a los 3 minutos aunque su
+petición siguiera procesando (descarga lenta, o vista previa y después su
+variante, con hasta 135 s por llamada a la celda). Otra petición tomaba la
+posición y la cuenta pasaba de 2. La persona eligió renovar el cupo mientras
+trabaja (opción 1 en la tarjeta). El hilo no usa `Rails.application.executor`:
+la petición padre hace `join` del hilo, y en desarrollo un reload pendiente
+bloquearía al hilo esperando el lock compartido.
+
 Desviación de la tarjeta: la clave incluye el id del blob además del checksum.
 El checksum es MD5 y se pueden fabricar colisiones; sin el id, un archivo
 fabricado en una cuenta bloquearía la vista previa de otra cuenta. Repetir el
@@ -56,9 +66,11 @@ expiración de 1 día limita ese caso.
 ## Respuestas de autoría
 
 Pruebas: `test/integration/active_storage_representation_admission_test.rb`
-(7 casos), `test/models/storage/representation_slot_test.rb` (5 casos:
+(7 casos), `test/models/storage/representation_slot_test.rb` (casos:
 exclusividad, otra cuenta, liberación, toma de un slot vencido sin que la
-liberación tardía borre al nuevo dueño, y réplica configurada) y un caso nuevo en
+liberación tardía borre al nuevo dueño, renovación en la base, renovación
+durante el bloque y parada del hilo al terminar o fallar, y réplica
+configurada; 8 casos) y un caso nuevo en
 `saas/test/integration/unprocessable_representation_test.rb`.
 
 1. **Contrato.** Respuesta HTTP de los controladores de representación y número
@@ -121,6 +133,20 @@ is configured»: `NotImplementedError: calling connected_to is only allowed on
 ActiveRecord::Base or abstract classes`. Es el defecto real: el cambio de rol
 sobre el modelo concreto. GREEN en el árbol entregado: 5 casos, 0 fallos.
 
+### RED de la renovación
+
+Commit anterior: `91bdbfd3a22fdbbb02d203aa145d41185960a9d1` (el arreglo de la
+ronda 2 después del rebase). Exportación con `git archive` a
+`../.context/handy-968-red-renewal`, con una prueba que toma dos cupos, avanza
+4 minutos (sus dueños siguen procesando) e intenta un tercero. Mismo entorno:
+`bin/rails test test/models/storage/representation_slot_renewal_red_test.rb`.
+Resultado: salida 1; el tercer `acquire` devolvió un cupo (posición 0) en vez
+de `nil`. Ese commit no tiene `renew` ni `hold`, así que las pruebas nuevas no
+pueden correr ahí; su GREEN es el árbol entregado y su sensibilidad son las
+mutaciones de la tabla (el hilo no renueva; `renew` no alarga). Quitar la
+señal de parada del hilo hace que `hold` no vuelva nunca: la prueba se cuelga
+en vez de fallar, y por eso no está en la tabla.
+
 ### Excepción RED explícita: cupos por cuenta
 
 Casos: «a saturated account is refused while another account is still
@@ -161,6 +187,8 @@ Sensibilidad (mutación temporal del archivo productivo, restaurada con `cmp`):
 | no se libera el slot | slot liberado; límite por identidad |
 | índice `account_id, position` no único (schema SQLite) | posición exclusiva; toma de slot vencido |
 | liberación por `account_id, position` en vez de id | toma de slot vencido |
+| el hilo de `hold` no llama a `renew` | renovación durante el bloque |
+| `renew` escribe `Time.current` | slot renovado no se toma |
 
 ## Lo que no verifiqué
 

@@ -39,6 +39,39 @@ class Storage::RepresentationSlotTest < ActiveSupport::TestCase
     assert_nil acquire, "the late release must not have deleted the new holder's row"
   end
 
+  test "a renewed slot is not taken over while its holder still works" do
+    held = 2.times.map { acquire }
+
+    travel 2.minutes
+    held.each { |slot| slot.renew(expires_in: 3.minutes) }
+    travel 2.minutes
+
+    assert_nil acquire, "a slot renewed a minute ago must not have expired"
+  end
+
+  test "a held slot is renewed while the block runs, and no more once it returns" do
+    slot = acquire
+    renewals = count_renewals(slot)
+
+    assert_equal :done, slot.hold(expires_in: 3.minutes, renew_every: 0.01) { sleep 0.2; :done }
+    assert_operator renewals.size, :>, 0
+
+    after = renewals.size
+    sleep 0.1
+    assert_equal after, renewals.size
+  end
+
+  test "a held slot stops renewing when the block raises" do
+    slot = acquire
+    renewals = count_renewals(slot)
+
+    assert_raises(RuntimeError) { slot.hold(expires_in: 3.minutes, renew_every: 0.01) { sleep 0.1; raise "boom" } }
+
+    after = renewals.size
+    sleep 0.1
+    assert_equal after, renewals.size
+  end
+
   # SaaS configures a replica, and a GET may run on it; connected_to only works on the abstract class.
   test "acquires and releases when a replica is configured" do
     ActiveRecord::Base.stubs(:replica_configured?).returns(true)
@@ -51,6 +84,12 @@ class Storage::RepresentationSlotTest < ActiveSupport::TestCase
   end
 
   private
+    def count_renewals(slot)
+      [].tap do |renewals|
+        slot.stubs(:renew).with { |expires_in:| renewals << expires_in }
+      end
+    end
+
     def acquire
       Storage::RepresentationSlot.acquire(@account_id, positions: 2, expires_in: 3.minutes)
     end

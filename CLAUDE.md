@@ -345,7 +345,9 @@ cada identidad a 30 procesamientos por minuto y a cada cuenta a 2 a la vez
 Veredictos y contadores viven en `Rails.cache` (en test `:null_store`; las
 pruebas usan un `MemoryStore`). Los cupos no: `write(unless_exist:)` de Solid
 Cache no es exclusivo en MySQL si la clave falta. Son filas de
-`Storage::RepresentationSlot` con índice único, borradas por id. Nunca guardes
+`Storage::RepresentationSlot` con índice único, borradas por id; `hold` las
+renueva cada minuto mientras procesan, así que sólo vence la de un proceso
+muerto. Nunca guardes
 un error transitorio como veredicto.
 Evidencia: `docs/test-audits/handy-968.md`.
 
