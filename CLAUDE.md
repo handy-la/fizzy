@@ -38,6 +38,10 @@ seleccionado por mise. Evidencia: `docs/test-audits/handy-933.md`.
 
 For local agent work, `tmp/saas.txt` is the checkout-level SaaS switch used by `bin/setup`. When present, read `saas/AGENTS.md` before continuing. Otherwise, do not apply its instructions.
 
+`purestorage` verifica el certificado y usa un bucket por entorno. Beta antes
+compartía producción: prepara su migración y una CA confiable antes de desplegar.
+Procedimiento y rotación: [`docs/saas-storage-tls.md`](docs/saas-storage-tls.md).
+
 ## Multi-tenancy is URL-based
 
 Accounts get a decimal `external_account_id` URL prefix (`/{account_id}/boards/...`).
