@@ -3,7 +3,7 @@ Yabeda.configure do
 
   group :fizzy do
     counter :replica_stale,
-      comment: "Number of requests served from a stale replica"
+      comment: "Number of requests whose replica did not confirm the last transaction (served from the writer)"
 
     histogram :replica_wait,
       unit: :seconds,

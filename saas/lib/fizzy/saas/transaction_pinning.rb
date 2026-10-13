@@ -12,11 +12,15 @@ module TransactionPinning
       request = ActionDispatch::Request.new(env)
       replica_metrics = {}
 
-      if ApplicationRecord.current_role == :reading
-        wait_for_replica_catchup(request, replica_metrics)
-      end
-
-      status, headers, body = @app.call(env)
+      status, headers, body =
+        if ApplicationRecord.current_role == :reading && !replica_caught_up?(request, replica_metrics)
+          # Never continue on a replica whose consistency was not confirmed: serve the whole request from the writer.
+          ActiveRecord::Base.connected_to(role: :writing, prevent_writes: ActiveRecord::Base.current_preventing_writes) do
+            @app.call(env)
+          end
+        else
+          @app.call(env)
+        end
       headers.merge!(replica_metrics.transform_values(&:to_s))
 
       if ApplicationRecord.current_role == :writing
@@ -27,7 +31,7 @@ module TransactionPinning
     end
 
     private
-      def wait_for_replica_catchup(request, replica_metrics)
+      def replica_caught_up?(request, replica_metrics)
         if last_txn = request.session[SESSION_KEY].presence
           has_transaction = tracking_replica_wait_time(replica_metrics) do
             replica_has_transaction(last_txn)
@@ -37,6 +41,10 @@ module TransactionPinning
             Yabeda.fizzy.replica_stale.increment
             replica_metrics["X-Replica-Stale"] = true
           end
+
+          has_transaction
+        else
+          true
         end
       end
 
@@ -49,7 +57,7 @@ module TransactionPinning
         ApplicationRecord.connection.select_value(sql) == 0
       rescue => e
         Sentry.capture_exception(e, extra: { gtid: txn })
-        true # Treat as if we're up to date, since we don't know
+        false # Unknown is not caught up: the request falls back to the writer
       end
 
       def tracking_replica_wait_time(replica_metrics)

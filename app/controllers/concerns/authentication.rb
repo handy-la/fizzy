@@ -45,9 +45,13 @@ module Authentication
       resume_session || authenticate_by_bearer_token || request_authentication
     end
 
+    # A replica can still hold a session, user, role or membership that another actor already revoked.
+    # Every read that decides who the request is runs on the writer.
     def resume_session
-      if session = find_session_by_cookie
-        set_current_session session
+      ApplicationRecord.with_writing_role do
+        if session = find_session_by_cookie
+          set_current_session session
+        end
       end
     end
 
@@ -59,8 +63,10 @@ module Authentication
       if request.authorization.to_s.include?("Bearer")
         if bearer_token_authenticatable_request?
           authenticate_or_request_with_http_token do |token|
-            if identity = Identity.find_by_permissable_access_token(token, method: request.method)
-              Current.identity = identity
+            ApplicationRecord.with_writing_role do
+              if identity = Identity.find_by_permissable_access_token(token, method: request.method)
+                Current.identity = identity
+              end
             end
           end
         else

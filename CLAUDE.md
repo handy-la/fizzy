@@ -66,6 +66,12 @@ el acceso del destinatario en la base: una asociación o un fragmento cargado
 antes de revocar no autoriza la entrega. Un push en cola cuyo aviso fue borrado
 se descarta al deserializar. Evidencia y límites: `docs/test-audits/handy-924.md`.
 
+Con réplica, la sesión, la identidad, el usuario, su rol, staff y el estado
+de la cuenta se leen en el writer (`ApplicationRecord.with_writing_role` en
+`Authentication` y `Authorization`): otra sesión puede revocar y la réplica
+no lo sabe. Si `TransactionPinning` no confirma la réplica (vence o falla),
+toda la solicitud va al writer. Evidencia: `docs/test-audits/handy-965.md`.
+
 ## UUID primary keys
 
 All tables use UUIDv7 keys, base36-encoded to 25 characters. Fixture UUIDs
