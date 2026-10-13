@@ -53,6 +53,8 @@ class Account::DataTransfer::ActiveStorage::BlobRecordSet < Account::DataTransfe
 
       if path = storage_path(data)
         measured_attributes(data, path)
+      elsif referenced_blob_ids.include?(data["id"])
+        { "byte_size" => 0, "checksum" => nil, "metadata" => portable_metadata(data["metadata"]) }
       end
     end
 
@@ -60,8 +62,6 @@ class Account::DataTransfer::ActiveStorage::BlobRecordSet < Account::DataTransfe
       path = "storage/#{data.fetch('key')}"
       if zip.exists?(path)
         path
-      elsif referenced_blob_ids.include?(data["id"])
-        raise IntegrityError, "Blob #{data['id']} has no storage file"
       end
     end
 

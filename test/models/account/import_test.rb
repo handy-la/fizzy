@@ -322,7 +322,7 @@ class Account::ImportTest < ActiveSupport::TestCase
 
     export = Account::Export.create!(account: source_account, user: users(:david))
     export.build
-    data_blob_count = ActiveStorage::Blob.where(account: source_account).where.not(id: export.file.blob_id).count
+    data_blob_count = 1
     tempfile = Tempfile.new([ "export", ".zip" ])
     export.file.open { |f| FileUtils.cp(f.path, tempfile.path) }
     ActiveStorage::VariantRecord.where(blob: ActiveStorage::Blob.where(account: source_account)).delete_all
@@ -620,7 +620,7 @@ class Account::ImportTest < ActiveSupport::TestCase
     users(:david).avatar.attach(source_blob)
     export = Account::Export.create!(account: Current.account, user: users(:david))
     export.build
-    exported_bytes = ActiveStorage::Blob.where(account: Current.account).where.not(id: export.file.blob_id).sum(:byte_size)
+    exported_bytes = source_blob.byte_size
     tempfile = Tempfile.new([ "avatar-export", ".zip" ])
     export.file.open { |file| FileUtils.cp(file.path, tempfile.path) }
     ActiveStorage::VariantRecord.where(blob_id: ActiveStorage::Blob.where(account: Current.account).select(:id)).delete_all
@@ -655,8 +655,8 @@ class Account::ImportTest < ActiveSupport::TestCase
     tempfile&.close!
   end
 
-  test "process rejects forged blob sizes and checksums and discards partial records and objects" do
-    [ -1, 1, 999, "bad-checksum" ].each do |forged_value|
+  [ -1, 1, 999, "bad-checksum" ].each do |forged_value|
+    test "process rejects forged blob #{forged_value.inspect} and discards partial records and objects" do
       export = export_with_blobs
       invalid = rewrite_zip(export.path) do |name, content, storage_entries|
         if name.start_with?("data/active_storage_blobs/")

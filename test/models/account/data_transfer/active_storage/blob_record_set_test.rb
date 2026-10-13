@@ -67,12 +67,15 @@ class Account::DataTransfer::ActiveStorage::BlobRecordSetTest < ActiveSupport::T
     end
   end
 
-  test "import rejects a referenced blob with a missing body" do
-    zip = build_zip_with_blob(id: ActiveRecord::Type::Uuid.generate, key: "missing", include_file: false, referenced: true)
+  test "import preserves a referenced missing body without storage authority" do
+    blob_id = ActiveRecord::Type::Uuid.generate
+    zip = build_zip_with_blob(id: blob_id, key: "missing", include_file: false, referenced: true)
+    Account::DataTransfer::ActiveStorage::BlobRecordSet.new(Current.account).import(from: zip)
 
-    assert_raises(Account::DataTransfer::RecordSet::IntegrityError) do
-      Account::DataTransfer::ActiveStorage::BlobRecordSet.new(Current.account).import(from: zip)
-    end
+    blob = ActiveStorage::Blob.find(blob_id)
+    assert_equal 0, blob.byte_size
+    assert_nil blob.checksum
+    assert_not blob.service.exist?(blob.key)
   end
 
   test "import accepts an empty file" do

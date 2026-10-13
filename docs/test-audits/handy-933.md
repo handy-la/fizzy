@@ -88,3 +88,43 @@ Antes de adaptar las pruebas durante el rebase:
 - Cobertura: se conservan los casos de main sobre metadata serializada y reservas de avatar. Los casos de esta tarjeta se adaptan a que main elimina también el archivo ZIP al fallar o completar; el detach retiene el cargo del original hasta el borrado. El round-trip de derivados continúa verificando su exclusión del consumo al retirar adjuntos.
 - Seam: se conservan APIs productivas de importación, adjuntos, reservas y limpieza; no se agrega API para pruebas ni se retira un seam.
 - Resolución: la metadata portable de presentación de main se conserva como datos de presentación. La autoridad de almacenamiento se limita a tamaño/checksum medidos y filas locales de reserva; quota_* nunca se importa. El purge de main reemplaza la llamada antigua a discard_imported_records, cuya firma cambió.
+
+Las pruebas de integración detectaron cambios de contrato de main antes de
+usar la ronda autorizada. Un adjunto cuyo objeto no existe conserva su fila
+con tamaño cero y checksum nil; no aporta bytes ni crédito de cuota. Los
+casos de tamaños/checksums falsos pasan a pruebas separadas para observar la
+integridad sin llegar al límite real de tres intentos diarios. Se conservan
+los casos de reservas de avatar de main, pero sus expectativas ahora usan
+el archivo original, no la suma de originales más variantes. No se retiran
+sus comprobaciones de identidad, reconciliación, retención ni purga.
+
+Validación de la integración sobre
+`fb2af95ebcd8317391d7b3c7f715d22f97e81ffb`: se mantuvieron los contratos de
+metadata portable y purga de main, y las reservas de originales excluyen
+blobs que sólo tienen adjuntos derivados. Para un adjunto sin objeto se
+guardan tamaño cero y checksum nil; no se importa un tamaño positivo como
+consumo ni se pierde la referencia. Los originales conservan su cargo hasta
+borrar el objeto con éxito.
+
+RED histórico actualizado: git archive de ese SHA en una carpeta temporal
+propia, con las pruebas candidatas de importación, BlobRecordSet,
+FileRecordSet y traversal. Mismo entorno Ruby 3.4.8/OSS/SQLite anterior y
+selector `bin/rails test test/models/account/data_transfer/active_storage
+test/models/account/import_test.rb test/models/storage
+test/integration/blob_key_traversal_test.rb` mediante mise exec seleccionado
+antes de entrar en la exportación. Resultado: 160 casos, 518 aserciones,
+12 fallos, cero errores; salida 1. Las APIs públicas del modelo import/process todavía confían en los valores
+declarados cuando se invocan sin check previo; la base no tiene el CHECK y
+cobra los derivados. El RED actualizado comprueba esa frontera del modelo,
+no afirma que el controlador actual omita su check. Evidencia local: `.context/handy-933-current-red.log`.
+GREEN con el mismo selector y entorno: 160 casos, 624 aserciones, cero fallos
+y errores; salida 0. Suite completa: 2059 casos, 8721 aserciones, cero fallos
+y errores, seis omisiones; salida 0. RuboCop de los seis archivos Ruby
+adaptados: sin infracciones. No se retiraron pruebas de main: se conserva la
+cobertura de metadata, identidad local, reconciliación, retención y borrado.
+
+Excepción de revisión autorizada por la persona el 2026-10-13: una única
+cuarta ronda de bin/signoff con CHANGE_REVIEW_MAX_ROUNDS=4, la misma serie y
+el mismo CHANGE_REVIEW_CONTEXT, porque main avanzó durante el aterrizaje.
+La autorización exige repetir los dos controles y detenerse si la revisión
+encuentra un problema real. No se cambia el contexto ni la política del repo.
