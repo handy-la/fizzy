@@ -42,10 +42,7 @@ caché: una escritura perdida sólo cuesta un intento más.
 Ronda 2 del gate: `with_writing_role` sobre `Storage::RepresentationSlot` llama
 `connected_to` en un modelo concreto, y Rails lanza `NotImplementedError`
 cuando hay réplica (SaaS). Las escrituras usan ahora
-`ApplicationRecord.with_writing_role`. RED: el caso «acquires and releases
-when a replica is configured» (réplica simulada con
-`ActiveRecord::Base.stubs(:replica_configured?)`) falló con ese
-`NotImplementedError` sobre el commit anterior; GREEN después del cambio.
+`ApplicationRecord.with_writing_role`. Su RED está en la sección RED.
 
 Desviación de la tarjeta: la clave incluye el id del blob además del checksum.
 El checksum es MD5 y se pueden fabricar colisiones; sin el id, un archivo
@@ -103,6 +100,55 @@ segundo `get`). La petición 31 de la misma identidad respondió 302, no 429.
 GREEN, mismo entorno, en el árbol con el arreglo:
 `bin/rails test test/integration/active_storage_representation_admission_test.rb`
 → 7 casos, 0 fallos.
+
+### RED de la réplica
+
+Commit anterior al arreglo: `e60682d0078fce48b55db13e18aecee3ba183c18`
+(«Reserva los cupos de representación con un índice único»). Exportación con
+`git archive e60682d0078fce48b55db13e18aecee3ba183c18` a
+`../.context/handy-968-red-replica`, más
+`test/models/storage/representation_slot_test.rb` de la versión entregada
+(SHA-256 `3f954c4266be154437db5219f555b63edfc90b60fb106893945e4f05ccb7e96d`).
+Mismo entorno que arriba, desde ese directorio:
+
+```bash
+env … SAAS=false BUNDLE_GEMFILE=Gemfile PARALLEL_WORKERS=1 CI_PROGRESS_BAR=false \
+  mise exec -- bin/rails test test/models/storage/representation_slot_test.rb
+```
+
+Resultado: salida 1, 5 casos, 1 error en «acquires and releases when a replica
+is configured»: `NotImplementedError: calling connected_to is only allowed on
+ActiveRecord::Base or abstract classes`. Es el defecto real: el cambio de rol
+sobre el modelo concreto. GREEN en el árbol entregado: 5 casos, 0 fallos.
+
+### Excepción RED explícita: cupos por cuenta
+
+Casos: «a saturated account is refused while another account is still
+served», «a slot is released after processing, also when it fails» y los
+casos de exclusividad, otra cuenta, liberación y toma de slot vencido de
+`representation_slot_test.rb`.
+
+- **Impedimento.** La base `fb2af95…` no tiene ningún cupo por cuenta: no
+  existe un estado que saturar ni que liberar, y una prueba de integración
+  secuencial no puede mantener abiertas dos peticiones para ocupar la celda.
+  Contra la base, el caso de liberación pasa por construcción y el de
+  saturación no puede expresarse sin la API nueva. Es comportamiento nuevo, no
+  una regresión de un mecanismo anterior. La primera versión con caché
+  (`40ccf1d…`, ronda 1) tenía una carrera sólo con escrituras simultáneas en
+  MySQL; SQLite y `MemoryStore` serializan las escrituras, así que no se
+  reproduce aquí.
+- **Evidencia del incidente.** El hallazgo de la tarjeta (cuatro workers y la
+  cola compartidos sin límite por cuenta) y los dos bloqueantes de la ronda 1
+  del gate (reserva no exclusiva, liberación no atómica).
+- **Contrato aún comprobable.** Con dos cupos ocupados la cuenta recibe 429 y
+  otra cuenta recibe servicio; un cupo vuelve a estar libre después de un
+  éxito o un fallo; una posición tiene un solo dueño; una liberación tardía no
+  borra al nuevo dueño.
+- **Riesgo sin probar.** Exclusividad bajo concurrencia real en MySQL; la
+  defensa es el índice único, no código de la aplicación.
+- **Validación alternativa.** Las mutaciones de la tabla siguiente: cada caso
+  falla al quitar el límite, no liberar, quitar la unicidad del índice o
+  liberar por posición.
 
 Sensibilidad (mutación temporal del archivo productivo, restaurada con `cmp`):
 
