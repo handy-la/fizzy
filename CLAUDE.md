@@ -334,7 +334,7 @@ mensaje firmado es `<nonce>:<user verification>:<vence en>`; `cleanup` borra una
 su challenge ya venció, y por eso `consume!` comprueba el vencimiento después
 de insertar: una petición detenida hasta después de la limpieza no reutiliza
 el challenge. Los campos WebAuthn y `passkey.id` se filtran en
-`filter_parameter_logging.rb`. Evidencia: `docs/test-audits/handy-778.md`.
+`config/application.rb`. Evidencia: `docs/test-audits/handy-778.md`.
 
 El servidor exige UV por su cuenta: `userVerification` en las opciones es sólo
 una petición al navegador. `ActionPack::Passkey` recalcula la política (valores

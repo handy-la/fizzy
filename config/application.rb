@@ -10,6 +10,20 @@ module Fizzy
     # Initialize configuration defaults for originally generated Rails version.
     config.load_defaults 8.1
 
+    # Set here rather than in an initializer: Active Record copies these into filter_attributes when it
+    # loads, and config/initializers/extensions.rb loads it before later initializers run.
+    config.filter_parameters += %i[
+      passw secret token _key crypt salt certificate otp ssn
+    ]
+
+    # WebAuthn ceremony fields: a signed assertion read from a log could otherwise be replayed, and
+    # the credential ID links a log line to one authenticator. "passkey.id" is the credential ID
+    # submitted with an assertion.
+    config.filter_parameters += %i[
+      client_data_json authenticator_data signature attestation_object credential_id
+    ]
+    config.filter_parameters += [ "passkey.id" ]
+
     # Include the `lib` directory in autoload paths. Use the `ignore:` option
     # to list subdirectories that don't contain `.rb` files or that shouldn't
     # be reloaded or eager loaded.

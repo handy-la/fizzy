@@ -183,6 +183,17 @@ class Account::DataImportJobTest < ActiveJob::TestCase
     tampered_tempfile&.unlink
   end
 
+  test "discards the job when an export entry inflates past the size limit" do
+    import = Account::Import.create!(identity: identities(:david), account: Account.create!(name: "Import Test"))
+    Account::Import.any_instance.stubs(:check).raises(ZipFile::EntryTooLargeError)
+
+    assert_nothing_raised do
+      assert_no_enqueued_jobs only: Account::DataImportJob do
+        Account::DataImportJob.perform_now(import)
+      end
+    end
+  end
+
   private
     def import_with_records(invalid_content = nil)
       account = Account.create_with_owner(account: { name: "Import Test" }, owner: { identity: identities(:david), name: "David" })

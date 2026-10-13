@@ -1,19 +1,18 @@
 class ZipFile::Reader::IO
-  DEFLATED = 8
+  STORED = 0
 
-  # Deflate can expand data about 1000 times, so a read inflates at most this many
-  # compressed bytes at once. Stored entries do not expand and read as requested.
-  CHUNK_SIZE = 64.kilobytes
-
-  def initialize(entry, io)
+  def initialize(entry, io, reader)
     @entry = entry
     @io = io
+    @reader = reader
     rewind
   end
 
   def read(length = nil, buffer = nil)
-    data = length ? extract(length) : extract_all
-    return nil if data.nil?
+    fill_buffer_for(length)
+    return nil if eof?
+
+    data = take(length)
 
     if buffer
       buffer.replace(data)
@@ -24,12 +23,15 @@ class ZipFile::Reader::IO
   end
 
   def eof?
-    @extractor.eof?
+    buffered.zero? && drained?
   end
 
   def rewind
     @extractor = @entry.extractor_from(@io)
-    @bytes_read = 0
+    @buffer = "".b
+    @consumed = 0
+    @produced = 0
+    @drained = false
     0
   end
 
@@ -38,29 +40,68 @@ class ZipFile::Reader::IO
   end
 
   private
-    def extract(length)
-      return nil if @extractor.eof?
+    def fill_buffer_for(length)
+      until drained? || (length && buffered >= length)
+        drop_consumed
 
-      @extractor.extract(deflated? ? [ length, CHUNK_SIZE ].min : length)&.tap do |data|
-        @bytes_read += data.bytesize
+        chunk = @extractor.extract(slice_size(length))
 
-        if @bytes_read > size
-          raise ZipFile::LimitExceededError, "#{@entry.filename} expands beyond its declared #{size} bytes"
+        if chunk.nil?
+          @drained = true
+        else
+          count_produced chunk.bytesize
+          @buffer << chunk
         end
       end
     end
 
-    def extract_all
-      chunks = []
+    # The size an entry declares is what S3 sizes its upload from, so the entry
+    # is held to it.
+    def count_produced(bytes)
+      @produced += bytes
+      @reader.count_expanded bytes
 
-      while chunk = extract(CHUNK_SIZE)
-        chunks << chunk
+      if @produced > size
+        @reader.exceeded! ZipFile::EntryTooLargeError.new("#{@entry.filename} expands past the #{size} bytes it declares")
       end
-
-      chunks.join
     end
 
-    def deflated?
-      @entry.storage_mode == DEFLATED
+    # An entry whose compressed data runs out before the deflate stream ends
+    # leaves the extractor short of eof while it has nothing left to give, so
+    # take its first nil as the end too rather than asking again forever.
+    def drained?
+      @drained || @extractor.eof?
+    end
+
+    # A deflated entry hands back whatever it inflates to, which is the archive
+    # author's choice rather than the caller's: asking for five megabytes of a
+    # crafted entry gets gigabytes back in one string. Read those in slices and
+    # keep what the caller didn't ask for. A stored entry returns exactly the
+    # bytes asked of it, so its reads pass straight through.
+    def slice_size(length)
+      if @entry.storage_mode == STORED
+        length
+      else
+        [ ZipFile::Reader::EXTRACT_SLICE_SIZE, length ].compact.min
+      end
+    end
+
+    def take(length)
+      wanted = length ? [ length, buffered ].min : buffered
+
+      @buffer.byteslice(@consumed, wanted).tap { @consumed += wanted }
+    end
+
+    def buffered
+      @buffer.bytesize - @consumed
+    end
+
+    # Handing bytes out by moving a cursor rather than trimming the front keeps a
+    # long run of small reads from recopying the rest of the buffer every time.
+    def drop_consumed
+      if @consumed > 0
+        @buffer = @buffer.byteslice(@consumed..)
+        @consumed = 0
+      end
     end
 end

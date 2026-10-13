@@ -84,7 +84,7 @@ class Webhook::TlsTest < ActiveSupport::TestCase
       store = OpenSSL::X509::Store.new
       store.add_cert(certificate) if trusted
       client.cert_store = store
-      Net::HTTP.expects(:new).with("webhook.example.invalid", port).returns(client)
+      Net::HTTP.expects(:new).with("webhook.example.invalid", port, nil).returns(client)
       Surfguard.stubs(:resolve_public_ips).with("webhook.example.invalid").returns([ "127.0.0.1" ])
       webhook = Webhook.create!(board: boards(:writebook), name: "TLS", url: "https://webhook.example.invalid:#{port}/hook")
       delivery = Webhook::Delivery.create!(webhook: webhook, event: events(:layout_commented))
