@@ -4,7 +4,7 @@ import { resolve, dirname } from "node:path"
 import test from "node:test"
 import vm from "node:vm"
 
-async function browser({ response, failure, verificationUrl = "/1/users/david/push_subscription_verification" } = {}) {
+async function browser({ response, failure, verificationUrl = "/1/users/david/push_subscription_verification", cacheFailure } = {}) {
   const calls = []
   const classes = new Set()
   const subscription = {
@@ -14,7 +14,8 @@ async function browser({ response, failure, verificationUrl = "/1/users/david/pu
   const registration = { pushManager: { getSubscription: async () => subscription } }
   const context = vm.createContext({
     navigator: { serviceWorker: { getRegistration: async () => registration } },
-    window: { Notification: {} },
+    window: { Notification: {}, ...(cacheFailure ? { caches: {} } : {}) },
+    caches: { keys: async () => { if (cacheFailure) throw cacheFailure; return [] } },
     Notification: { permission: "granted" },
     document: { querySelector: () => verificationUrl ? ({ content: verificationUrl }) : null },
     console
@@ -30,7 +31,10 @@ async function browser({ response, failure, verificationUrl = "/1/users/david/pu
         }
         if (specifier === "@hotwired/turbo-rails") {
           return new vm.SyntheticModule([ "Turbo" ], function() {
-            this.setExport("Turbo", { offline: { clearCache: async () => calls.push("clearCache") } })
+            this.setExport("Turbo", {
+              cache: { clear: () => calls.push("clearCache") },
+              offline: { clearCache: async () => calls.push("clearCache") }
+            })
           }, { context })
         }
         if (specifier === "@rails/request.js") {
@@ -142,6 +146,17 @@ test("logout still submits when the browser cannot unsubscribe", async () => {
   controller.element = { requestSubmit: () => calls.push("submit") }
   await assert.rejects(controller[logoutAction]({ preventDefault() {}, submitter: null }))
   assert.equal(calls.at(-1), "submit")
+})
+
+test("logout cannot submit when private cache deletion fails", async () => {
+  const { load, calls, logoutAction } = await browser({ cacheFailure: new Error("cache unavailable") })
+  const module = await load(resolve("app/javascript/controllers/clear_offline_cache_controller.js"))
+  await module.evaluate()
+  const controller = new module.namespace.default()
+  controller.element = { requestSubmit: () => calls.push("submit") }
+  await assert.rejects(controller[logoutAction]({ preventDefault() {}, submitter: null }), /cache unavailable/)
+  assert.equal(calls.includes("submit"), false)
+  assert.equal(calls.includes("unsubscribe"), false)
 })
 
 async function pushEvent({ status = 204, failure, verificationUrl = "/1/users/david/push_subscription_verification?token=signed" } = {}) {

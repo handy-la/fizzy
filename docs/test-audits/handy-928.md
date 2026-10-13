@@ -150,7 +150,7 @@ El wrapper de la suite ejecuta los doce casos completos del navegador simulado.
 Rubocop pasó los diez archivos Ruby modificados y `script/check_agents_docs`
 pasó sus cuatro archivos.
 
-SHA-256 de las candidatas finales copiadas a la base:
+SHA-256 de las candidatas del lote anterior, copiadas a la base:
 
 - Controller: `e9f6fb8cbc9bb9bc7931c2b6925fdf7a0cce8ed9287b84ccd5593213cd38f871`.
 - JavaScript: `7e9d0936252a36d51e56189c024dddbe160b37a9b6d7e5bf611dd2cf83a0b2ec`.
@@ -207,4 +207,61 @@ El RED histórico de cuotas pertenece al main publicado y a su documento
 `docs/test-audits/handy-940.md`. El RED de privacidad y sesión de esta tarjeta
 permanece arriba. La adaptación de la fila SQL cambia sólo su huella y conserva
 la aserción independiente de cinco destinos; no se cuenta una violación de
-unicidad como RED de fan-out. La validación de integración se registra al terminar.
+unicidad como RED de fan-out. La suite general de integración pasó 2.059 casos y 8.688 aserciones, sin
+fallos ni errores; seis omisiones. Los casos enfocados pasaron 63 casos y
+250 aserciones. Node pasó 13 casos. Rubocop pasó once archivos Ruby.
+
+La prueba HTTP de concurrencia publicada usaba un bearer sin sesión de navegador.
+Ahora registra mediante la cookie obtenida por el ingreso real con código, porque
+push exige una sesión revocable. Mantiene seis peticiones paralelas y las mismas
+aserciones independientes: cinco altas, un 429 y cinco filas. Se limpia sólo la
+sesión creada por ese caso, además de su cuenta. No se reduce la cobertura del
+lock de cuota ni se cambia un esperado para ocultar su fallo. La frontera sigue
+siendo HTTP concurrente y no se agrega un seam de autenticación.
+
+
+El caso de fallo de limpieza se ejecutó también contra una exportación de la
+revisión previa al rebase, `feac7b695ede5219fdde479014cd448de9091c75`.
+La exportación `.context/handy-928-before-main-integration/` recibió únicamente
+la candidata Node. Con Node 26.8.1, desde esa exportación:
+
+```bash
+node --experimental-vm-modules --test --test-name-pattern='private cache deletion' \
+  test/javascript/push_subscriptions_test.mjs
+```
+
+RED: salida 1, un fallo `Missing expected rejection`; el logout ignoraba la
+caché privada del main nuevo. El mismo comando desde el repo integrado dio
+GREEN: salida 0, un caso. Logs: `.context/handy-928-cache-integration-red.log`
+y `.context/handy-928-cache-integration-green.log`. La integración del transporte
+concurrente conserva las aserciones de capacidad; no se cuenta su 403 inicial
+por falta de sesión como RED de cuota.
+
+Candidatas de integración:
+
+- Node: `3c3c8c21e3a9f98fd4433fcb6c2751134a65afaa40479d01d102eb3f1e33c635`.
+- Concurrencia HTTP: `d67b4f068b5ef42b6532400d83f9e71a1ce0561e94c1c1a88ca9678a601fc6d6`.
+
+## Excepción de presupuesto autorizada
+
+El 13 de octubre la persona autorizó una ronda más de `bin/signoff`, con
+`CHANGE_REVIEW_MAX_ROUNDS=4`, porque main avanzó durante el aterrizaje.
+Se conserva la serie y exactamente este contexto:
+
+> Vincular las notificaciones push al usuario y la sesión, reconciliar el navegador al cambiar de identidad y bloquear entregas después de revocación.
+
+No se reinicia el contador ni se omite la revisión. La instrucción de la persona
+es detener la integración si esa revisión encuentra un problema real; con ambos
+PASS, enviar de inmediato y registrar el aterrizaje.
+
+La suite de navegador de integración se ejecutó con el mismo entorno OSS,
+`PARALLEL_WORKERS=1` y `bin/rails test:system --seed 40822`. La primera ejecución
+terminó con 61 casos, cero fallos y un error al buscar «Invite people» en
+`BackLinkNavigationTest`. Se conservó esa prueba sin cambios. Sus cinco casos
+pasaron sobre una exportación aislada de `origin/main`,
+`fb2af95ebcd8317391d7b3c7f715d22f97e81ffb`, con la misma semilla. La repetición
+completa del repo integrado pasó los 61 casos, sin fallos, errores ni omisiones.
+No se atribuye una causa al error transitorio ni se cuenta como RED de push.
+Logs: `.context/handy-928-system-final-integration.log`,
+`.context/handy-928-back-link-baseline.log` y
+`.context/handy-928-system-final-integration-rerun.log`.

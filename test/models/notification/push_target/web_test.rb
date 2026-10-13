@@ -42,7 +42,8 @@ class Notification::PushTarget::WebTest < ActiveSupport::TestCase
     7.times do |index|
       Push::Subscription.insert_all!([ original.attributes.merge(
         "id" => "000000000000000000000000#{index}",
-        "endpoint" => "https://fcm.googleapis.com/fcm/send/legacy-#{index}"
+        "endpoint" => "https://fcm.googleapis.com/fcm/send/legacy-#{index}",
+        "endpoint_digest" => Digest::SHA256.hexdigest("https://fcm.googleapis.com/fcm/send/legacy-#{index}")
       ) ])
     end
     @web_push_pool.expects(:queue).with do |payload, subscriptions|

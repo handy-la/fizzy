@@ -7,10 +7,13 @@ class Users::PushSubscriptionsConcurrencyTest < ActionDispatch::IntegrationTest
     stub_web_push_dns_resolution
     @account = Account.create!(name: "Concurrent push")
     @user = @account.users.create!(name: "Subscriber", identity: identities(:david), role: :owner)
-    @authorization = "Bearer #{identity_access_tokens(:davids_api_token).token}"
+    sign_in_as :david
+    @session_token = cookies[:session_token]
+    @browser_session = Session.find_signed(parsed_cookies.signed[:session_token])
   end
 
   teardown do
+    @browser_session&.destroy!
     @account.destroy!
   end
 
@@ -25,10 +28,11 @@ class Users::PushSubscriptionsConcurrencyTest < ActionDispatch::IntegrationTest
           start.pop
           Rails.application.executor.wrap do
             session = ActionDispatch::Integration::Session.new(Rails.application)
+            session.cookies[:session_token] = @session_token
             session.post("#{@account.slug}/users/#{@user.id}/push_subscriptions", params: {
               endpoint: "https://fcm.googleapis.com/fcm/send/concurrent-#{index}",
               p256dh_key: "key", auth_key: "auth", client_id: "client-#{index}"
-            }, as: :json, headers: { "Authorization" => @authorization })
+            }, as: :json)
             session.response.status
           end
         end

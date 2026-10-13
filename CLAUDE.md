@@ -416,7 +416,9 @@ ya estaban en tránsito. Si no puede comprobarlo por red, descarta el mensaje. L
 conserva el endpoint ante errores temporales y deja la UI sin activar; sólo un
 rechazo definitivo o la falta de usuario autoriza su cancelación.
 La migración retira registros anteriores porque no tienen prueba de sesión.
-`clear-offline-cache#clearCache` también sirve al ingreso con código: conserva
-su envío síncrono. La espera de `unsubscribe()` sólo pertenece a `#logout`;
-repetir el envío del código después de deshabilitar el campo lo omite.
+`clear-offline-cache#clearCache` también sirve al ingreso con código. Conserva
+la espera de borrado de caché y deshabilita el código en `turbo:submit-start`.
+`#logout` limpia esa misma caché antes de esperar `unsubscribe()` y de enviar
+el formulario. Un fallo de limpieza impide salir; uno de push permite que el
+servidor revoque los registros. No combines ambos envíos recursivamente.
 Evidencia y límites: `docs/test-audits/handy-928.md`.
