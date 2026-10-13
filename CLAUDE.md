@@ -343,6 +343,13 @@ respuesta; ésta exige UV si esa política o la firmada en el challenge es
 `required`. No llames a `PublicKeyCredential#authenticate` sin `user_verification:`.
 Evidencia: `docs/test-audits/handy-945.md`.
 
+Una clave RS256 se acepta sólo con módulo de 2048 a 4096 bits y exponente
+65537. `CoseKey` lo comprueba sobre los bytes, antes de `OpenSSL::BN`: la
+clave se guarda y cada inicio de sesión verifica con ella. En una prueba de
+integración, un helper de ruta en una aserción hace que el siguiente challenge
+sin tenant redirija y llegue `nil`; haz un registro por prueba.
+Evidencia: `docs/test-audits/handy-946.md`.
+
 ## Cuota y borrado de cargas directas
 
 Una carga directa reserva espacio antes de emitir la URL: máximo 100 MiB por
