@@ -6,9 +6,16 @@ export default class extends Controller {
   async clearCache(event) {
     if (this.cleared) return
     event.preventDefault()
-    await this.#clearCaches()
-    this.cleared = true
-    this.element.requestSubmit(event.submitter)
+    if (this.clearing) return
+    this.clearing = true
+
+    try {
+      await this.#clearCaches()
+      this.cleared = true
+      this.element.requestSubmit(event.submitter)
+    } finally {
+      this.clearing = false
+    }
   }
 
   async logout(event) {

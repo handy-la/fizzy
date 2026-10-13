@@ -409,6 +409,12 @@ No reactives el preloader de TurboOffline. Preserva la limpieza de snapshots
 antes del logout y los controles de credenciales de Handy 925.
 Evidencia: `docs/test-audits/handy-925.md` y `docs/test-audits/handy-927.md`.
 
+Un submit que espera Cache Storage debe bloquear otros submits antes del
+primer `await` y liberar el bloqueo si falla el borrado. La guarda de reentrada
+del envío reanudado no evita dos limpiezas concurrentes. Conserva el campo del
+código activo hasta `turbo:submit-start`, cuando Turbo ya capturó sus datos.
+Evidencia: `docs/test-audits/handy-926.md`.
+
 ## Push: el permiso del navegador no identifica al usuario
 
 Una `PushSubscription` existente sólo se activa después de verificar usuario
