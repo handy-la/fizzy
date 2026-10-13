@@ -52,7 +52,53 @@ class SaasStorageTlsTest < ActiveSupport::TestCase
     end
   end
 
+  test "S3 import reads a ZIP through its signed URL with the configured internal CA" do
+    with_tls_storage(trusted: true, connections: nil, initial_contents: archive_bytes) do |service, requests|
+      ZipFile.read_from(archive_blob(service)) do |reader|
+        assert_equal "attachment", reader.read("probe.txt")
+      end
+
+      request = requests.pop(timeout: 1)
+      assert_match(/X-Amz-Signature=/, request.fetch(:line))
+      assert_match(/range: bytes=0-0/i, request.fetch(:headers))
+    end
+  end
+
+  test "S3 import rejects an untrusted certificate before requesting its signed URL" do
+    with_tls_storage(trusted: false, initial_contents: archive_bytes) do |service, requests|
+      assert_raises(OpenSSL::SSL::SSLError) do
+        ZipFile.read_from(archive_blob(service)) { flunk "An untrusted import was opened" }
+      end
+
+      assert requests.empty?, "An untrusted server received a signed import URL"
+    end
+  end
+
+  test "S3 import rejects a trusted certificate for another hostname" do
+    with_tls_storage(trusted: true, hostname: "other.example.invalid", initial_contents: archive_bytes) do |service, requests|
+      assert_raises(OpenSSL::SSL::SSLError) do
+        ZipFile.read_from(archive_blob(service)) { flunk "An import from the wrong hostname was opened" }
+      end
+
+      assert requests.empty?, "A server with the wrong hostname received a signed import URL"
+    end
+  end
+
   private
+    def archive_bytes
+      io = StringIO.new("".b)
+      writer = ZipFile::Writer.new(io)
+      writer.add_file("probe.txt", "attachment", compress: false)
+      writer.close
+      io.string
+    end
+
+    def archive_blob(service)
+      blob = ActiveStorage::Blob.new(key: "archive", filename: "archive.zip", content_type: "application/zip")
+      blob.stubs(:service).returns(service)
+      blob
+    end
+
     def storage_config(environment: "production", ca_bundle: nil)
       original_environment = Rails.env
       values = {
@@ -69,7 +115,7 @@ class SaasStorageTlsTest < ActiveSupport::TestCase
       values.each_key { |key| ENV[key] = original_values[key] }
     end
 
-    def with_tls_storage(trusted:, hostname: "127.0.0.1", connections: 1)
+    def with_tls_storage(trusted:, hostname: "127.0.0.1", connections: 1, initial_contents: "")
       ca_key = OpenSSL::PKey::RSA.new(2048)
       ca = certificate(ca_key, hostname: "Storage test CA", authority: true)
       key = OpenSSL::PKey::RSA.new(2048)
@@ -81,8 +127,9 @@ class SaasStorageTlsTest < ActiveSupport::TestCase
       requests = Queue.new
       socket = nil
       worker = Thread.new do
-        contents = ""
-        connections.times do
+        contents = initial_contents
+        completed = 0
+        loop do
           socket = OpenSSL::SSL::SSLSocket.new(listener.accept, context)
           socket.sync_close = true
           socket.accept
@@ -99,8 +146,18 @@ class SaasStorageTlsTest < ActiveSupport::TestCase
           requests << { line: line, headers: headers, body: body }
           contents = body if line.start_with?("PUT ")
           response = line.start_with?("GET ") ? contents : ""
-          socket.write("HTTP/1.1 200 OK\r\nContent-Length: #{response.bytesize}\r\nConnection: close\r\n\r\n#{response}")
+          status = "200 OK"
+          range_headers = ""
+          if range = headers.match(/^range: bytes=(\d+)-(\d+)\r$/i)
+            first, last = range.captures.map(&:to_i)
+            response = contents.byteslice(first..last)
+            status = "206 Partial Content"
+            range_headers = "Content-Range: bytes #{first}-#{last}/#{contents.bytesize}\r\n"
+          end
+          socket.write("HTTP/1.1 #{status}\r\n#{range_headers}Content-Length: #{response.bytesize}\r\nConnection: close\r\n\r\n#{response}")
           socket.close
+          completed += 1
+          break if connections && completed >= connections
         end
       rescue OpenSSL::SSL::SSLError
         # A client rejection also terminates the server handshake.
@@ -118,6 +175,7 @@ class SaasStorageTlsTest < ActiveSupport::TestCase
         service = ActiveStorage::Service.configure(:purestorage, { purestorage: config })
         WebMock.disable!
         yield service, requests
+        worker.kill unless connections
         assert worker.join(5), "TLS server did not finish"
         worker.value
       end

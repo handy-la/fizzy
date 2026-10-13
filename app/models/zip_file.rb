@@ -96,8 +96,8 @@ class ZipFile
 
       def read_from_s3(blob, limits:)
         url = blob.url(expires_in: 6.hour)
-        ssl_verify_peer = blob.service.client.client.config.ssl_verify_peer
-        remote_io = RemoteIO.new(url, ssl_verify_peer: ssl_verify_peer)
+        config = blob.service.client.client.config
+        remote_io = RemoteIO.new(url, ssl_verify_peer: config.ssl_verify_peer, ssl_ca_bundle: config.ssl_ca_bundle)
         reader = Reader.new(remote_io, limits: limits)
         yield reader
       end

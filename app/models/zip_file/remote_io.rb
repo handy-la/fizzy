@@ -1,7 +1,8 @@
 class ZipFile::RemoteIO < ZipKit::RemoteIO
-  def initialize(url, ssl_verify_peer: true)
+  def initialize(url, ssl_verify_peer: true, ssl_ca_bundle: nil)
     super(url)
     @ssl_verify_peer = ssl_verify_peer
+    @ssl_ca_bundle = ssl_ca_bundle
   end
 
   protected
@@ -43,6 +44,7 @@ class ZipFile::RemoteIO < ZipKit::RemoteIO
       http = Net::HTTP.new(@uri.hostname, @uri.port)
       http.use_ssl = @uri.scheme == "https"
       http.verify_mode = OpenSSL::SSL::VERIFY_NONE unless @ssl_verify_peer
+      http.ca_file = @ssl_ca_bundle if @ssl_ca_bundle
       http.start { yield http }
     end
 end
