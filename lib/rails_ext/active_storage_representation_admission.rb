@@ -13,9 +13,10 @@
 # * One account may hold CONCURRENCY_PER_ACCOUNT processings at once, so it cannot take every
 #   worker of the cell. A refused request answers 429 at once rather than queueing in the cell.
 #
-# Everything lives in Rails.cache, which is Solid Cache and therefore shared by every process in
-# production. A slot left behind by a dead process expires after SLOT_TTL, longer than the cell's
-# own timeout.
+# Verdicts and rate counters live in Rails.cache, which is Solid Cache and therefore shared by every
+# process in production; a lost write there costs at most one more attempt. Slots must be exclusive,
+# which a cache write is not, so they are rows under a unique index (Storage::RepresentationSlot). A
+# slot left behind by a dead process expires after SLOT_TTL, longer than the cell's own timeout.
 module ActiveStorage::RepresentationAdmission
   CONCURRENCY_PER_ACCOUNT = 2
   PROCESSINGS_PER_MINUTE = 30
@@ -48,21 +49,7 @@ module ActiveStorage::RepresentationAdmission
     end
 
     def acquire_slot(account_id)
-      token = SecureRandom.uuid
-
-      CONCURRENCY_PER_ACCOUNT.times do |index|
-        key = "active_storage/representation_slot/#{account_id}/#{index}"
-
-        if Rails.cache.write(key, token, unless_exist: true, expires_in: SLOT_TTL)
-          return [ key, token ]
-        end
-      end
-
-      nil
-    end
-
-    def release_slot((key, token))
-      Rails.cache.delete(key) if Rails.cache.read(key) == token
+      Storage::RepresentationSlot.acquire(account_id, positions: CONCURRENCY_PER_ACCOUNT, expires_in: SLOT_TTL)
     end
 
     def processor_version
@@ -120,7 +107,7 @@ module ActiveStorage::RepresentationAdmission
             admission.record_verdict(@blob, representation.variation) if admission.permanent?(error)
             raise
           ensure
-            admission.release_slot(slot)
+            slot.release
           end
         else
           refuse_representation

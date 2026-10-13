@@ -342,8 +342,11 @@ guarda el veredicto de un fallo permanente (`permanent_errors`; SaaS registra
 `Cell::UnprocessableAttachment`) y responde 422 sin procesar. También limita a
 cada identidad a 30 procesamientos por minuto y a cada cuenta a 2 a la vez
 (429). Sólo cuenta trabajo pendiente: una representación ya procesada pasa.
-Todo vive en `Rails.cache`; en test es `:null_store` y las pruebas usan un
-`MemoryStore`. Nunca guardes un error transitorio como veredicto.
+Veredictos y contadores viven en `Rails.cache` (en test `:null_store`; las
+pruebas usan un `MemoryStore`). Los cupos no: `write(unless_exist:)` de Solid
+Cache no es exclusivo en MySQL si la clave falta. Son filas de
+`Storage::RepresentationSlot` con índice único, borradas por id. Nunca guardes
+un error transitorio como veredicto.
 Evidencia: `docs/test-audits/handy-968.md`.
 
 ## Cuotas y envío push

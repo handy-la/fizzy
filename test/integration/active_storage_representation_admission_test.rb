@@ -82,7 +82,7 @@ class ActiveStorageRepresentationAdmissionTest < ActionDispatch::IntegrationTest
     get rails_representation_path(other_blob.representation(resize_to_limit: [ 100, 100 ]), script_name: "/#{accounts(:initech).external_account_id}")
     assert_response :redirect
   ensure
-    held&.each { |slot| ActiveStorage::RepresentationAdmission.release_slot(slot) if slot }
+    held&.each { |slot| slot&.release }
   end
 
   test "a slot is released after processing, also when it fails" do

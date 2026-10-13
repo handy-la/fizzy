@@ -25,9 +25,19 @@ procesada; una representación ya procesada no consume cupo.
 2. **Límite por identidad.** 30 procesamientos por minuto (ventana fija). Sin
    identidad, la clave es la IP del cliente.
 3. **Concurrencia por cuenta.** 2 procesamientos a la vez por cuenta del blob.
-   Cada uno toma un slot con `write(unless_exist: true)` de 3 minutos (más que
-   el timeout de 135 s de la celda), y lo libera en `ensure`. Un rechazo
-   responde 429 con `Retry-After`.
+   Cada uno toma una fila de `storage_representation_slots` (índice único
+   `account_id, position`) que vence en 3 minutos (más que el timeout de 135 s
+   de la celda), y la borra por id en `ensure`. Un rechazo responde 429 con
+   `Retry-After`. Las escrituras usan el rol de escritura: un GET puede ir a la
+   réplica.
+
+Ronda 1 del gate: la primera versión guardaba los slots en `Rails.cache`. En
+MySQL, `write(unless_exist:)` de Solid Cache hace `SELECT … FOR UPDATE` y un
+upsert; si la clave no existe, nada bloquea y dos peticiones reciben `true`.
+La liberación leía y borraba por separado. Por eso los slots son filas: el
+INSERT con índice único es exclusivo en MySQL y SQLite, y el DELETE por id sólo
+borra la fila propia. Los contadores de ritmo y los veredictos siguen en la
+caché: una escritura perdida sólo cuesta un intento más.
 
 Desviación de la tarjeta: la clave incluye el id del blob además del checksum.
 El checksum es MD5 y se pueden fabricar colisiones; sin el id, un archivo
@@ -41,7 +51,9 @@ expiración de 1 día limita ese caso.
 ## Respuestas de autoría
 
 Pruebas: `test/integration/active_storage_representation_admission_test.rb`
-(7 casos) y un caso nuevo en
+(7 casos), `test/models/storage/representation_slot_test.rb` (4 casos:
+exclusividad, otra cuenta, liberación, toma de un slot vencido sin que la
+liberación tardía borre al nuevo dueño) y un caso nuevo en
 `saas/test/integration/unprocessable_representation_test.rb`.
 
 1. **Contrato.** Respuesta HTTP de los controladores de representación y número
@@ -55,8 +67,8 @@ Pruebas: `test/integration/active_storage_representation_admission_test.rb`
    autorización antes del parser. Ninguna repetía la petición ni medía cupos.
 4. **Seam.** `permanent_errors` tiene un consumidor productivo (SaaS lo
    asigna en `UnprocessableAttachments.install!`). `acquire_slot` y
-   `release_slot` los usa el controlador; la prueba de saturación los usa
-   para ocupar los slots, porque una prueba de integración secuencial no puede
+   `Storage::RepresentationSlot#release` los usa el controlador; la prueba de
+   saturación los usa para ocupar los slots, porque una prueba de integración secuencial no puede
    mantener dos peticiones abiertas. `Rails.cache` se sustituye por un
    `MemoryStore` porque el entorno de test usa `:null_store`; producción usa
    Solid Cache, compartido por todos los procesos.
@@ -93,13 +105,20 @@ Sensibilidad (mutación temporal del archivo productivo, restaurada con `cmp`):
 | clave sin digest de variación | otra variación |
 | clave sin versión del procesador | otra versión |
 | no se libera el slot | slot liberado; límite por identidad |
+| índice `account_id, position` no único (schema SQLite) | posición exclusiva; toma de slot vencido |
+| liberación por `account_id, position` en vez de id | toma de slot vencido |
 
 ## Lo que no verifiqué
 
 - El bundle SaaS no se instala aquí (`rails-structured-logging` es privado).
   El caso nuevo de `saas/test/integration/unprocessable_representation_test.rb`
   y la carga del engine no se ejecutaron; sólo `ruby -c` y RuboCop.
-- No ejecuté Solid Cache ni MySQL; los slots y contadores dependen de
-  `write(unless_exist:)` e `increment` atómicos, que Solid Cache implementa con
-  bloqueo de fila (`entry_lock_and_write`).
+- No ejecuté MySQL ni Solid Cache. La exclusividad de slots depende del índice
+  único, no de la caché. No probé dos peticiones simultáneas reales: SQLite
+  serializa escrituras en las pruebas. El contador de ritmo usa `increment`;
+  con la clave aún ausente, dos peticiones simultáneas pueden contar una vez
+  (exceso acotado al inicio de cada ventana).
+- No ejecuté la migración en una base existente; las pruebas cargan
+  `db/schema_sqlite.rb`. `db/schema.rb` (MySQL) se editó a mano con el mismo
+  formato.
 - No medí la celda real bajo carga.
