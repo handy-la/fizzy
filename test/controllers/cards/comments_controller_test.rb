@@ -139,6 +139,28 @@ class Cards::CommentsControllerTest < ActionDispatch::IntegrationTest
     assert_equal comment.creator.id, json["creator"]["id"]
   end
 
+  # Handy #967: the model rejects an update that charges past the account
+  # limit; the controller answers it like the fast storage guard does.
+  test "update as JSON rejects a reused embed when the account is at its limit" do
+    account = accounts("37s")
+    comment = comments(:logo_agreement_kevin)
+    embed = Current.with_account(account) do
+      blob = ActiveStorage::Blob.create_and_upload!(io: file_fixture("moon.jpg").open, filename: "moon.jpg", content_type: "image/jpeg")
+      html = ActionText::Attachment.from_attachable(blob).to_html
+      cards(:text).update!(description: "<p>#{html}</p>")
+      html
+    end
+    limit = account.respond_to?(:storage_limit) ? account.storage_limit : Storage::UploadReservation::DEFAULT_ACCOUNT_BYTES
+    Storage::Entry.record(account: account, delta: limit - account.bytes_used_exact, operation: "attach")
+
+    assert_no_changes -> { comment.reload.body.to_s } do
+      put card_comment_path(cards(:logo), comment), params: { comment: { body: "<p>#{embed}</p>" } }, as: :json
+    end
+
+    assert_response :forbidden
+    assert_equal limit, account.reload.bytes_used_exact
+  end
+
   test "edit a comment that contains a mention" do
     card = cards(:logo)
     mentioned_user = users(:jz)

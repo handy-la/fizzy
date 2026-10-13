@@ -10,5 +10,7 @@ class ApplicationController < ActionController::Base
 
   etag { "v1" }
   stale_when_importmap_changes
+
+  rescue_from Storage::QuotaExceeded, with: -> { head :forbidden }
   allow_browser versions: :modern
 end

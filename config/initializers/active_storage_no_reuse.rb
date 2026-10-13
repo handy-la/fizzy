@@ -18,6 +18,8 @@
 # basically nonexistent in practice.
 #
 # Exception: ActionText embeds are allowed to reuse blobs to support copy/paste.
+# Each reuse still charges blob.byte_size, so Storage::AttachmentTracking checks
+# the account limit before every tracked attachment is created.
 
 ActiveSupport.on_load(:active_storage_attachment) do
   validate :blob_account_matches_record, on: :create

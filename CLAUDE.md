@@ -407,6 +407,15 @@ adjuntos sin callbacks, y una marca desfasada baja el saldo y oculta la fila a
 la limpieza. Su costo es lineal en las filas de la cuenta (unos 23 ms con
 100 000). Medición y umbral: `docs/test-audits/handy-951.md`.
 
+Un embed de ActionText puede reutilizar un blob y cada adjunto cobra
+`blob.byte_size` otra vez. El límite se decide en los callbacks del adjunto, en
+create y update de cualquier entrada. `Storage::Tracked#save` abre un
+`Storage::Mutation`: el primer cambio de adjunto bloquea la cuenta y lee el uso;
+al final se rechaza sólo si el uso crece y pasa el límite. No compruebes cada
+adjunto por separado: Rails guarda el rich text en `after_update` y quita una
+imagen en `after_save`. `Storage::QuotaExceeded` revierte el guardado (403).
+Evidencia: `docs/test-audits/handy-967.md`.
+
 ## Caché offline y cambios de sesión
 
 El worker sólo guarda recursos estáticos públicos del mismo origen en

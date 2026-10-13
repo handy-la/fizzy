@@ -8,6 +8,16 @@ module Storage::Tracked
     before_update :track_board_transfer, if: :board_transfer?
   end
 
+  # Every attachment this save creates or removes is checked against the
+  # account limit as one net delta (Storage::Mutation).
+  def save(**options, &block)
+    with_storage_limit { super(**options, &block) }
+  end
+
+  def save!(**options, &block)
+    with_storage_limit { super(**options, &block) }
+  end
+
   # Return self as the trackable record for storage entries
   def storage_tracked_record
     self
@@ -24,6 +34,10 @@ module Storage::Tracked
   end
 
   private
+    def with_storage_limit(&block)
+      self.class.transaction { Storage::Mutation.wrap(account, &block) }
+    end
+
     def board_transfer?
       respond_to?(:will_save_change_to_board_id?) && will_save_change_to_board_id?
     end

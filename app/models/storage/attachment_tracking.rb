@@ -4,9 +4,9 @@ module Storage::AttachmentTracking
   included do
     # Snapshot IDs in before_destroy since parent record may be deleted
     # by the time after_destroy_commit runs
-    before_destroy :lock_storage_account, :snapshot_storage_context
-    before_create :lock_storage_account
-    after_create :record_storage_attach
+    before_destroy :lock_storage_account, :snapshot_storage_context, :start_storage_mutation
+    before_create :lock_storage_account, :start_storage_mutation
+    after_create :record_storage_attach, :verify_standalone_storage_mutation
     after_destroy :record_storage_detach
   end
 
@@ -19,6 +19,27 @@ module Storage::AttachmentTracking
         errors.add(:blob_id, "upload no longer exists")
       end
       throw :abort if errors.any?
+    end
+
+    # ActionText embeds may reuse a blob, and each tracked attachment charges
+    # blob.byte_size again, so the limit is decided on the attachment for every
+    # create and update path. Inside a tracked record's save, the mutation
+    # opened by Storage::Tracked verifies the net delta of the whole save. An
+    # attachment created outside one (a rich text saved on its own) is
+    # verified alone. Removals only need the baseline taken before them.
+    def start_storage_mutation
+      tracked = storage_tracked_record
+      return unless tracked && Storage::Entry.recording
+
+      @storage_mutation = Storage::Mutation.for(tracked.account)
+      if @storage_mutation.nil? && new_record?
+        @storage_mutation = @standalone_storage_mutation = Storage::Mutation.new(tracked.account)
+      end
+      @storage_mutation&.start
+    end
+
+    def verify_standalone_storage_mutation
+      @standalone_storage_mutation&.verify!
     end
 
     def record_storage_attach

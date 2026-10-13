@@ -16,6 +16,10 @@ module Account::Storage
     super + storage_upload_reservations.pending.sum(:byte_size) + Account::Import::Admission.where(account_id: id).sum(:reserved_bytes)
   end
 
+  def storage_bytes_allowed
+    respond_to?(:storage_limit) ? storage_limit : Storage::UploadReservation::DEFAULT_ACCOUNT_BYTES
+  end
+
   private
     def clear_storage_entries
       Storage::Entry.where(account_id: id).delete_all
