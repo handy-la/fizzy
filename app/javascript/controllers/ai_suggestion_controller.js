@@ -138,6 +138,7 @@ export default class extends Controller {
         body: JSON.stringify({ kind: this.kindValue, description }), signal: request.signal
       })
       if (response.status === 204) { this.#showStatus(""); return }
+      if (response.status === 429) { this.#showStatus(this.#quotaMessage(response.headers.get("Retry-After")), true); return }
       if (!response.ok) throw new Error("Suggestion unavailable")
       const result = await response.json()
       if (revision !== this.#revision || !this.element.isConnected) return
@@ -260,6 +261,13 @@ export default class extends Controller {
       this.#status.classList.toggle("for-screen-reader", !text || this.#preparing)
     }
     if (this.hasRetryTarget) this.retryTarget.hidden = !retry
+  }
+
+  #quotaMessage(retryAfter) {
+    const seconds = Number.parseInt(retryAfter, 10)
+    if (!(seconds > 0)) return "Cupo de sugerencias agotado; intenta más tarde."
+    const minutes = Math.ceil(seconds / 60)
+    return `Cupo de sugerencias agotado; intenta en ${minutes} ${minutes === 1 ? "minuto" : "minutos"}.`
   }
 
   get #key() { return `ai-suggestion:${this.userValue}:${this.urlValue}:${this.kindValue}` }

@@ -236,6 +236,21 @@ class AiSuggestionSystemTest < ApplicationSystemTestCase
     assert_equal 1, page.evaluate_script("window.suggestionRequests.length")
   end
 
+  # Handy #999: a 429 explains the exhausted quota and when to retry, instead
+  # of the generic failure. Contract: docs/test-audits/handy-999.md.
+  test "an exhausted quota says when to retry" do
+    visit card_url(@card)
+    control_suggestions
+    scroll_to_comment
+    find(".comment--new [contenteditable]").click
+    wait_for_request
+    page.execute_script(<<~JS)
+      window.resolveSuggestion(new Response(null, { status: 429, headers: { "Retry-After": "600" } }))
+    JS
+    assert_selector '[data-ai-suggestion-target="status"]', text: "Cupo de sugerencias agotado; intenta en 10 minutos."
+    assert_button "Reintentar sugerencia"
+  end
+
   test "a late reply cannot replace text typed and then cleared" do
     visit card_url(@card)
     control_suggestions

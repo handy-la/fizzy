@@ -7,7 +7,29 @@ class Card::SuggestionQueue < ApplicationRecord
   GLOBAL_BUDGET = 30
   BUDGET_WINDOW = 1.hour
 
-  class Full < StandardError; end
+  class Full < StandardError
+    attr_reader :retry_after
+
+    def initialize(retry_after = nil)
+      @retry_after = retry_after
+      super()
+    end
+  end
+
+  # A single-tenant installation has one account: its budget is the global one.
+  def self.account_budget
+    configured_budget("AI_SUGGESTION_ACCOUNT_BUDGET") || (Account.multi_tenant ? ACCOUNT_BUDGET : global_budget)
+  end
+
+  def self.global_budget
+    configured_budget("AI_SUGGESTION_GLOBAL_BUDGET") || GLOBAL_BUDGET
+  end
+
+  def self.configured_budget(name)
+    budget = Integer(ENV[name].to_s, 10, exception: false)
+    budget if budget&.positive?
+  end
+  private_class_method :configured_budget
 
   def self.synchronize
     create_or_find_by!(id: SINGLETON_ID)
@@ -32,7 +54,9 @@ class Card::SuggestionQueue < ApplicationRecord
 
     Card::SuggestionAdmission.where(created_at: ...BUDGET_WINDOW.ago).delete_all
     admissions = Card::SuggestionAdmission.all
-    raise Full if admissions.where(account_id: user.account_id).count >= ACCOUNT_BUDGET || admissions.count >= GLOBAL_BUDGET
+    account = admissions.where(account_id: user.account_id)
+    exhausted = account.count >= self.class.account_budget ? account : (admissions if admissions.count >= self.class.global_budget)
+    raise Full.new(budget_retry_after(exhausted)) if exhausted
 
     Card::SuggestionAdmission.create!(account_id: user.account_id)
   end
@@ -56,4 +80,9 @@ class Card::SuggestionQueue < ApplicationRecord
       false
     end
   end
+
+  private
+    def budget_retry_after(admissions)
+      [ (admissions.minimum(:created_at) + BUDGET_WINDOW - Time.current).ceil, 1 ].max
+    end
 end

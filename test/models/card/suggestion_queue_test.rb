@@ -49,6 +49,35 @@ class Card::SuggestionQueueTest < ActiveSupport::TestCase
     end
   end
 
+  # Handy #999: a single-tenant installation has one account, so the account
+  # budget must not be a third of the global one. Contract: docs/test-audits/handy-999.md.
+  test "single-tenant installation gives its only account the global budget" do
+    previous, Account.multi_tenant = Account.multi_tenant, false
+    30.times do
+      request_for(users(:kevin))
+      perform_enqueued_jobs only: Card::SuggestionJob
+    end
+    assert_requested :post, @url, times: 30
+    assert_rejected { request_for(users(:kevin)) }
+  ensure
+    Account.multi_tenant = previous
+  end
+
+  test "account and global budgets can be configured by environment" do
+    with_env("AI_SUGGESTION_ACCOUNT_BUDGET" => "3", "AI_SUGGESTION_GLOBAL_BUDGET" => "4") do
+      3.times do
+        request_for(users(:kevin))
+        perform_enqueued_jobs only: Card::SuggestionJob
+      end
+      assert_rejected { request_for(users(:kevin)) }
+      request_for(users(:mike), cards(:radio))
+      perform_enqueued_jobs only: Card::SuggestionJob
+      other_user, other_card = create_tenant
+      assert_rejected { request_for(other_user, other_card) }
+    end
+    assert_requested :post, @url, times: 4
+  end
+
   test "global hourly budget cannot be avoided by rotating accounts" do
     tenants = [ [ users(:kevin), cards(:logo) ], [ users(:mike), cards(:radio) ], create_tenant ]
     10.times do
@@ -119,6 +148,14 @@ class Card::SuggestionQueueTest < ActiveSupport::TestCase
   end
 
   private
+    def with_env(values)
+      previous = values.to_h { |name, _| [ name, ENV[name] ] }
+      values.each { |name, value| ENV[name] = value }
+      yield
+    ensure
+      previous.each { |name, value| ENV[name] = value }
+    end
+
     def request_for(user, card = cards(:logo))
       Card::SuggestionRequest.request(card, user: user, kind: "comment")
     end

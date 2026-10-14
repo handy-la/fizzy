@@ -272,6 +272,9 @@ En un celular el foco llega tras esa intención; lo autoriza el `click` del toqu
 
 La admisión de IA cuenta solicitudes `pending` y `running` bajo
 `Card::SuggestionQueue`: una por usuario, dos por cuenta y cuatro globales.
+El presupuesto por hora es diez por cuenta y treinta global; sin
+`MULTI_TENANT` la única cuenta recibe el global, y las variables
+`AI_SUGGESTION_*_BUDGET` lo cambian (Handy #999).
 Los jobs sólo avisan al planificador global, que da turnos por cuenta; no
 vuelvas a encolar directamente una llamada por tarjeta. Las reservas de gasto
 viven fuera de la fila reutilizable de solicitud. Contrato y recuperación:

@@ -85,11 +85,19 @@ Los límites incluyen `pending` y `running` vigentes: una solicitud por usuario
 (membresía), dos por cuenta y cuatro globales. Se permite recuperar la misma
 solicitud y contexto sin ocupar otro cupo ni crear otro job. Cambiar el contexto
 mientras sigue activa devuelve 429; no reemplaza el token ni reinicia el plazo.
-Un exceso de capacidad o presupuesto devuelve 429 antes de crear trabajo, con
+Un exceso de capacidad devuelve 429 antes de crear trabajo, con
 `Retry-After: 90` como intervalo de reintento, no como garantía de disponibilidad.
+Un presupuesto agotado devuelve 429 con `Retry-After` igual a los segundos que
+faltan para que venza la reserva más antigua de ese presupuesto (cuenta o global).
+El navegador muestra «Cupo de sugerencias agotado; intenta en N minutos.» con
+el botón de reintento; sin `Retry-After` válido dice «intenta más tarde».
 
 Cada nueva admisión reserva una llamada: diez por cuenta y treinta globales en
-una ventana móvil de una hora. `Card::SuggestionAdmission` conserva esa reserva
+una ventana móvil de una hora. Con `MULTI_TENANT` apagado hay una sola cuenta:
+su presupuesto es el global, porque diez por hora alcanzaban para todas las
+personas juntas (Handy #999). `AI_SUGGESTION_ACCOUNT_BUDGET` y
+`AI_SUGGESTION_GLOBAL_BUDGET` reemplazan cada valor con un entero positivo;
+un valor vacío o inválido usa el predeterminado. El global sigue como tope. `Card::SuggestionAdmission` conserva esa reserva
 independiente de la fila reutilizable de la solicitud. Un timeout, una
 cancelación o una solicitud que vence no devuelve presupuesto. Recuperar un
 resultado ya terminado no vuelve a gastar. Las reservas viejas se borran bajo

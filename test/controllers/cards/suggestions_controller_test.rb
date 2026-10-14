@@ -87,6 +87,22 @@ class Cards::SuggestionsControllerTest < ActionDispatch::IntegrationTest
     assert_equal token, response.parsed_body.fetch("request_id")
   end
 
+  # Handy #999: an exhausted hourly budget says when its oldest admission
+  # expires, not the generic retry interval. Contract: docs/test-audits/handy-999.md.
+  test "an exhausted budget answers when the oldest admission expires" do
+    freeze_time do
+      account = users(:kevin).account
+      Card::SuggestionAdmission.create!(account_id: account.id, created_at: 50.minutes.ago)
+      9.times { Card::SuggestionAdmission.create!(account_id: account.id, created_at: 5.minutes.ago) }
+
+      assert_no_enqueued_jobs only: Card::SuggestionJob do
+        post suggestion_url(cards(:logo)), params: { kind: "comment" }, as: :json
+      end
+      assert_response :too_many_requests
+      assert_equal "600", response.headers["Retry-After"]
+    end
+  end
+
   test "a running suggestion still occupies the user slot" do
     post suggestion_url(cards(:logo)), params: { kind: "comment" }, as: :json
     request = Card::SuggestionRequest.find_by!(token: response.parsed_body.fetch("request_id"))
