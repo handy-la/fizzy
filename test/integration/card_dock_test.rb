@@ -77,6 +77,21 @@ class CardDockTest < ActionDispatch::IntegrationTest
     assert_select ".approval-toast", text: /All caught up/
   end
 
+  # Handy #1068: the toast offers the card at the bottom of the source stage,
+  # the last one of the order the board column shows. Audit:
+  # docs/test-audits/handy-1068.md.
+  test "the toast offers the card at the bottom of the source stage" do
+    cards(:buy_domain).update_columns(column_id: @approval.id, last_active_at: 2.weeks.ago)
+    cards(:layout).update_columns(last_active_at: 1.day.ago)
+    cards(:text).update_columns(column_id: @approval.id, last_active_at: 1.month.ago)
+    cards(:text).gild
+
+    post card_triage_path(cards(:logo), column_id: columns(:writebook_review), from: "dock")
+    follow_redirect!
+
+    assert_select ".approval-toast a[href=?]", card_path(cards(:buy_domain)), text: /Continue/
+  end
+
   test "moving back and moving through the stage selector offer the next source card" do
     post card_triage_path(cards(:logo), column_id: columns(:writebook_in_progress), from: "dock")
     follow_redirect!
@@ -134,7 +149,7 @@ class CardDockTest < ActionDispatch::IntegrationTest
     assert_select ".approval-toast a[href=?]", card_path(cards(:layout))
   end
 
-  test "moving from Maybe offers the next card in Maybe" do
+  test "moving from Maybe offers the card at the bottom of Maybe, not the golden one on top" do
     cards(:logo).update_columns(column_id: nil)
     cards(:layout).update_columns(column_id: nil)
     cards(:layout).gild
@@ -143,7 +158,7 @@ class CardDockTest < ActionDispatch::IntegrationTest
     follow_redirect!
 
     assert_select ".approval-toast", text: /Maybe\?/
-    assert_select ".approval-toast a[href=?]", card_path(cards(:layout))
+    assert_select ".approval-toast a[href=?]", card_path(cards(:buy_domain))
   end
 
   test "moving from Not now or Done offers a card from that same special stage" do

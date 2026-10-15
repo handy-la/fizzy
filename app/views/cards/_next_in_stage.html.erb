@@ -1,6 +1,7 @@
-<%# Handy: after leaving a stage, offer another card from that same stage. %>
+<%# Handy: after leaving a stage, offer another card from that same stage: the
+    one at the bottom of the stage, the last in the order the board shows. %>
 <% if stage %>
-  <% next_card = stage.cards.where.not(id: @card.id).latest.with_golden_first.first %>
+  <% next_card = stage.cards.where.not(id: @card.id).latest.with_golden_first.last %>
   <div class="approval-toast" role="status" data-controller="element-removal"
       data-turbo-temporary style="--card-color: <%= stage.color %>;">
     <div class="approval-toast__inner shadow">
