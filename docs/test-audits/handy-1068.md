@@ -48,6 +48,9 @@ env -u GEM_HOME -u GEM_PATH -u BUNDLE_GEMFILE -u RUBYOPT -u BUNDLE_PATH -u RUBYL
 - **RED** con la vista de la base y las pruebas nuevas: exit 1, dos fallos,
   `Expected at least 1 element matching ".approval-toast a[href=\"/897362094/cards/5\"]", found 0.`
   La base ofrecía la dorada de hasta arriba.
-- **GREEN** con el cambio: `card_dock_test.rb`, `card_stage_navigation_test.rb`
-  y `column/approval_test.rb`: 21 pruebas, 0 fallos. La suite completa
-  (`bin/rails test`) también corre en verde.
+- **GREEN** con el mismo comando sobre el cambio (commit `94acd8c8a`): exit 0,
+  `2 tests, 10 assertions, 0 failures, 0 errors, 0 skips`.
+- Con el mismo entorno, `bin/rails test test/integration/card_dock_test.rb
+  test/system/card_stage_navigation_test.rb test/models/column/approval_test.rb`
+  da exit 0 con 21 pruebas y 0 fallos, y `bin/rails test` da exit 0 con
+  2154 pruebas, 0 fallos y 0 errores.
