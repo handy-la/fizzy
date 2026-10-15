@@ -12,11 +12,13 @@ class Card::Suggestion
   end
 
   def title(description)
-    generate(
-      "Suggest a concise, specific card title, at most 255 characters, in the language of the description. " \
-      "Return only the title, without quotes or Markdown.",
+    result = generate(
+      "Suggest a short card title in the language of the description: 3 to 8 words, at most 60 characters. " \
+      "Name the main action or problem. Use plain words only: no asterisks, slashes, backslashes, " \
+      "underscores, hashes, quotes, brackets, colons, emoji or Markdown, and no final period. Return only the title.",
       ActionText::Content.new(description).to_plain_text
-    ).squish.first(255)
+    )
+    clean_title(result)
   end
 
   def comment
@@ -38,6 +40,15 @@ class Card::Suggestion
   end
 
   private
+    def clean_title(result)
+      # Remove whole emoji clusters, including flags, modifiers and keycaps.
+      plain = result.scan(/\X/).reject { |character| character.match?(/[\p{Extended_Pictographic}\p{Regional_Indicator}\p{Emoji_Modifier}\u20E3]/) }.join
+        .gsub(/[^\p{L}\p{M}\p{N}\s]/, "").squish
+
+      # The lookahead requires a word boundary, including for an oversized first word.
+      plain[/\A.{0,60}(?= |\z)/].to_s
+    end
+
     def generate(instructions, context)
       raise ContextTooLarge if context.bytesize > CONTEXT_LIMIT
 
