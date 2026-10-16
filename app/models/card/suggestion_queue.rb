@@ -4,7 +4,7 @@ class Card::SuggestionQueue < ApplicationRecord
   ACCOUNT_LIMIT = 2
   GLOBAL_LIMIT = 4
   ACCOUNT_BUDGET = 10
-  GLOBAL_BUDGET = 30
+  GLOBAL_BUDGET = 60
   BUDGET_WINDOW = 1.hour
 
   class Full < StandardError

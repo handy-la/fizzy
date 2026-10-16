@@ -51,13 +51,14 @@ class Card::SuggestionQueueTest < ActiveSupport::TestCase
 
   # Handy #999: a single-tenant installation has one account, so the account
   # budget must not be a third of the global one. Contract: docs/test-audits/handy-999.md.
+  # Handy #1157 doubled the global budget to sixty: docs/test-audits/handy-1157.md.
   test "single-tenant installation gives its only account the global budget" do
     previous, Account.multi_tenant = Account.multi_tenant, false
-    30.times do
+    60.times do
       request_for(users(:kevin))
       perform_enqueued_jobs only: Card::SuggestionJob
     end
-    assert_requested :post, @url, times: 30
+    assert_requested :post, @url, times: 60
     assert_rejected { request_for(users(:kevin)) }
   ensure
     Account.multi_tenant = previous
@@ -79,14 +80,14 @@ class Card::SuggestionQueueTest < ActiveSupport::TestCase
   end
 
   test "global hourly budget cannot be avoided by rotating accounts" do
-    tenants = [ [ users(:kevin), cards(:logo) ], [ users(:mike), cards(:radio) ], create_tenant ]
+    tenants = [ [ users(:kevin), cards(:logo) ], [ users(:mike), cards(:radio) ], *Array.new(4) { create_tenant } ]
     10.times do
       tenants.each do |user, card|
         request_for(user, card)
         perform_enqueued_jobs only: Card::SuggestionJob
       end
     end
-    assert_requested :post, @url, times: 30
+    assert_requested :post, @url, times: 60
     other_user, other_card = create_tenant
     assert_rejected { request_for(other_user, other_card) }
   end

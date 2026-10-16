@@ -92,10 +92,11 @@ faltan para que venza la reserva más antigua de ese presupuesto (cuenta o globa
 El navegador muestra «Cupo de sugerencias agotado; intenta en N minutos.» con
 el botón de reintento; sin `Retry-After` válido dice «intenta más tarde».
 
-Cada nueva admisión reserva una llamada: diez por cuenta y treinta globales en
+Cada nueva admisión reserva una llamada: diez por cuenta y sesenta globales en
 una ventana móvil de una hora. Con `MULTI_TENANT` apagado hay una sola cuenta:
 su presupuesto es el global, porque diez por hora alcanzaban para todas las
-personas juntas (Handy #999). `AI_SUGGESTION_ACCOUNT_BUDGET` y
+personas juntas (Handy #999); el global pasó de treinta a sesenta en Handy #1157.
+`AI_SUGGESTION_ACCOUNT_BUDGET` y
 `AI_SUGGESTION_GLOBAL_BUDGET` reemplazan cada valor con un entero positivo;
 un valor vacío o inválido usa el predeterminado. El global sigue como tope. `Card::SuggestionAdmission` conserva esa reserva
 independiente de la fila reutilizable de la solicitud. Un timeout, una
