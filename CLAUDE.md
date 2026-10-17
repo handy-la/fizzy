@@ -204,6 +204,12 @@ La cuota excluye `Storage::DERIVED_RECORD_TYPES` en reconciliación y callbacks.
 El purge de `mark_as_failed` elimina objetos antes de borrar filas o liberar
 reservas. Evidencia y límites: `docs/test-audits/handy-933.md`.
 
+El avatar de `User` no es un registro rastreado: `User::Avatar` rechaza más
+de `MAX_AVATAR_BYTES` en un `before_validation` con `prepend: true` (el
+análisis de `has_one_attached` corre en su propio `before_validation`), marca
+el blob con `quota_upload` y envuelve `save` con `Storage::Mutation.wrap`, como
+`Storage::Tracked`: el adjunto se crea en un `after_save`. Evidencia: `docs/test-audits/handy-1204.md`.
+
 ## Medios externos y saneado de Action Text
 
 Action Text vuelve a sanear el HTML que generan los partials. Su lista por

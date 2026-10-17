@@ -148,6 +148,22 @@ class UsersControllerTest < ActionDispatch::IntegrationTest
     assert_select ".txt-negative", text: /width must be less than 4096px/
   end
 
+  test "update with an avatar over the byte limit stores nothing" do
+    sign_in_as :kevin
+
+    file = Tempfile.new([ "avatar", ".png" ], binmode: true)
+    file.write(File.binread(file_fixture("avatar.png")))
+    file.write("\0" * (User::Avatar::MAX_AVATAR_BYTES + 1 - file.size))
+    file.rewind
+
+    assert_no_difference [ "ActiveStorage::Blob.count", "ActiveStorage::VariantRecord.count" ] do
+      put user_path(users(:kevin)), params: { user: { avatar: fixture_file_upload(file.path, "image/png") } }
+    end
+    assert_response :unprocessable_entity
+    assert_select ".txt-negative", text: /must be smaller than/
+    assert_not users(:kevin).reload.avatar.attached?
+  end
+
   test "update with valid avatar" do
     sign_in_as :kevin
 
