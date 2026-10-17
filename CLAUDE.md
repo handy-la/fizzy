@@ -34,6 +34,15 @@ fallar con `search_records_fts already exists`. Reconstruye las bases de prueba
 con `RAILS_ENV=test bin/rails db:drop db:create db:schema:load`, bajo el Ruby
 seleccionado por mise. Evidencia: `docs/test-audits/handy-933.md`.
 
+## La seguridad del fork es del upstream
+
+Este fork es una herramienta interna de Handy, sin exposición a internet. No
+hagas mejoras de seguridad aquí: se hacen en el Fizzy original (basecamp/fizzy)
+y llegan al fork con sus actualizaciones. La auditoría semanal de seguridad no
+escanea este repositorio (`EXCLUDED_REPOSITORIES` en `bin/security-audit` del
+workspace, Handy #1206). Un hallazgo de seguridad sobre el fork no se trabaja
+en una tarjeta de Handy. Un fallo funcional sí.
+
 ## SaaS mode
 
 For local agent work, `tmp/saas.txt` is the checkout-level SaaS switch used by `bin/setup`. When present, read `saas/AGENTS.md` before continuing. Otherwise, do not apply its instructions.
