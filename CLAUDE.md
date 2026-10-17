@@ -108,6 +108,10 @@ tarjeta. `User#search` autoriza por `card_id` con una subconsulta de
 como permiso: el reindex asíncrono sólo mantiene el índice.
 Evidencia: `docs/test-audits/handy-939.md`.
 
+`Search::Query#valid?` sanea los términos (`before_validation`). Llámalo antes
+de `.search(query.to_s)`: después, el índice recibe el texto crudo y un espacio
+sin corte se busca como frase. Evidencia: `docs/test-audits/handy-1162.md`.
+
 ## Imports and exports
 
 La admisión de exportaciones usa `Export.start_for`: el UPDATE del principal

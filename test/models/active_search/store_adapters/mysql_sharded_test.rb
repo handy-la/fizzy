@@ -27,6 +27,11 @@ class ActiveSearch::StoreAdapters::MysqlShardedTest < ActiveSupport::TestCase
     assert_equal "foo bar", @adapter.send(:stem, "foo---bar")
   end
 
+  test "stem a query keeps each quoted phrase together" do
+    assert_equal %(say "bc3 io 1d8b" now), @adapter.send(:stem_query, %(say "BC3 IOS 1D8B" now))
+    assert_equal "run", @adapter.send(:stem_query, %(running ""))
+  end
+
   test "the shard comes from the routing value, not from anything held on the adapter" do
     index = ActiveSearch.index(:searchable)
 
@@ -111,12 +116,13 @@ class ActiveSearch::StoreAdapters::MysqlShardedTest < ActiveSupport::TestCase
     assert_equal "Implement #{mark('authentication')} now", result
   end
 
-  test "highlight marks an accented word the sanitizer truncated" do
-    assert_equal "caf ", Search::Query.new(terms: "café").tap(&:valid?).terms
+  # Handy #1162: the sanitizer keeps accented letters, so "café" reaches the highlighter whole.
+  # A truncated "caf" (an older saved query) still marks the accented word.
+  test "highlight marks an accented word whether the query keeps or truncates it" do
+    assert_equal "café", Search::Query.new(terms: "café").tap(&:valid?).terms
 
-    result = @adapter.send(:highlight_text, "a naive café here", "caf")
-
-    assert_equal "a naive #{mark('café')} here", result
+    assert_equal "a naive #{mark('café')} here", @adapter.send(:highlight_text, "a naive café here", "café")
+    assert_equal "a naive #{mark('café')} here", @adapter.send(:highlight_text, "a naive café here", "caf")
   end
 
   test "highlight does not mark unrelated words sharing a prefix" do

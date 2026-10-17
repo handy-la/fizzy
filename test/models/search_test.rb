@@ -64,6 +64,44 @@ class SearchTest < ActiveSupport::TestCase
     assert results.find { |it| it.is_a?(Card) && it.id == card.id }
   end
 
+  test "a hyphenated term matches its parts together, not each part alone" do
+    card = @board.cards.create!(title: "BC3-IOS-1D8B", creator: @user, status: "published")
+    @board.cards.create!(title: "BC3-ANDROID-77XQ", creator: @user, status: "published")
+    @board.cards.create!(title: "1D8B seen on IOS in BC3", creator: @user, status: "published")
+
+    assert_equal [ card ], @user.search("BC3-IOS-1D8B").results.to_a
+    assert_equal [ card ], Card.mentioning("BC3-IOS-1D8B", user: @user).to_a
+  end
+
+  test "a quoted phrase matches its words together" do
+    card = @board.cards.create!(title: "release notes draft", creator: @user, status: "published")
+    @board.cards.create!(title: "notes on the release", creator: @user, status: "published")
+
+    assert_equal [ card ], @user.search(%("release notes")).results.to_a
+  end
+
+  test "words split by a non-breaking space stay separate words" do
+    card = @board.cards.create!(title: "release draft notes", creator: @user, status: "published")
+
+    assert_equal [ card ], @user.search("release\u00A0notes").results.to_a
+  end
+
+  test "words split by a zero-width space stay separate words" do
+    card = @board.cards.create!(title: "release draft notes", creator: @user, status: "published")
+
+    assert_equal [ card ], @user.search("release\u200Bnotes").results.to_a
+  end
+
+  # Handy #1162: the sanitizer keeps Unicode letters, so accented Spanish terms still match.
+  test "an accented term matches its own word" do
+    card = @board.cards.create!(title: "Revisión del año en el café", creator: @user, status: "published")
+
+    %w[ revisión año café ].each do |term|
+      assert_equal [ card ], @user.search(term).results.to_a, term
+      assert_equal [ card ], Card.mentioning(term, user: @user).to_a, term
+    end
+  end
+
   test "mentioning is not capped by the default search limit" do
     30.times { |i| @board.cards.create!(title: "capped card #{i}", creator: @user, status: "published") }
 

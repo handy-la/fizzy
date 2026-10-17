@@ -1,8 +1,10 @@
 class CardsController < ApplicationController
   wrap_parameters :card, include: %i[ title description image created_at last_active_at ]
 
-  include FilterScoped
+  include FilterScoped, SearchRateLimiting
   include CardStageNavigation
+
+  limit_searches only: :index
 
   before_action :set_board, only: %i[ create ]
   before_action :set_card, only: %i[ show edit update destroy ]
@@ -53,6 +55,10 @@ class CardsController < ApplicationController
   end
 
   private
+    def searching?
+      @filter.terms.present?
+    end
+
     def set_board
       @board = Current.user.boards.find params[:board_id]
     end

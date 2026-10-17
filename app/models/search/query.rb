@@ -24,16 +24,13 @@ class Search::Query < ApplicationRecord
 
     def sanitize(terms)
       if terms.present?
-        terms = remove_invalid_search_characters(self.terms)
-        terms = remove_unbalanced_quotes(terms)
+        terms = remove_unbalanced_quotes(self.terms)
+        terms = quote_joined_words(terms)
+        terms = remove_invalid_search_characters(terms)
         terms.presence
       else
         terms
       end
-    end
-
-    def remove_invalid_search_characters(terms)
-      terms.gsub(/[^\w"]/, " ")
     end
 
     def remove_unbalanced_quotes(terms)
@@ -42,5 +39,14 @@ class Search::Query < ApplicationRecord
       else
         terms.gsub("\"", " ")
       end
+    end
+
+    def quote_joined_words(terms)
+      terms.gsub(/"[^"]*"|[[:word:]]+(?:[^[:word:][:space:]\u200B"]+[[:word:]]+)+/) { |match| match.start_with?("\"") ? match : "\"#{match}\"" }
+    end
+
+    # [[:word:]], not \w: Ruby's \w is ASCII only and would split "revisión" (Handy #1162).
+    def remove_invalid_search_characters(terms)
+      terms.gsub(/[^[:word:]"]/, " ")
     end
 end

@@ -238,6 +238,28 @@ class CardsControllerTest < ActionDispatch::IntegrationTest
     end
   end
 
+  test "show card with comment containing image attachment with alt text" do
+    card = cards(:logo)
+    blob = ActiveStorage::Blob.create_and_upload!(io: file_fixture("moon.jpg").open, filename: "moon.jpg")
+    card.comments.create! \
+      creator: users(:kevin),
+      body: %(<action-text-attachment sgid="#{blob.attachable_sgid}" alt="A full moon"></action-text-attachment>)
+
+    get card_path(card)
+    assert_select "action-text-attachment img[alt='A full moon']"
+  end
+
+  test "show card with comment containing remote image attachment with alt text keeps the image blocked" do
+    card = cards(:logo)
+    card.comments.create! \
+      creator: users(:kevin),
+      body: %(<action-text-attachment url="https://example.com/moon.jpg" content-type="image/jpeg" alt="A full moon"></action-text-attachment>)
+
+    get card_path(card)
+    assert_select "action-text-attachment img", count: 0
+    assert_select "action-text-attachment a[href=?][rel~=noreferrer]", "https://example.com/moon.jpg"
+  end
+
   test "show as JSON" do
     card = cards(:logo)
     card.steps.create!(content: "First step")
