@@ -149,8 +149,6 @@ Rails.application.routes.draw do
     end
   end
 
-  resources :qr_codes
-
   get "join/:code", to: "join_codes#new", as: :join
   post "join/:code", to: "join_codes#create"
 

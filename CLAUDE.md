@@ -404,6 +404,13 @@ integración, un helper de ruta en una aserción hace que el siguiente challenge
 sin tenant redirija y llegue `nil`; haz un registro por prueba.
 Evidencia: `docs/test-audits/handy-946.md`.
 
+## Un QR se incrusta en la página
+
+`qr_code_image` inserta el SVG como data URI en la respuesta autenticada. No
+vuelvas a servirlo desde una ruta propia: el QR codifica un enlace de
+auto-login o de invitación, y el registro de Rails guarda cada ruta completa.
+Evidencia: `docs/test-audits/handy-1203.md`.
+
 ## Cuota y borrado de cargas directas
 
 Una carga directa reserva espacio antes de emitir la URL: máximo 100 MiB por
