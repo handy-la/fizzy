@@ -22,6 +22,7 @@ class CardTitleBarTest < ApplicationSystemTestCase
 
       scroll_past_card
       assert_title_bar(@card.title)
+      assert_bar_matches_card_colors
       assert_bar_fills_top_edge
 
       page.execute_script("window.scrollBy(0, 200)")
@@ -45,10 +46,17 @@ class CardTitleBarTest < ApplicationSystemTestCase
 
     Current.user = users(:kevin)
     @card.update!(title: "A new title from another session")
+    @card.triage_into(columns(:writebook_review))
     perform_enqueued_jobs only: Turbo::Streams::BroadcastStreamJob
 
     assert_title_bar("A new title from another session")
+    assert_bar_matches_card_colors
     assert_bar_fills_top_edge
+
+    within(".card-dock") { click_on "Mark as Done" }
+    assert_selector ".card-dock__button--closed"
+    assert_bar_matches_card_colors
+
     page.execute_script("window.scrollTo(0, 0)")
     assert_no_selector ".card-title-bar", wait: 5
   end
@@ -71,6 +79,21 @@ class CardTitleBarTest < ApplicationSystemTestCase
 
     def assert_title_bar(title)
       assert_selector ".card-title-bar", text: title, wait: 5
+    end
+
+    def assert_bar_matches_card_colors
+      colors = page.evaluate_script(<<~JS)
+        (() => {
+          // Compare the settled state, after the header's color transition.
+          document.querySelector(".card__board").getAnimations().forEach(animation => animation.finish())
+          const bar = getComputedStyle(document.querySelector(".card-title-bar"))
+          const board = getComputedStyle(document.querySelector(".card__board"))
+          return { barBackground: bar.backgroundColor, boardBackground: board.backgroundColor,
+            barText: bar.color, boardText: board.color }
+        })()
+      JS
+      assert_equal colors["boardBackground"], colors["barBackground"], "the bar should keep the current state's background"
+      assert_equal colors["boardText"], colors["barText"], "the bar should keep the card header's text contrast"
     end
 
     def assert_bar_fills_top_edge

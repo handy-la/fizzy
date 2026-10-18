@@ -74,7 +74,7 @@ la franja.
 No se comprobó Safari ni un dispositivo físico; las pruebas de sistema usan
 Chromium real. La mejora sólo afecta la vista privada de tarjetas publicadas.
 
-## Validación del lote
+## Validación de la primera entrega
 
 Con el entorno OSS, Ruby de mise y bases SQLite del propio checkout:
 
@@ -84,3 +84,33 @@ Con el entorno OSS, Ruby de mise y bases SQLite del propio checkout:
   0 fallos, 0 errores, 0 omisiones.
 - `bin/rubocop test/system/card_title_bar_test.rb`: sin infracciones.
 - `git diff --check`: sin errores.
+
+## Ajuste pedido: conservar el color del estado
+
+Antes de ampliar las pruebas:
+
+- **Contrato:** la franja tiene el mismo fondo y color de texto que el
+  encabezado del tablero en la tarjeta. Debe seguir el estado actual, incluido
+  un cambio de columna desde otra sesión y el cierre desde la barra inferior.
+- **Regresión:** usar el fondo neutro de la página o fijar un color independiente
+  de la tarjeta rompe la correspondencia visible.
+- **Cobertura:** los cuatro casos anteriores protegen visibilidad, geometría y
+  título, pero no colores. Se amplían los casos de escritorio/móvil y refresco
+  remoto de `CardTitleBarTest`, sin duplicar la navegación existente.
+- **Seam:** ninguno nuevo. Se comparan estilos calculados de dos elementos
+  productivos y se usan el movimiento real de columna y el botón de cierre.
+
+Base anterior al ajuste de color: `c141ae16dc6ae09fa524e8ce377d999daa89f2fe`.
+
+
+Con sólo la prueba ampliada aplicada sobre esa base, el comando OSS anterior
+(`bin/rails test test/system/card_title_bar_test.rb`, mismo entorno y directorio)
+dio RED: salida 1; 4 casos, 23 aserciones, 3 fallos y 0 errores. Los tres fallos
+comparan el fondo del encabezado con el fondo neutro anterior de la franja.
+
+Después de usar `--card-color` y `--color-ink-inverted` en la franja, el mismo
+comando dio GREEN: salida 0; 4 casos, 56 aserciones, 0 fallos, 0 errores y
+0 omisiones. El caso remoto verifica además una columna con otro color y el
+cierre desde el botón real. La comparación finaliza primero la transición CSS
+del encabezado, para comparar el estado final y no un fotograma intermedio.
+Se comprobó manualmente la misma correspondencia en tema claro y oscuro.
