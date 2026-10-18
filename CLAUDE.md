@@ -261,6 +261,13 @@ dejar una sugerencia pendiente puede consumir cupos y hacer que un job de
 una prueba posterior genere para la tarjeta anterior. Evidencia y limpieza:
 `docs/test-audits/handy-934.md`.
 
+## Franja superior del título
+
+La franja superior del título vive en `cards/_container.html.erb`: el guardado
+local actualiza ese contenedor mediante Turbo Stream. Ponerla sólo en `show`
+deja el título anterior después de editar, aunque el refresco remoto funcione.
+Evidencia: `docs/test-audits/handy-1217.md`.
+
 ## Pegado en pruebas de sistema
 
 La barra flotante de una tarjeta puede cubrir el centro de `lexxy-editor`.

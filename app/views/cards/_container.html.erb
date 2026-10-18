@@ -1,11 +1,17 @@
-<section id="<%= dom_id(card, :card_container) %>" class="card-perma" style="--card-color: <%= card.color %>;" data-controller="dialog-manager bridge--form">
+<section id="<%= dom_id(card, :card_container) %>" class="card-perma" style="--card-color: <%= card.color %>;"
+    data-controller="dialog-manager bridge--form card-title-bar"
+    data-action="turbo:morph@window->card-title-bar#reobserve turbo:before-morph-attribute->card-title-bar#preserveVisibility">
+  <div class="card-title-bar" data-card-title-bar-target="bar" dir="auto" aria-hidden="true" hidden>
+    <%= card.title %>
+  </div>
+
   <% cache card do %>
     <div class="card-perma__actions card-perma__actions--left">
       <%= render "cards/container/gild", card: card if card.published? && !card.closed? %>
       <%= render "cards/container/image", card: card %>
     </div>
 
-    <div class="card-perma__bg">
+    <div class="card-perma__bg" data-card-title-bar-target="card">
       <%= card_article_tag card, class: "card" do %>
         <header class="card__header">
           <%= render "cards/display/perma/board", card: card %>
