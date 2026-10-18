@@ -213,7 +213,7 @@ export default class extends Controller {
   }
 
   #accept(event) {
-    if (event.key !== "Enter" || event.shiftKey || event.ctrlKey || event.metaKey || event.altKey || event.isComposing || this.#composing || event.keyCode === 229 || event.repeat) return
+    if (![ "Enter", "Tab" ].includes(event.key) || event.shiftKey || event.ctrlKey || event.metaKey || event.altKey || event.isComposing || this.#composing || event.keyCode === 229 || event.repeat) return
     if (!this.#proposal || this.#proposal.expires <= Date.now() || !this.#empty || this.#savedComment || !this.inputTarget.contains(event.target) || !event.target.closest("[contenteditable]") || !event.target.contains(document.activeElement)) return
     event.preventDefault()
     event.stopImmediatePropagation()
@@ -244,7 +244,7 @@ export default class extends Controller {
     }
     if (this.kindValue !== "comment") return
     const placeholder = this.#preparing ? "Preparando sugerencia…" :
-      this.#proposal && this.#empty ? `${this.#proposal.text}\nEnter para aceptar` : this.#input.dataset.aiSuggestionPlaceholder || ""
+      this.#proposal && this.#empty ? this.#proposal.text : this.#input.dataset.aiSuggestionPlaceholder || ""
     for (const element of [ this.#input, this.#input.querySelector("[contenteditable]") ]) {
       if (element && element.getAttribute("placeholder") !== placeholder) element.setAttribute("placeholder", placeholder)
     }

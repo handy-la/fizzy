@@ -160,7 +160,7 @@ class AiSuggestionSystemTest < ApplicationSystemTestCase
     count = @card.comments.count
     empty_value = page.evaluate_script('document.querySelector(".comment--new lexxy-editor").value')
     respond_with "¿Puedes confirmar el resultado? <script>alert(1)</script>"
-    assert_selector '.comment--new [contenteditable][placeholder*="Enter para aceptar"]'
+    assert_selector '.comment--new [contenteditable][placeholder*="¿Puedes confirmar el resultado?"]'
     assert_equal empty_value, page.evaluate_script('document.querySelector(".comment--new lexxy-editor").value')
     # Beyond local-save's debounce; empty Lexxy markup is not a draft either.
     page.evaluate_async_script("setTimeout(arguments[arguments.length - 1], 500)")
@@ -173,6 +173,27 @@ class AiSuggestionSystemTest < ApplicationSystemTestCase
     find(".comment--new button[title=Bold]").click
     find(".comment--new lexxy-editor [contenteditable]").click
     assert_equal 1, page.evaluate_script("window.suggestionRequests.length")
+    within(".comment--new") { assert_button "Post", disabled: false }
+  end
+
+  # Handy #1218 (contrato y RED: docs/test-audits/handy-1218.md): la
+  # propuesta se muestra sin instrucción de tecla y Tab la acepta como Enter,
+  # sin mover el foco ni publicar.
+  test "Tab accepts the comment suggestion and the placeholder shows no key hint" do
+    visit card_url(@card)
+    control_suggestions
+    scroll_to_comment
+    editor = find(".comment--new lexxy-editor [contenteditable]")
+    editor.click
+    wait_for_request
+    respond_with "Sí, adelante."
+    assert_selector '.comment--new lexxy-editor[placeholder="Sí, adelante."]'
+    assert_selector '.comment--new [contenteditable][placeholder="Sí, adelante."]'
+    count = @card.comments.count
+    editor.send_keys(:tab)
+    assert_selector ".comment--new lexxy-editor", text: "Sí, adelante."
+    assert page.evaluate_script('document.querySelector(".comment--new [contenteditable]").contains(document.activeElement)')
+    assert_equal count, @card.reload.comments.count
     within(".comment--new") { assert_button "Post", disabled: false }
   end
 
@@ -295,7 +316,7 @@ class AiSuggestionSystemTest < ApplicationSystemTestCase
     click_button "Reintentar sugerencia"
     assert_equal 2, page.evaluate_script("window.suggestionRequests.length")
     respond_with "Sí, adelante."
-    assert_selector '.comment--new [contenteditable][placeholder*="Enter para aceptar"]'
+    assert_selector '.comment--new [contenteditable][placeholder*="Sí, adelante."]'
   end
 
   test "restored description and synthetic events do not request a title" do
@@ -381,13 +402,13 @@ class AiSuggestionSystemTest < ApplicationSystemTestCase
         window.suggestionConsumer = consumer
       })
     JS
-    assert_no_selector '.comment--new [contenteditable][placeholder*="Enter para aceptar"]'
+    assert_no_selector '.comment--new [contenteditable][placeholder*="Sí, apruebo la propuesta."]'
     page.execute_script(<<~JS)
         document.querySelector(".comment--new form").dataset.controller = "form local-save ai-suggestion"
         const consumer = window.suggestionConsumer
         consumer.connect()
     JS
-    assert_selector '.comment--new [contenteditable][placeholder*="Enter para aceptar"]'
+    assert_selector '.comment--new [contenteditable][placeholder*="Sí, apruebo la propuesta."]'
     assert_equal 1, page.evaluate_script("window.suggestionRequests.length")
     assert_requested :post, "https://api.fireworks.ai/inference/v1/chat/completions", times: 1
     find(".comment--new [contenteditable]").send_keys(:enter)
@@ -406,7 +427,7 @@ class AiSuggestionSystemTest < ApplicationSystemTestCase
     editor.click
     wait_for_request
     respond_with "Sí, adelante."
-    assert_selector '.comment--new [contenteditable][placeholder*="Enter para aceptar"]'
+    assert_selector '.comment--new [contenteditable][placeholder*="Sí, adelante."]'
     editor.click
     page.execute_script(<<~JS)
       const editor = document.querySelector(".comment--new [contenteditable]")

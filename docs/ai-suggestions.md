@@ -173,13 +173,14 @@ interior. Durante la espera muestran «Preparando sugerencia…», sin una líne
 de estado visible aparte; la región `role="status"` conserva el mismo texto
 oculto a la vista para que lo anuncie un lector de pantalla. Esa región nunca
 usa `hidden`: vacía o en espera queda fuera de pantalla, porque una región viva
-expuesta ya con texto no se anuncia de forma fiable. Al llegar la propuesta muestran su texto y
-«Enter para aceptar». Los errores y el botón de reintento siguen debajo del
+expuesta ya con texto no se anuncia de forma fiable. Al llegar la propuesta muestran sólo su
+texto, sin instrucción de tecla (Handy #1218). Los errores y el botón de reintento siguen debajo del
 campo. No cambia el valor ni
 habilita publicación. Lexxy puede representar vacío como `<p><br></p>`; su
-`isEmpty` evita que ese marcado se guarde como borrador. Enter simple se captura
-antes del procesamiento de Lexical, copia texto mediante `textContent` y permite
-editarlo. IME, repetición de tecla, Shift, Ctrl y Meta no lo aceptan. Ctrl/Meta
+`isEmpty` evita que ese marcado se guarde como borrador. Enter o Tab simple se
+captura antes del procesamiento de Lexical, copia texto mediante `textContent` y
+permite editarlo; Tab no mueve el foco al aceptar. IME, repetición de tecla,
+Shift, Ctrl y Meta no lo aceptan: Shift+Tab sigue navegando. Ctrl/Meta
 conservan el atajo existente de publicación. Turbo puede quitar la asociación
 Stimulus antes de ejecutar `disconnect`: se conserva la referencia del editor
 para restaurar ambos placeholders, y al reconectar se recupera el resultado.

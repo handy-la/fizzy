@@ -343,7 +343,7 @@ recibir una notificación; el broadcast no contiene texto. La huella del context
 usa UTC con microsegundos: un hilo de Cable puede tener otra zona horaria y una
 huella basada en `Time#to_s` descarta resultados válidos. El placeholder de Lexxy
 se copia al editable interior al crearlo; hay que actualizar ambos atributos e
-interceptar Enter en captura antes de Lexical. Guía y tiempos:
+interceptar Enter y Tab en captura antes de Lexical. Guía y tiempos:
 `docs/ai-suggestions.md`.
 
 Una cancelación revoca las sugerencias dentro de su transacción y cierra Cable
