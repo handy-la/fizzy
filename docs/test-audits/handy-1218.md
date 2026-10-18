@@ -30,7 +30,11 @@ Base: `97396918c70a99f3108dc28ca3de5c7b127f1cf2`.
 
 ## Evidencia RED y GREEN
 
-Desde `fizzy-custom/`, con Ruby de mise y Chromium:
+Prueba aplicada en las tres corridas: `test/system/ai_suggestion_test.rb` del
+commit de esta tarjeta (blob `e8e91a21bbf669e6f49f58255e07c966ad4f4fa5`,
+sha256 `2b77a3f505d83d9086f2271f62431d06698448f62ddf01dabb0532737e257428`).
+Sólo cambia `app/javascript/controllers/ai_suggestion_controller.js` entre
+corridas. Desde `fizzy-custom/`, con Ruby de mise y Chromium:
 
 ```bash
 env -u GEM_HOME -u GEM_PATH -u MY_RUBY_HOME -u RUBY_VERSION -u BUNDLE_GEMFILE \
@@ -38,14 +42,20 @@ env -u GEM_HOME -u GEM_PATH -u MY_RUBY_HOME -u RUBY_VERSION -u BUNDLE_GEMFILE \
   bin/rails test test/system/ai_suggestion_test.rb -n "/Tab accepts/"
 ```
 
-- **RED 1, base sin cambios:** falla en la línea del placeholder:
+- **RED 1:** controlador de la base
+  (`git show 97396918c70a99f3108dc28ca3de5c7b127f1cf2:app/javascript/controllers/ai_suggestion_controller.js`).
+  Código de salida 1; `1 runs, 3 assertions, 1 failures`:
   `expected to find css ".comment--new lexxy-editor[placeholder=\"Sí, adelante.\"]"
   but there were no matches` (el placeholder tenía «Enter para aceptar»).
-- **RED 2, sólo el placeholder corregido:** falla después de Tab:
-  `expected to find visible css ".comment--new lexxy-editor" with text "Sí,
-  adelante." … Also found ""` (Tab no aceptaba).
-- **GREEN, con ambos cambios:** `bin/rails test test/system/ai_suggestion_test.rb`
-  completo: 16 runs, 185 assertions, 0 failures.
+- **RED 2:** controlador de la base con sólo la línea de `#renderPlaceholder`
+  corregida (`this.#proposal && this.#empty ? this.#proposal.text : …`).
+  Código de salida 1; `1 runs, 5 assertions, 1 failures`: `expected to find
+  visible css ".comment--new lexxy-editor" with text "Sí, adelante." … Also
+  found ""` (Tab no aceptaba).
+- **GREEN:** controlador del commit. Código de salida 0; `1 runs, 8
+  assertions, 0 failures`. El archivo completo
+  (`bin/rails test test/system/ai_suggestion_test.rb`): código de salida 0;
+  `16 runs, 185 assertions, 0 failures`.
 
 La prueba `keyboard focus can recover an interrupted POST` sigue verde: un Tab
 que llega al editable desde la barra no acepta, porque su destino es el botón.
