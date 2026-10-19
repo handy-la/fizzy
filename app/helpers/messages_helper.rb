@@ -5,6 +5,6 @@ module MessagesHelper
       style: "--card-color: #{card.color}",
       role: "group",
       aria: { label: "Messages" },
-      data: { controller: "toggle-class", toggle_class_toggle_class: "comments--system-expanded" }, &
+      data: { controller: "toggle-class latest-message", toggle_class_toggle_class: "comments--system-expanded" }, &
   end
 end

@@ -1,11 +1,9 @@
 import { Controller } from "@hotwired/stimulus"
+import { lastVisibleComment, scrollToComment } from "helpers/comment_helpers"
 
 // Handy: shows the card dock once the top of the card (its header) has scrolled
 // off screen, so Done, the stage arrows, the way back to the board and the jump to the
 // last comment stay at hand while reading on.
-
-// Room left above the last comment, so its author line is not flush with the top edge.
-const LAST_COMMENT_MARGIN = 16
 
 export default class extends Controller {
   connect() {
@@ -30,12 +28,13 @@ export default class extends Controller {
   // Lands on the start of the last comment, not the end of the page: a long comment
   // is read from its top. A card with no comment on show goes to the bottom.
   scrollToLastComment() {
-    const comment = this.#lastVisibleComment
-    const top = comment
-      ? comment.getBoundingClientRect().top + window.scrollY - LAST_COMMENT_MARGIN
-      : document.documentElement.scrollHeight
+    const comment = lastVisibleComment()
 
-    window.scrollTo({ top, behavior: "smooth" })
+    if (comment) {
+      scrollToComment(comment, "smooth")
+    } else {
+      window.scrollTo({ top: document.documentElement.scrollHeight, behavior: "smooth" })
+    }
   }
 
   // A morph copies the server's class list; keep what the scroll decided.
@@ -43,14 +42,6 @@ export default class extends Controller {
     if (event.target === this.element && event.detail.attributeName === "class") {
       event.preventDefault()
     }
-  }
-
-  // Each comment sits in its own frame; a highlighted code comment inside one also has
-  // the class "comment". Older system comments stay hidden until the history is
-  // expanded: skip them.
-  get #lastVisibleComment() {
-    const comments = document.querySelectorAll(".comments > turbo-frame > .comment")
-    return Array.from(comments).findLast(comment => comment.getClientRects().length > 0)
   }
 
   #update(entry) {

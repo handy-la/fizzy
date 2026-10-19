@@ -14,6 +14,8 @@ class CardTitleBarTest < ApplicationSystemTestCase
       page.current_window.resize_to(width, height)
       visit card_url(@card)
       assert_selector ".card-perma__bg"
+      # A card opens on its latest message (Handy #1265); this case scrolls from the top.
+      page.execute_script("window.scrollTo(0, 0)")
       assert_no_selector ".card-title-bar"
 
       page.execute_script('window.scrollBy(0, document.querySelector(".card__header").getBoundingClientRect().bottom + 20)')

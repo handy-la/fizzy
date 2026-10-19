@@ -10,8 +10,7 @@ class CardDockSystemTest < ApplicationSystemTestCase
   end
 
   test "the dock appears when the header scrolls off and hides when it comes back" do
-    visit card_url(@card)
-    assert_selector ".card__header"
+    visit_card_at_top
     assert_no_selector ".card-dock--visible"
 
     page.execute_script(<<~JS)
@@ -28,7 +27,7 @@ class CardDockSystemTest < ApplicationSystemTestCase
   end
 
   test "Done from the dock turns its button into the done state and keeps the dock in view" do
-    visit card_url(@card)
+    visit_card_at_top
     page.execute_script(%(window.scrollBy(0, document.querySelector(".card__header").getBoundingClientRect().bottom + 20)))
     assert_selector ".card-dock--visible", wait: 5
 
@@ -46,7 +45,7 @@ class CardDockSystemTest < ApplicationSystemTestCase
       body: Array.new(40) { |line| "Line #{line} of a long last comment." }.join("<br>") +
         %(<pre data-language="ruby">puts 1 # a code comment</pre>))
 
-    visit card_url(@card)
+    visit_card_at_top
     assert_selector "##{ActionView::RecordIdentifier.dom_id(comment)} pre .token.comment"
     page.execute_script(%(window.scrollBy(0, document.querySelector(".card__header").getBoundingClientRect().bottom + 20)))
     assert_selector ".card-dock--visible", wait: 5
@@ -64,7 +63,7 @@ class CardDockSystemTest < ApplicationSystemTestCase
   test "the dock goes to the bottom of the page when the card has no comment" do
     @card.comments.destroy_all
 
-    visit card_url(@card)
+    visit_card_at_top
     page.execute_script(%(window.scrollBy(0, document.querySelector(".card__header").getBoundingClientRect().bottom + 20)))
     assert_selector ".card-dock--visible", wait: 5
 
@@ -73,4 +72,12 @@ class CardDockSystemTest < ApplicationSystemTestCase
       sleep 0.1 until page.evaluate_script("Math.ceil(window.scrollY + window.innerHeight) >= document.documentElement.scrollHeight")
     end
   end
+
+  private
+    # A card opens on its latest message (Handy #1265); these cases scroll from the top.
+    def visit_card_at_top
+      visit card_url(@card)
+      assert_selector ".card__header"
+      page.execute_script("window.scrollTo(0, 0)")
+    end
 end
