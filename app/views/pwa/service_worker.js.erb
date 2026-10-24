@@ -1,3 +1,6 @@
+// A new rendering version changes the worker's bytes and triggers activation.
+// Activation already clears every private cache; this fork never caches pages.
+const RENDERING_VERSION = "<%= ApplicationController::RENDERING_VERSION %>"
 const ASSET_CACHE = "fizzy-assets-v3"
 let activeSession = null
 let generation = 0

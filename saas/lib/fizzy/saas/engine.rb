@@ -5,6 +5,7 @@ require_relative "authorization"
 require_relative "gvl_instrumentation"
 require_relative "cell"
 require_relative "unprocessable_attachments"
+require_relative "sentry_sql_redaction"
 require_relative "../../rails_ext/active_record_tasks_database_tasks.rb"
 
 module Fizzy
@@ -95,6 +96,12 @@ module Fizzy
       end
 
       # Load test mocks automatically in test environment
+      # The account slug is moved off PATH_INFO before routing (config/initializers/tenanting), so the
+      # routes declared with filter_path_parameters are matched past it.
+      initializer "fizzy_saas.logging.path_filter_prefix", after: :load_config_initializers do
+        RailsStructuredLogging.path_filter.prefix = AccountSlug::PATH_INFO_MATCH
+      end
+
       initializer "fizzy_saas.test_mocks", after: :load_config_initializers do
         if Rails.env.test?
           require_relative "testing"
@@ -109,6 +116,8 @@ module Fizzy
             config.send_default_pii = false
             config.release = ENV["KAMAL_VERSION"]
             config.excluded_exceptions += [ "ActiveRecord::ConcurrentMigrationError" ]
+
+            SentrySqlRedaction.install(config)
 
             # Receive Rails.error.report and retry_on/discard_on report: true
             config.rails.register_error_subscriber = true
@@ -211,6 +220,9 @@ module Fizzy
 
         # Default to local dev QB token if not set
         Queenbee::ApiToken.token = ENV.fetch("QUEENBEE_API_TOKEN") { "69a4cfb8705913e6323f7b4c0c0cff9bd8df37da532f4375b85e9655b8100bb023591b48d308205092aa0a04dd28cb6c62d6798364a6f44cc1e675814eb148a1" } # gitleaks:allow development-only token
+        # Accepted alongside the current token while a rotation is under way. Outside one it holds the
+        # same value; unset (development, test) it accepts nothing extra.
+        Queenbee::ApiToken.previous_token = ENV["QUEENBEE_API_TOKEN_PREVIOUS"]
 
         Subscription::SHORT_NAMES.each do |short_name|
           const_name = "#{short_name}Subscription"

@@ -495,6 +495,11 @@ No reactives el preloader de TurboOffline. Preserva la limpieza de snapshots
 antes del logout y los controles de credenciales de Handy 925.
 Evidencia: `docs/test-audits/handy-925.md` y `docs/test-audits/handy-927.md`.
 
+Al integrar un cambio de `ApplicationController::RENDERING_VERSION`, conserva
+esa versión dentro del worker: cambia sus bytes y provoca una activación que
+borra cachés privadas antiguas. No restaures el caché de páginas de upstream
+para adoptar su invalidación. Evidencia: `docs/test-audits/handy-1394.md`.
+
 Un submit que espera Cache Storage debe bloquear otros submits antes del
 primer `await` y liberar el bloqueo si falla el borrado. La guarda de reentrada
 del envío reanudado no evita dos limpiezas concurrentes. Conserva el campo del
