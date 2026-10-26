@@ -27,6 +27,16 @@ class Card::SuggestionTest < ActiveSupport::TestCase
     assert_equal "Corregir impresión móvil", @suggestion.title("La impresión móvil falla")
   end
 
+  test "title sends the description as a labelled field, not as a request to answer" do
+    stub_completion("Actualizar textos del landing page")
+    @suggestion.title("<p>Ayúdame a cambiar estos textos en el landing page:</p>")
+
+    assert_requested(:post, "https://api.fireworks.ai/inference/v1/chat/completions") do |request|
+      user_message = JSON.parse(request.body)["messages"].find { |message| message["role"] == "user" }
+      user_message["content"] == { description: "Ayúdame a cambiar estos textos en el landing page:" }.to_json
+    end
+  end
+
   test "title preserves sixty characters and discards a following word" do
     title = "á" * 29 + " " + "é" * 30
     stub_completion(title)

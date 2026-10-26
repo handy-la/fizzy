@@ -197,6 +197,13 @@ antes de que el navegador emita `beforeinput`, y las apps de dictado pegan su
 texto: por eso el `paste` cuenta como edición. Un pegado por script no cuenta.
 Evidencia: `docs/test-audits/handy-588.md`.
 
+El modelo recibe la descripción dentro de un JSON `{"description": …}`, no
+como mensaje suelto. Una descripción como «Ayúdame a cambiar estos textos»
+parece un pedido de chat: el modelo la contestaba («Aquí tienes los textos…»)
+en 6 de 60 pruebas. El prompt pide nombrar la tarea con un infinitivo o un
+sustantivo y nunca contestarla. No agregues un ejemplo en un idioma: el modelo
+copia ese idioma. Evidencia: `docs/test-audits/handy-1420.md`.
+
 El título mantiene su inserción editable y su guardado actuales. El límite de
 255 caracteres sigue vigente. Los comentarios mayores de 8.000 caracteres se
 rechazan como incompletos, sin recortarlos.
