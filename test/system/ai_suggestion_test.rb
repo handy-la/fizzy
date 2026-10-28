@@ -159,8 +159,10 @@ class AiSuggestionSystemTest < ApplicationSystemTestCase
     assert_equal 1, page.evaluate_script("window.suggestionRequests.length")
     count = @card.comments.count
     empty_value = page.evaluate_script('document.querySelector(".comment--new lexxy-editor").value')
-    respond_with "¿Puedes confirmar el resultado? <script>alert(1)</script>"
+    suggestion = "¿Puedes confirmar el resultado?\nSegunda línea.\n\n<script>alert(1)</script>"
+    respond_with suggestion
     assert_selector '.comment--new [contenteditable][placeholder*="¿Puedes confirmar el resultado?"]'
+    assert_equal suggestion, find(".comment--new [contenteditable]")["placeholder"]
     assert_equal empty_value, page.evaluate_script('document.querySelector(".comment--new lexxy-editor").value')
     # Beyond local-save's debounce; empty Lexxy markup is not a draft either.
     page.evaluate_async_script("setTimeout(arguments[arguments.length - 1], 500)")
@@ -168,12 +170,18 @@ class AiSuggestionSystemTest < ApplicationSystemTestCase
     within(".comment--new") { assert_button "Post", disabled: true }
     find(".comment--new lexxy-editor [contenteditable]").send_keys(:enter)
     assert_selector ".comment--new lexxy-editor", text: "¿Puedes confirmar el resultado?"
+    assert_equal suggestion, page.evaluate_script("arguments[0].innerText", find(".comment--new [contenteditable]"))
     assert_no_selector ".comment--new lexxy-editor script", visible: :all
     assert_equal count, @card.reload.comments.count
     find(".comment--new button[title=Bold]").click
     find(".comment--new lexxy-editor [contenteditable]").click
     assert_equal 1, page.evaluate_script("window.suggestionRequests.length")
     within(".comment--new") { assert_button "Post", disabled: false }
+    within(".comment--new") { click_button "Post" }
+    assert_selector ".comment:not(.comment--new)", text: "Segunda línea."
+    comment = find(".comment:not(.comment--new)", text: "Segunda línea.")
+    assert_equal suggestion, page.evaluate_script("arguments[0].innerText", comment.find(".lexxy-content")).strip
+    assert_equal count + 1, @card.reload.comments.count
   end
 
   # Handy #1218 (contrato y RED: docs/test-audits/handy-1218.md): la

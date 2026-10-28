@@ -218,7 +218,10 @@ export default class extends Controller {
     event.preventDefault()
     event.stopImmediatePropagation()
     const paragraph = document.createElement("p")
-    paragraph.textContent = this.#proposal.text
+    for (const [ index, line ] of this.#proposal.text.split(/\r\n?|\n/).entries()) {
+      if (index > 0) paragraph.append(document.createElement("br"))
+      paragraph.append(document.createTextNode(line))
+    }
     this.#dismiss()
     this.inputTarget.value = paragraph.outerHTML
     this.inputTarget.dispatchEvent(new CustomEvent("lexxy:change", { bubbles: true }))

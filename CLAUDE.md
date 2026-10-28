@@ -353,6 +353,11 @@ se copia al editable interior al crearlo; hay que actualizar ambos atributos e
 interceptar Enter y Tab en captura antes de Lexical. Guía y tiempos:
 `docs/ai-suggestions.md`.
 
+Al aceptar una propuesta multilínea, convierte cada salto del texto en `<br>`
+antes de asignar HTML a Lexxy. Los saltos literales dentro de `p.textContent`
+se importan como espacios; conserva el texto de cada línea con nodos de texto.
+Evidencia: `docs/test-audits/handy-1573.md`.
+
 Una cancelación revoca las sugerencias dentro de su transacción y cierra Cable
 en `after_create_commit`. Cierra por `account.users`, nunca por `Identity`: una
 identidad puede tener otra cuenta activa. Recarga la cuenta antes de generar
