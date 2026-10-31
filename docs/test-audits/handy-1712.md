@@ -85,8 +85,74 @@ El caso de Cache Storage falló en la primera ejecución del merge
 (`revealed: false`) porque el flujo cambió, no por una regresión del worker;
 no hay RED histórico que reconstruir.
 
-Las demás pruebas son las de upstream sin cambios; su RED pertenece a
-upstream y no se reconstruyó.
+## Pruebas importadas de upstream
+
+Upstream agrega o cambia 76 archivos bajo `test/` y `saas/test/` entre
+`314bf8954` y `08f757809`. Salvo las adaptaciones de arriba, entran sin
+cambios. Ninguna introduce un seam productivo sólo para pruebas: los helpers
+nuevos (`test/test_helpers/oauth_*`) son de test y restauran la
+configuración que cambian.
+
+| Pruebas y dueño | Contrato y regresión detectable | Cobertura previa y seam |
+|---|---|---|
+| `test/models/account/join_code_test.rb`, caso «redeem_if refuses a code reset after it was found»; `Account::JoinCode#redeem_if` | Un código restablecido entre la búsqueda y el canje no se canjea ni cuenta un uso. Detecta canjear sin releer el código bajo lock. | Los casos previos no restablecían el código en medio del canje. Sin seam. RED abajo. |
+| `test/jobs/event/webhook_dispatch_job_test.rb`; `Webhook::Triggerable.triggered_by` | Un evento no entrega a un webhook de otra cuenta que apunta al mismo tablero. Detecta quitar `account:` del scope. | No había caso entre cuentas. Sin seam. RED abajo. |
+| `test/lib/rails_ext/active_storage_log_subscriber_filtered_urls_test.rb` y `test/integration/storage_redirect_logging_test.rb`; log subscriber de Active Storage y filtros de `config/application.rb` | Las URLs firmadas generadas o de redirección se registran sin `X-Amz-Signature`; el fragmento se conserva aparte. Detecta perder el filtro del subscriber. | El filtro `signature` del fork cubría parámetros, no la línea del subscriber. Sin seam. RED de tres casos abajo; el de redirección ya pasaba en la base y queda como regresión. |
+| `test/controllers/api_test.rb` y casos nuevos de `active_storage/direct_uploads_controller_test.rb`; `Authentication` | Esquema Bearer sin distinguir mayúsculas, desafío `Bearer` con `invalid_token`/`insufficient_scope`, `Bearer` dentro de otras credenciales no autentica, un HTML con Bearer se rechaza, JSON sin credenciales y el uploader propio van a iniciar sesión. Detecta volver al desafío `Token` o a `include?("Bearer")`. | Los casos previos sólo veían el código HTTP. Sin seam. RED de siete casos abajo; los casos OAuth del archivo siguen la excepción OAuth. |
+| `test/controllers/shipped_client_authentication_test.rb`; `Authentication` y `Authorization` | Fija cómo autentican hoy CLI, scripts con token personal y apps nativas (cookie): alcance por identidad, prohibido en cuenta ajena, sin caducidad. Detecta un cambio de la pila de autenticación que rompa clientes publicados, como Dédalo. | Ya pasaba en la base: cobertura de regresión del merge. Sin seam. |
+| `test/lib/database_adapter_test.rb`, `test/initializers/mysql_ssl_mode_test.rb`; `config/database*.yml` e initializer nuevo | MySQL conecta con mysql2, en utf8mb4, lee binary(16) como UUID y rechaza `verify_ca`. Detecta volver a Trilogy o aceptar un modo TLS sin verificar el host. | En SQLite los casos MySQL se omiten o leen la configuración. El initializer no existe en la base (LoadError, sin RED). Sin seam. |
+| `test/models/account/data_transfer/record_set_test.rb` (casos de atributos opcionales y webhooks) y `test/models/account/import_test.rb`; `RecordSet` | Una exportación sin una columna nueva importa con NULL; sólo cuentan las opcionales que existen; un webhook exportado sin creador importa. Detecta exigir columnas que la exportación vieja no trae. | `optional_attributes:` y `creator_id` no existen en la base: ArgumentError y NoMethodError, sin RED. |
+| OAuth: `test/integration/oauth_*`, `test/models/oauth/**`, `test/controllers/my/connected_apps_controller_test.rb`, `test/helpers/oauth_helper_test.rb`, `test/lib/oauth_parameter_filter_test.rb`, `test/tasks/oauth_provision_first_party_clients_task_test.rb`, `test/system/oauth_consent_test.rb`, casos OAuth de `api_test.rb`, `access_token_test.rb` y `active_record_sql_redaction_test.rb` | Servidor OAuth: flujo, PKCE, redirects, caducidad, rotación, replay, revocación, apagado por interruptores, filtros de log y redacción SQL de sus columnas. | El dueño no existe en la base. Sin seam productivo nuevo. |
+| Tokens en digest: `test/models/token_digester_test.rb`, `test/migrations/*`, `test/integration/personal_access_token_forms_test.rb`, casos nuevos de `identity/access_token_test.rb` y `my/access_tokens_controller_test.rb` | HMAC compatible con bc3; las migraciones conservan cada token personal, su permiso, su falta de caducidad y `updated_at`, se pueden repetir y no borran columnas que el código viejo escribe; el token se muestra una sola vez. Detecta una migración que invalide tokens existentes. | `TokenDigester` y las columnas de digest no existen en la base. Sin seam. |
+| `saas/test/**` (14 archivos) | Inicio de sesión del revisor, locks de correo y membresía, auditoría y métricas OAuth, memoria de jobs, adaptador de cargas directas, redacción de logs estructurados. | No se ejecutan: el bundle SaaS necesita el repositorio privado `rails-structured-logging` (Handy 1394). La parte OSS del adaptador se cubre con `saas_storage_tls_test.rb`. |
+
+### RED histórico
+
+Exportación de la base con `git archive b21a1a719` en
+`.context/handy-1712-base` del workspace (no es otro worktree ni el checkout
+fuente). Se copiaron sin cambios, desde el merge `8140ce2a9`, los diez
+archivos de la selección y el helper de test `oauth_availability_test_helper.rb`.
+Mismo entorno que la validación, bases recreadas en la exportación,
+`PARALLEL_WORKERS=1`:
+
+```
+mise exec -- bin/rails test test/models/account/join_code_test.rb \
+  test/controllers/active_storage/direct_uploads_controller_test.rb test/controllers/api_test.rb \
+  test/models/account/data_transfer/record_set_test.rb test/integration/storage_redirect_logging_test.rb \
+  test/lib/rails_ext/active_storage_log_subscriber_filtered_urls_test.rb \
+  test/jobs/event/webhook_dispatch_job_test.rb test/lib/database_adapter_test.rb \
+  test/initializers/mysql_ssl_mode_test.rb test/controllers/shipped_client_authentication_test.rb
+```
+
+Salida 1: 93 casos, 253 aserciones, 13 fallos y 9 errores.
+
+- RED por contrato (12 fallos): el canje cuenta un uso de un código ya
+  restablecido (`usage_count` cambia en 1); se crea una entrega para el
+  webhook de otra cuenta; tres líneas de log conservan `X-Amz-Signature`;
+  el desafío es `Token realm="Application"` sin `error=` (tres casos de API
+  y dos de cargas directas); `bearer` en minúsculas redirige a iniciar sesión;
+  `Bearer` dentro de otras credenciales recibe 401 en vez de redirigir.
+- Sin RED válido (1 fallo y 9 errores): API ausente en la base, ya descrita en
+  la tabla (`oauth_clients`, metadatos de recurso protegido,
+  `optional_attributes:`, `creator_id`, initializer `mysql_ssl_mode.rb`).
+- Los otros 71 casos ya pasaban: regresión del merge.
+
+El mismo comando sobre el merge da salida 0: 93 casos, 327 aserciones.
+
+### Excepciones RED
+
+- OAuth, tokens en digest, atributos opcionales de importación y mysql2: el
+  dueño no existe en la base, y un `NameError`, `ArgumentError` o `LoadError`
+  no es RED. Contrato aún comprobable: la suite GREEN del merge, incluidas las
+  pruebas de migración, que crean el estado anterior con las clases propias de
+  cada migración. Riesgo sin probar aquí: la migración sobre la base real de la
+  caja; el canal `fizzy-custom` la ejecuta al reconstruir. En una instalación
+  propia sin `OAUTH_TOKEN_PEPPER`, la clave del digest se deriva de
+  `SECRET_KEY_BASE` (`TokenDigester`): los tokens de Dédalo siguen válidos
+  mientras esa clave no cambie.
+- SaaS: igual que Handy 1394, no ejecutable sin el repositorio privado.
+- No se reconstruyó el RED individual de cada caso OAuth; pertenece al
+  historial de upstream.
 
 ## Validación
 
