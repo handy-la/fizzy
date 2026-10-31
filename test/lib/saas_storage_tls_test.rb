@@ -1,18 +1,29 @@
 require "test_helper"
 require "active_storage/service/s3_service"
+# purestorage names the SaaS engine's adapter, which ActiveStorage::Service::Configurator
+# requires by name; the OSS bundle doesn't load the engine, so put its lib on the load path.
+$LOAD_PATH.unshift Rails.root.join("saas/lib").to_s unless $LOAD_PATH.include?(Rails.root.join("saas/lib").to_s)
+require "active_storage/service/s3_with_direct_endpoints_service"
 require "socket"
 require "tmpdir"
 
 class SaasStorageTlsTest < ActiveSupport::TestCase
   test "production beta and staging use separate buckets and their supplied credentials" do
     %w[ production beta staging ].each do |environment|
-      config = storage_config(environment: environment)
+      config = storage_config(environment: environment, ca_bundle: "/etc/ssl/internal-ca.pem")
       service = ActiveStorage::Service.configure(:purestorage, { purestorage: config })
 
       assert_equal "fizzy-#{environment}-activestorage", service.bucket.name
       assert_equal "https://storage.basecamp.com", config.fetch("endpoint")
       assert_equal "test-#{environment}-access", service.client.client.config.credentials.access_key_id
       assert_equal "test-#{environment}-secret", service.client.client.config.credentials.secret_access_key
+
+      # Browser direct uploads are presigned by a second client (upstream 8ba82f5d7): it must
+      # verify the same internal CA, not fall back to an unverified connection.
+      direct_upload = service.direct_upload_service.client.client.config
+      assert_equal "test-#{environment}-direct-upload-access", direct_upload.credentials.access_key_id
+      assert direct_upload.ssl_verify_peer
+      assert_equal "/etc/ssl/internal-ca.pem", direct_upload.ssl_ca_bundle
     end
   end
 
@@ -104,7 +115,9 @@ class SaasStorageTlsTest < ActiveSupport::TestCase
       values = {
         "ACTIVE_STORAGE_ACCESS_KEY_ID" => "test-#{environment}-access",
         "ACTIVE_STORAGE_SECRET_ACCESS_KEY" => "test-#{environment}-secret",
-        "ACTIVE_STORAGE_SSL_CA_BUNDLE" => ca_bundle
+        "ACTIVE_STORAGE_SSL_CA_BUNDLE" => ca_bundle,
+        "ACTIVE_STORAGE_DIRECT_UPLOAD_ACCESS_KEY_ID" => "test-#{environment}-direct-upload-access",
+        "ACTIVE_STORAGE_DIRECT_UPLOAD_SECRET_ACCESS_KEY" => "test-#{environment}-direct-upload-secret"
       }
       original_values = ENV.to_h.slice(*values.keys)
       Rails.env = environment

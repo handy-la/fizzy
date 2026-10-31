@@ -87,7 +87,8 @@ class OfflineCacheTest < ApplicationSystemTestCase
                      "Content-Type": "application/x-www-form-urlencoded" },
           body: "access_token[description]=Offline+test&access_token[permission]=read"
         })
-        const reveal = await (await fetch(created.url)).text()
+        // The token is revealed in the response that creates it (upstream, no redirect).
+        const reveal = await created.text()
         const transfer = await (await fetch(userPath)).text()
         // The old worker writes after resolving fetch. Wait for its writes to settle.
         await new Promise(resolve => setTimeout(resolve, 500))

@@ -30,6 +30,7 @@ env:
   clear:
     RAILS_ENV: staging
     RAILS_LOG_LEVEL: fatal # suppress unstructured log lines
+    OAUTH_STAFF_ONLY: "true" # OAuth is for 37signals staff until we open it up
     MYSQL_DATABASE_HOST: fizzy-staging-mysql-primary
     MYSQL_DATABASE_REPLICA_HOST: fizzy-staging-mysql-replica
     MYSQL_SOLID_CABLE_HOST: fizzy-staging-mysql-primary
@@ -43,10 +44,13 @@ env:
     - MYSQL_READONLY_PASSWORD
     - MYSQL_READONLY_USER
     - SECRET_KEY_BASE
+    - OAUTH_TOKEN_PEPPER
     - VAPID_PUBLIC_KEY
     - VAPID_PRIVATE_KEY
     - ACTIVE_STORAGE_ACCESS_KEY_ID
     - ACTIVE_STORAGE_SECRET_ACCESS_KEY
+    - ACTIVE_STORAGE_DIRECT_UPLOAD_ACCESS_KEY_ID
+    - ACTIVE_STORAGE_DIRECT_UPLOAD_SECRET_ACCESS_KEY
     - QUEENBEE_API_TOKEN
     - QUEENBEE_API_TOKEN_PREVIOUS
     - QUEENBEE_SECRET
@@ -72,7 +76,13 @@ env:
 
 accessories:
   load-balancer:
-    image: basecamp/kamal-proxy:lb
+    # Was `:lb`, a moving tag from before the load-balancer features (read targets, writer
+    # affinity) reached a release. Pinned now for the same reason as hotcell's image in
+    # deploy.yml: a reboot pulls whatever the tag names at that moment, so a moving tag makes
+    # what a host runs depend on when it last rebooted. v0.10.0 is the first release with
+    # --client-ip-header, which saas/script/configure-lb-*.sh passes; v0.10.2 adds the AEAD-only
+    # TLS 1.2 ciphers and client timeouts on the public listeners.
+    image: basecamp/kamal-proxy:v0.10.2
     hosts:
       - fizzy-staging-lb-01.sc-chi-int.37signals.com
       - fizzy-staging-lb-101.df-iad-int.37signals.com
@@ -91,3 +101,20 @@ accessories:
       mount: type=volume,src=certificates,dst=/certificates,volume-driver=local,volume-opt=type=nfs,volume-opt=device=:/fizzy-staging-certificates,"volume-opt=o=addr=purestorage.sc-chi-int.37signals.com,nfsvers=3,rw,noatime,nconnect=8,soft,timeo=30,retrans=2"
     volumes:
       - load-balancer:/home/kamal-proxy/.config/kamal-proxy
+
+  # Hosted Fizzy MCP (see saas/config/deploy.yml), on iad's web hosts, as in production.
+  fizzy_mcp:
+    hosts:
+      - fizzy-staging-app-101.df-iad-int.37signals.com
+      - fizzy-staging-app-102.df-iad-int.37signals.com
+    proxy:
+      host: mcp.fizzy-staging.com
+    env:
+      clear:
+        FIZZY_MCP_RESOURCE_URL: "https://mcp.fizzy-staging.com/mcp"
+        FIZZY_MCP_AUTHORIZATION_SERVER: "https://app.fizzy-staging.com"
+        FIZZY_MCP_ALLOWED_ORIGINS: "https://app.fizzy-staging.com"
+    # TODO: before lighting the exchange, send app.fizzy-staging.com to iad's staging load balancer.
+    # options:
+    #   add-host:
+    #     - "app.fizzy-staging.com:<fizzy-staging-lb-101 address>"

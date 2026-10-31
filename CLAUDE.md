@@ -531,3 +531,8 @@ la espera de borrado de caché y deshabilita el código en `turbo:submit-start`.
 el formulario. Un fallo de limpieza impide salir; uno de push permite que el
 servidor revoque los registros. No combines ambos envíos recursivamente.
 Evidencia y límites: `docs/test-audits/handy-928.md`.
+
+Por eso un token (personal, OAuth o delegado) recibe 403 al registrar push.
+Upstream sí lo permite y sus pruebas OAuth lo esperan: al sincronizar, conserva
+este controlador y adapta esas pruebas (403 y fila plantada en el modelo).
+Evidencia: `docs/test-audits/handy-1712.md`.

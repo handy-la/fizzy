@@ -20,9 +20,10 @@ devminio:
 # Each environment needs its own bucket and credentials scoped to that bucket.
 # See docs/saas-storage-tls.md before deploying with an internal CA or migrating beta.
 purestorage:
-  service: S3
+  service: S3WithDirectEndpoints
   bucket: fizzy-<%= Rails.env %>-activestorage
   endpoint: "https://storage.basecamp.com"
+  direct_upload_endpoint: "https://storage.basecamp.com"
   ssl_verify_peer: true
   ssl_ca_bundle: <%= ENV["ACTIVE_STORAGE_SSL_CA_BUNDLE"]&.to_json %>
   force_path_style: true
@@ -31,3 +32,6 @@ purestorage:
   region: us-east-1 # default region required for signer
   access_key_id: <%= ENV["ACTIVE_STORAGE_ACCESS_KEY_ID"] %>
   secret_access_key: <%= ENV["ACTIVE_STORAGE_SECRET_ACCESS_KEY"] %>
+  # Write-only (s3:PutObject) user for presigning browser direct uploads.
+  direct_upload_access_key_id: <%= ENV["ACTIVE_STORAGE_DIRECT_UPLOAD_ACCESS_KEY_ID"] %>
+  direct_upload_secret_access_key: <%= ENV["ACTIVE_STORAGE_DIRECT_UPLOAD_SECRET_ACCESS_KEY"] %>
