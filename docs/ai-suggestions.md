@@ -46,11 +46,40 @@ correr a mano, la propuesta termina con una petición al agente: que los ejecute
 preguntas de hechos desconocidos pide aclaración. La propuesta es texto editable,
 nunca una acción ejecutada por la IA.
 
+## Tarjetas citadas en comentarios
+
+En una sugerencia de comentario, `referenced_cards` enumera los números citados
+en los comentarios de la tarjeta actual. Se reconocen menciones `#N`, enlaces
+HTML y URLs de texto a `/<cuenta>/cards/N` de esta instancia. Un enlace a otra
+cuenta o a otro host no autoriza una lectura local. Se conserva el historial
+completo de la tarjeta actual; el contexto inicial no contiene el contenido de
+las tarjetas citadas.
+
+Cuando hay referencias, RubyLLM ofrece `read_referenced_card` con
+`tool_choice: auto`. El modelo decide si consulta. La herramienta lee la base
+local, con `user.accessible_cards` y la cuenta del usuario; no hace HTTP a los
+enlaces. Comprueba que el usuario y la cuenta sigan activos. Devuelve título,
+descripción, tablero, estado, asignados, pasos, comentarios completos y eventos.
+Una referencia inexistente, no autorizada o no citada devuelve un error sin
+contenido. La herramienta no amplía la lista con referencias de segundo nivel.
+
+Hay hasta tres llamadas de herramienta y cuatro peticiones al proveedor por
+generación. Las rondas se ejecutan en serie y comparten un plazo total de 90 s.
+Antes de cada petición, se comprueba que los mensajes acumulados no superen
+512 KiB. Un exceso rechaza la sugerencia como `context_too_large`, sin recortar
+el historial. Un bucle que supera las llamadas permitidas termina como
+`incomplete`. Los títulos siguen sin herramientas.
+
+La revisión de vigencia sigue cubriendo la tarjeta actual. No se suscribe a los
+cambios posteriores de las tarjetas consultadas: la propuesta usa su contenido
+en el momento de la lectura. Evidencia: `docs/test-audits/handy-1797.md`.
+
 ## Plazos y estados
 
 - Cola: diez minutos desde `requested_at`. Un job tardío pasa a `failed` con
   `queue_expired` y no llama al proveedor.
 - Generación: HTTP de proveedor con timeout de 90 s, sin reintentos automáticos.
+  Las peticiones y herramientas de una generación comparten además ese plazo.
   La solicitud `running` tiene dos minutos de vigencia. El límite de concurrencia
   global del job es tres minutos y conserva un solo proveedor en curso.
 - Resultado: quince minutos desde el fin, separado de la cola y generación.
@@ -92,7 +121,7 @@ faltan para que venza la reserva más antigua de ese presupuesto (cuenta o globa
 El navegador muestra «Cupo de sugerencias agotado; intenta en N minutos.» con
 el botón de reintento; sin `Retry-After` válido dice «intenta más tarde».
 
-Cada nueva admisión reserva una llamada: diez por cuenta y sesenta globales en
+Cada nueva admisión reserva una generación: diez por cuenta y sesenta globales en
 una ventana móvil de una hora. Con `MULTI_TENANT` apagado hay una sola cuenta:
 su presupuesto es el global, porque diez por hora alcanzaban para todas las
 personas juntas (Handy #999); el global pasó de treinta a sesenta en Handy #1157.
@@ -103,7 +132,9 @@ independiente de la fila reutilizable de la solicitud. Un timeout, una
 cancelación o una solicitud que vence no devuelve presupuesto. Recuperar un
 resultado ya terminado no vuelve a gastar. Las reservas viejas se borran bajo
 el mismo bloqueo, al admitir otra petición. No se guarda texto ni token en ellas.
-Es un presupuesto de llamadas admitidas, no una medición del costo en moneda.
+Es un presupuesto de generaciones admitidas, no una medición del costo en moneda
+ni del número de peticiones HTTP. Un comentario puede necesitar hasta cuatro
+peticiones por sus consultas opcionales.
 
 Los jobs nuevos son avisos globales sin argumentos ni cuenta serializada.
 `Card::SuggestionJob` conserva compatibilidad con los argumentos antiguos.

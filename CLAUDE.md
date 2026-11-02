@@ -353,6 +353,12 @@ se copia al editable interior al crearlo; hay que actualizar ambos atributos e
 interceptar Enter y Tab en captura antes de Lexical. Guía y tiempos:
 `docs/ai-suggestions.md`.
 
+Para consultar tarjetas citadas desde una sugerencia de comentario, conserva
+`tool_choice: auto`: el modelo decide si necesita contexto. La herramienta sólo
+lee referencias directas con `user.accessible_cards` en su cuenta; no sigue
+enlaces por HTTP ni amplía las referencias. Las rondas comparten el plazo de
+generación y el límite de contexto. Contrato: `docs/ai-suggestions.md`.
+
 Al aceptar una propuesta multilínea, convierte cada salto del texto en `<br>`
 antes de asignar HTML a Lexxy. Los saltos literales dentro de `p.textContent`
 se importan como espacios; conserva el texto de cada línea con nodos de texto.
