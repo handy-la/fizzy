@@ -270,6 +270,11 @@ Evidencia: `docs/test-audits/handy-1217.md`.
 
 ## Pegado en pruebas de sistema
 
+Lexxy 1.0.1 emite `lexxy:change` antes de programar su validez para el siguiente
+frame. El listener del formulario debe esperar dos frames antes de consultar
+`checkValidity()`: con uno lee el estado anterior y deja bloqueado un pegado
+único o habilitado un campo recién vaciado. Evidencia: `docs/test-audits/handy-1862.md`.
+
 La barra flotante de una tarjeta puede cubrir el centro de `lexxy-editor`.
 Para pegar, haz clic cerca de la esquina superior del campo `contenteditable`,
 tras dejarlo completo dentro de la ventana. Comprueba su foco y envía el evento

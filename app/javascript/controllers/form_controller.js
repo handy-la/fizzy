@@ -75,6 +75,9 @@ export default class extends Controller {
   }
 
   async disableSubmitWhenInvalid(event) {
+    // Lexxy schedules its validity refresh after dispatching lexxy:change.
+    // A second frame lets that refresh finish before reading form validity.
+    await nextFrame()
     await nextFrame()
 
     if (this.element.checkValidity()) {
