@@ -10,7 +10,7 @@ class Account::DataImportJob < ApplicationJob
   queue_as :backend
   # Also serialize retries and imports admitted before this policy was installed.
   limits_concurrency to: 1, key: ->(import) { import.identity_id }, duration: 1.day
-  discard_on(*TERMINAL_ERRORS)
+  discard_on(*TERMINAL_ERRORS, report: true)
   after_discard do |job, error|
     if import = job.arguments.first
       import.mark_as_failed if import.is_a?(Account::Import)

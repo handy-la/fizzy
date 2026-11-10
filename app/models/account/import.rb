@@ -172,6 +172,7 @@ class Account::Import < ApplicationRecord
 
     add_importer_to_all_access_boards
     create_missing_user_settings
+    create_missing_webhook_delinquency_trackers
     reconcile_cards_count
     mark_completed
   rescue ZipFile::LimitExceededError => e
@@ -313,6 +314,10 @@ class Account::Import < ApplicationRecord
 
     def create_missing_user_settings
       account.users.where.not(role: :system).where.missing(:settings).find_each(&:create_settings!)
+    end
+
+    def create_missing_webhook_delinquency_trackers
+      account.webhooks.where.missing(:delinquency_tracker).find_each(&:create_delinquency_tracker!)
     end
 
     def reconcile_account_storage

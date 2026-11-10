@@ -194,6 +194,18 @@ class Account::DataImportJobTest < ActiveJob::TestCase
     end
   end
 
+  test "reports a discarded import once instead of retrying it" do
+    import = Account::Import.create!(identity: identities(:david), account: Account.create!(name: "Import Test"))
+    Account::Import.any_instance.stubs(:process).raises(Account::DataTransfer::RecordSet::IntegrityError, "users import has a value its column can't hold")
+    Account::Import.any_instance.stubs(:check)
+
+    assert_error_reported(Account::DataTransfer::RecordSet::IntegrityError) do
+      assert_no_enqueued_jobs only: Account::DataImportJob do
+        Account::DataImportJob.perform_now(import)
+      end
+    end
+  end
+
   private
     def import_with_records(invalid_content = nil)
       account = Account.create_with_owner(account: { name: "Import Test" }, owner: { identity: identities(:david), name: "David" })

@@ -35,8 +35,7 @@ class Account::DataTransfer::AccountRecordSet < Account::DataTransfer::RecordSet
       join_code_data = account_data.delete("join_code")
 
       account.update!(name: account_data.fetch("name"), cards_count: account_data.fetch("cards_count", 0))
-      account.join_code.update!(join_code_data.slice("usage_count", "usage_limit"))
-      account.join_code.update(code: join_code_data.fetch("code"))
+      account.join_code.import(join_code_data.slice(*JOIN_CODE_ATTRIBUTES))
     end
 
     def check_record(file_path)
@@ -56,6 +55,10 @@ class Account::DataTransfer::AccountRecordSet < Account::DataTransfer::RecordSet
 
       unless (JOIN_CODE_ATTRIBUTES - data["join_code"].keys).empty?
         raise IntegrityError, "'join_code' field missing required keys"
+      end
+
+      unless data["join_code"].values_at("usage_count", "usage_limit").all?(Integer)
+        raise IntegrityError, "'join_code' usage_count and usage_limit must be integers"
       end
     end
 end

@@ -77,8 +77,7 @@ class ActiveStorageAuthorizationTest < ActionDispatch::IntegrationTest
     assert_match %r{/session/new}, response.location
 
     get proxy_path
-    assert_response :redirect
-    assert_match %r{/session/new}, response.location
+    assert_response :not_found
   end
 
   test "authenticated user without board access does not run the representation parser" do
@@ -93,7 +92,7 @@ class ActiveStorageAuthorizationTest < ActionDispatch::IntegrationTest
     assert_response :forbidden
 
     get proxy_path
-    assert_response :forbidden
+    assert_response :not_found
   end
 
   test "unauthenticated user can view blob on published board with published card" do
@@ -201,36 +200,24 @@ class ActiveStorageAuthorizationTest < ActionDispatch::IntegrationTest
     assert_match %r{rails/active_storage}, response.location
   end
 
-  test "proxy for non-public blob does not set public Cache-Control" do
+  test "proxy routes answer 404 for a signed-in user with access" do
     sign_in_as :david
 
     get rails_storage_proxy_path(@blob)
-    assert_response :success
-    assert_not_includes response.headers["Cache-Control"], "public"
+    assert_response :not_found
+
+    get rails_storage_proxy_path(@blob.representation(resize_to_limit: [ 100, 100 ]))
+    assert_response :not_found
   end
 
-  test "proxy for publicly accessible blob sets public Cache-Control" do
+  test "proxy routes answer 404 for a publicly accessible blob" do
     blob = attach_avatar_to(users(:david))
 
     get rails_storage_proxy_path(blob)
-    assert_response :success
-    assert_includes response.headers["Cache-Control"], "public"
-  end
-
-  test "representation proxy for non-public blob does not set public Cache-Control" do
-    sign_in_as :david
-
-    get rails_storage_proxy_path(@blob.representation(resize_to_limit: [ 100, 100 ]))
-    assert_response :success
-    assert_not_includes response.headers["Cache-Control"], "public"
-  end
-
-  test "representation proxy for publicly accessible blob sets public Cache-Control" do
-    blob = attach_avatar_to(users(:david))
+    assert_response :not_found
 
     get rails_storage_proxy_path(blob.representation(resize_to_fill: [ 256, 256 ]))
-    assert_response :success
-    assert_includes response.headers["Cache-Control"], "public"
+    assert_response :not_found
   end
 
   # Account exports
@@ -284,8 +271,9 @@ class ActiveStorageAuthorizationTest < ActionDispatch::IntegrationTest
     get rails_blob_path(@blob, disposition: :inline)
     assert_response :forbidden
 
+    # The proxy routes are closed for everyone (upstream e9291fbca).
     get rails_storage_proxy_path(@blob)
-    assert_response :forbidden
+    assert_response :not_found
   end
 
   test "bearer token of a cancelled account cannot view a private attachment" do
@@ -307,7 +295,7 @@ class ActiveStorageAuthorizationTest < ActionDispatch::IntegrationTest
     assert_response :forbidden
 
     get rails_storage_proxy_path(representation)
-    assert_response :forbidden
+    assert_response :not_found
   end
 
   test "deactivated member cannot view a private attachment" do
@@ -328,8 +316,7 @@ class ActiveStorageAuthorizationTest < ActionDispatch::IntegrationTest
     assert_match %r{/session/new}, response.location
 
     get rails_storage_proxy_path(@blob)
-    assert_response :redirect
-    assert_match %r{/session/new}, response.location
+    assert_response :not_found
 
     get rails_representation_path(representation)
     assert_response :redirect
@@ -345,7 +332,7 @@ class ActiveStorageAuthorizationTest < ActionDispatch::IntegrationTest
     assert_response :forbidden
 
     get rails_storage_proxy_path(blob, disposition: :attachment)
-    assert_response :forbidden
+    assert_response :not_found
   end
 
   test "access is bound to the attachment's account, not only to the user" do

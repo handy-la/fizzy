@@ -34,8 +34,7 @@ class OauthTokenExchangeTest < ActionDispatch::IntegrationTest
     assert_equal "Bearer", body["token_type"]
     assert_equal ACCESS_TOKEN_TYPE, body["issued_token_type"]
     assert_equal "read write", body["scope"]
-    assert_operator body["expires_in"], :>, 0
-    assert_operator body["expires_in"], :<=, 300
+    assert_equal Oauth::TokenDelegation::TTL_CAP.to_i, body["expires_in"], "a fresh delegated token reports its whole capped lifetime"
     assert_not body.key?("refresh_token")
 
     delegated = Identity::AccessToken.find_by_raw_token(body["access_token"])
@@ -444,8 +443,20 @@ class OauthTokenExchangeTest < ActionDispatch::IntegrationTest
     assert_response :success
   end
 
-  test "while OAuth is staff only, a grant whose owner isn't staff is not exchanged, and its delegated tokens stop working" do
-    with_oauth_availability staff_only: true do
+  test "while connecting apps is in preview, a grant whose owner is a listed reviewer, not staff, is exchanged" do
+    identities(:david).update!(staff: false)
+
+    with_oauth_availability preview: true, reviewer_ids: [ identities(:david).id ] do
+      exchange
+      assert_response :success
+
+      get user_path(users(:david)), env: { "HTTP_AUTHORIZATION" => "Bearer #{response.parsed_body["access_token"]}" }, as: :json
+      assert_response :success
+    end
+  end
+
+  test "while connecting apps is in preview, a grant whose owner isn't a previewer is not exchanged, and its delegated tokens stop working" do
+    with_oauth_availability preview: true do
       exchange
       assert_response :success
       delegated = response.parsed_body["access_token"]

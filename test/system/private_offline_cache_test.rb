@@ -40,7 +40,8 @@ class PrivateOfflineCacheTest < ApplicationSystemTestCase
     wait_for_worker
 
     card_url = card_path(card)
-    blob_url = rails_storage_proxy_path(blob)
+    # The proxy routes answer 404 for everyone (upstream e9291fbca); files are served by redirect.
+    blob_url = rails_blob_path(blob, disposition: :inline)
     assert_includes fetch_body(card_url), "big enough"
     assert_equal "private attachment", fetch_body(blob_url)
 

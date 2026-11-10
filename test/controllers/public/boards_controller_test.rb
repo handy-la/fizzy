@@ -36,4 +36,22 @@ class Public::BoardsControllerTest < ActionDispatch::IntegrationTest
     get published_board_path(boards(:writebook))
     assert_response :success
   end
+
+  # Upstream caches this page publicly for 30 seconds when nobody is signed in. The fork's
+  # OfflineCaching marks every page outside its offline list no-store (Handy 925), so no
+  # cache keeps it, signed in or not.
+  test "show is not stored in any cache without authentication" do
+    sign_out
+    get published_board_path(boards(:writebook))
+
+    assert_not response.cache_control[:public]
+    assert response.cache_control[:no_store]
+  end
+
+  test "show is not publicly cacheable when signed in" do
+    get published_board_path(boards(:writebook))
+
+    assert_not response.cache_control[:public]
+    assert response.cache_control[:no_store]
+  end
 end

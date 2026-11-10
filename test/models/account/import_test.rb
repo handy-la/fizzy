@@ -104,6 +104,74 @@ class Account::ImportTest < ActiveSupport::TestCase
     stripped_tempfile&.unlink
   end
 
+  test "import creates delinquency trackers for webhooks whose export carried none" do
+    source_account = accounts("37s")
+    exporter = users(:david)
+    identity = exporter.identity
+    webhook_ids = source_account.webhooks.ids
+
+    export = Account::Export.create!(account: source_account, user: exporter)
+    export.build
+
+    export_tempfile = Tempfile.new([ "export", ".zip" ])
+    export.file.open { |f| FileUtils.cp(f.path, export_tempfile.path) }
+
+    stripped_tempfile = zip_without(export_tempfile.path, "data/webhook_delinquency_trackers/*")
+
+    source_account.destroy!
+
+    target_account = Account.create_with_owner(account: { name: "Import Test" }, owner: { identity: identity, name: exporter.name })
+    import = Account::Import.create!(identity: identity, account: target_account)
+    Current.set(account: target_account) do
+      import.file.attach(io: File.open(stripped_tempfile.path), filename: "export.zip", content_type: "application/zip")
+    end
+
+    import.check
+    import.process
+
+    assert import.completed?
+    assert_not_empty webhook_ids
+    assert_equal webhook_ids.sort, Webhook::DelinquencyTracker.where(account: target_account).pluck(:webhook_id).sort
+  ensure
+    export_tempfile&.close
+    export_tempfile&.unlink
+    stripped_tempfile&.close
+    stripped_tempfile&.unlink
+  end
+
+  test "import caps a join code usage limit saved before the cap existed" do
+    source_account = accounts("37s")
+    exporter = users(:david)
+    identity = exporter.identity
+    source_account.join_code.update_columns(usage_count: 3, usage_limit: Account::JoinCode::USAGE_LIMIT_MAX + 1)
+    code = source_account.join_code.code
+
+    export = Account::Export.create!(account: source_account, user: exporter)
+    export.build
+
+    export_tempfile = Tempfile.new([ "export", ".zip" ])
+    export.file.open { |f| FileUtils.cp(f.path, export_tempfile.path) }
+
+    source_account.destroy!
+
+    target_account = Account.create_with_owner(account: { name: "Import Test" }, owner: { identity: identity, name: exporter.name })
+    import = Account::Import.create!(identity: identity, account: target_account)
+    Current.set(account: target_account) do
+      import.file.attach(io: File.open(export_tempfile.path), filename: "export.zip", content_type: "application/zip")
+    end
+
+    import.check
+    import.process
+
+    assert import.completed?
+    assert_equal Account::JoinCode::USAGE_LIMIT_MAX, target_account.join_code.reload.usage_limit
+    assert_equal 3, target_account.join_code.usage_count
+    assert_equal code, target_account.join_code.code
+  ensure
+    export_tempfile&.close
+    export_tempfile&.unlink
+  end
+
   test "import reconciles cards count so new cards get correct numbers" do
     source_account = accounts("37s")
     exporter = users(:david)
@@ -216,6 +284,31 @@ class Account::ImportTest < ActiveSupport::TestCase
 
     assert import.failed?
     assert_equal "invalid_export", import.failure_reason
+  ensure
+    tempfile&.close
+    tempfile&.unlink
+  end
+
+  test "check sets failure_reason to invalid_export when a join code limit is not an integer" do
+    target_account = Account.create!(name: "Import Test")
+    import = Account::Import.create!(identity: identities(:david), account: target_account)
+
+    # A hand-built export: Fizzy can't export a null limit, since the column is NOT NULL.
+    tempfile = Tempfile.new([ "null_limit_export", ".zip" ])
+    tempfile.binmode
+    writer = ZipFile::Writer.new(tempfile)
+    writer.add_file("data/account.json", { name: "Hand-built", join_code: { code: "abcd-efgh-ijkl", usage_count: 0, usage_limit: nil } }.to_json)
+    writer.close
+    tempfile.rewind
+
+    Current.set(account: target_account) do
+      import.file.attach(io: tempfile, filename: "export.zip", content_type: "application/zip")
+    end
+
+    error = assert_raises(Account::DataTransfer::RecordSet::IntegrityError) { import.check }
+    assert_match(/usage_limit/, error.message)
+
+    assert import.reload.failed_due_to_invalid_export?
   ensure
     tempfile&.close
     tempfile&.unlink

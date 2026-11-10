@@ -128,9 +128,16 @@ Rails.application.configure do
   config.x.oauth.acceptance_enabled = ENV["OAUTH_ACCEPTANCE_ENABLED"] == "true"
   config.x.oauth.issuance_enabled = ENV["OAUTH_ISSUANCE_ENABLED"] != "false"
   config.x.oauth.pilot_client_ids = ENV.fetch("OAUTH_PILOT_CLIENT_IDS", "").split(",").map(&:strip).compact_blank
-  # OAUTH_STAFF_ONLY=true limits OAuth to 37signals staff, whichever client
-  # asks; personal access tokens are unaffected (Oauth::Availability).
-  config.x.oauth.staff_only = ENV["OAUTH_STAFF_ONLY"] == "true"
+  # CONNECTED_APPS_PREVIEW=true keeps connecting apps in preview: only 37signals
+  # staff and the reviewers CONNECTED_APPS_PREVIEW_REVIEWERS lists (identity ids,
+  # separated by commas or spaces) can connect an app or use an OAuth token,
+  # whichever client asks; personal access tokens are unaffected. Its old name,
+  # OAUTH_STAFF_ONLY, still counts while CONNECTED_APPS_PREVIEW is unset. Read
+  # after initialization, since Oauth::Availability parses both.
+  config.after_initialize do
+    config.x.oauth.connected_apps_preview = Oauth::Availability.connected_apps_preview_from(ENV)
+    config.x.oauth.connected_apps_preview_reviewer_ids = Oauth::Availability.reviewer_ids_from(ENV["CONNECTED_APPS_PREVIEW_REVIEWERS"])
+  end
 
   # Client ID Metadata Documents are off unless OAUTH_CIMD_ENABLED is "true",
   # and then fetched only from the hosts OAUTH_CIMD_ALLOWED_HOSTS names
@@ -138,12 +145,6 @@ Rails.application.configure do
   # chatgpt.com"). See Oauth::ClientMetadata.
   config.x.oauth.cimd_enabled = ENV["OAUTH_CIMD_ENABLED"] == "true"
   config.x.oauth.cimd_allowed_hosts = ENV.fetch("OAUTH_CIMD_ALLOWED_HOSTS", "").split
-
-  # Dynamic client registration accepts https redirects only on these hosts
-  # (OAUTH_DCR_ALLOWED_HTTPS_HOSTS, separated by spaces or commas), beside
-  # loopback and the cursor:// and claude:// app schemes. Unset, it accepts
-  # no https redirect at all. See Oauth.dcr_redirect_shape?.
-  config.x.oauth.dcr_allowed_https_hosts = ENV.fetch("OAUTH_DCR_ALLOWED_HTTPS_HOSTS", "").split(/[\s,]+/).compact_blank
 
   # Skip DNS rebinding protection for the default health check endpoint.
   # config.host_authorization = { exclude: ->(request) { request.path == "/up" } }

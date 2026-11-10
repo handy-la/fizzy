@@ -1,3 +1,20 @@
+<%
+# What the aliases pass to the console with `app exec -e`. A blank USER (a sandbox, cron, launchd,
+# env -i) leaves a bare "CONSOLE_USER:" that breaks this file's YAML, so fall back to LOGNAME, then
+# the login name, taking only a plain login name, which is safe in every alias's quoting.
+# CONSOLE_REASON is the link that authorized a query. On its way to the console it passes through a
+# single-quoted YAML scalar, Shellwords.split, Thor's -e hash (split at the first colon, so a URL
+# arrives whole), Ruby's String#dump and the remote shell, which expands any ${...} Kamal leaves in.
+# Rather than escape for all five, percent-encode every byte outside a URL's own characters: a link
+# arrives unchanged, and anything else arrives as inert ASCII. coworker's bin/failed-jobs renders
+# both values by these names.
+require "etc"
+console_user = [ ENV["USER"], ENV["LOGNAME"], (Etc.getpwuid.name rescue nil) ] \
+  .find { |name| name.to_s.b.match?(/\A[\w.@-]+\z/) } || "uid-#{Process.uid}"
+console_reason = ENV["CONSOLE_REASON"].to_s.b.strip \
+  .gsub(%r{[^A-Za-z0-9 ._~:/?#\[\]!&()*+,;=%-]}) { |byte| format("%%%02X", byte.ord) } \
+  .shellescape.gsub("'", "''")
+-%>
 service: fizzy
 image: basecamp/fizzy
 asset_path: /rails/public/assets
@@ -54,14 +71,6 @@ env:
     # Configuration, not a credential, and inert on its own: nothing is fetched until
     # OAUTH_CIMD_ENABLED is "true", which no destination sets.
     OAUTH_CIMD_ALLOWED_HOSTS: "mcp.claude.ai claude.ai claude.com chatgpt.com"
-    # The vendor hosts whose https callbacks dynamic client registration accepts, beside loopback and the
-    # cursor:// and claude:// schemes: Claude's web and desktop connectors (claude.ai, claude.com), ChatGPT
-    # (chatgpt.com), Cursor and the Grok Bot (www.cursor.com), Grok's own connector (grok.com), and Meta's
-    # Muse (muse.ai and agent.meta.ai, whose callbacks are https://muse.ai/connect/oauth-callback,
-    # https://muse.ai/api/hatch/oauth/callback and https://agent.meta.ai/api/hatch/oauth/callback; Basecamp
-    # admits the same two hosts for Muse's custom connectors). Add a host only when a real client is
-    # confirmed to need it.
-    OAUTH_DCR_ALLOWED_HTTPS_HOSTS: "claude.ai claude.com chatgpt.com www.cursor.com grok.com muse.ai agent.meta.ai"
 
 proxy:
   ssl: true
@@ -147,10 +156,10 @@ accessories:
 # destination's file.
 <%- if %w[ production staging beta ].include?(ENV["KAMAL_DESTINATION"]) || ENV["KAMAL_DESTINATION"].to_s.match?(/\Abeta\d+\z/) -%>
   fizzy_mcp:
-    # The digest basecamp/fizzy-mcp-server's scripts/build-image.sh printed for v0.2.1, built from the
+    # The digest basecamp/fizzy-mcp-server's scripts/build-image.sh printed for v0.2.4, built from the
     # cosign-verified release archives. Hosts boot exactly this content or nothing; bump it only to
     # another digest that script prints.
-    image: registry.37signals.com/basecamp/fizzy-mcp-server:v0.2.1@sha256:fc63d6b241cce3888a405670201591920811aba13cd555423596a34e2eba428a
+    image: registry.37signals.com/basecamp/fizzy-mcp-server:v0.2.4@sha256:3645254181a8e5daa55283d39ab0eaa292aa23efe3233ea08db3719d7993a1fd
     proxy:
       app_port: 8080
       # A request runs at most 45s (hosted.RequestBudget); the server's write timeout is 60s.
@@ -174,6 +183,6 @@ accessories:
 <%- end -%>
 
 aliases:
-  console: app exec -i --reuse -e CONSOLE_USER:<%= ENV["USER"] %> "bin/rails console"
-  query: 'app exec -q --reuse -p -e CONSOLE_USER:<%= ENV["USER"] %> CLAUDECODE:<%= ENV["CLAUDECODE"] %> CODEX_THREAD_ID:<%= ENV["CODEX_THREAD_ID"] %> "bin/rails query"'
-  ssh: app exec -i --reuse -e CONSOLE_USER:<%= ENV["USER"] %> /bin/bash
+  console: app exec -i --reuse -e CONSOLE_USER:<%= console_user %> "bin/rails console"
+  query: 'app exec -q --reuse -p -e CONSOLE_USER:<%= console_user %> CLAUDECODE:<%= ENV["CLAUDECODE"] %> CODEX_THREAD_ID:<%= ENV["CODEX_THREAD_ID"] %> CONSOLE_REASON:<%= console_reason %> "bin/rails query"'
+  ssh: app exec -i --reuse -e CONSOLE_USER:<%= console_user %> /bin/bash

@@ -29,8 +29,9 @@ class ActiveStorageRepresentationAdmissionTest < ActionDispatch::IntegrationTest
     assert_raises(PermanentFailure) { get path }
     get path
     assert_response :unprocessable_entity
+    # The proxy route is closed before any processing (upstream e9291fbca).
     get rails_storage_proxy_path(@blob.representation(resize_to_limit: [ 100, 100 ]))
-    assert_response :unprocessable_entity
+    assert_response :not_found
 
     assert_equal 1, transforms.size
   end

@@ -128,11 +128,20 @@ class OauthDelegateResourcesTest < ActionDispatch::IntegrationTest
     end
   end
 
-  test "an app's push subscription stops delivering while OAuth is staff only and the user isn't staff, alongside the browser's" do
+  test "an app's push subscription keeps delivering while connecting apps is in preview and the user is a listed reviewer" do
+    subscribe_push bearer(@grant)
+    identities(:kevin).update!(staff: false)
+
+    with_oauth_availability preview: true, reviewer_ids: [ identities(:kevin).id ] do
+      assert_equal [ ENDPOINT ], delivered_endpoints
+    end
+  end
+
+  test "an app's push subscription stops delivering while connecting apps is in preview and the user isn't a previewer, alongside the browser's" do
     subscribe_push bearer(@grant)
     browser_subscription(BROWSER)
 
-    with_oauth_availability staff_only: true do
+    with_oauth_availability preview: true do
       assert_equal [ BROWSER, ENDPOINT ].sort, delivered_endpoints.sort
 
       identities(:kevin).update!(staff: false)
@@ -140,11 +149,11 @@ class OauthDelegateResourcesTest < ActionDispatch::IntegrationTest
     end
   end
 
-  test "delivering push looks up no identity while OAuth isn't staff only" do
+  test "delivering push looks up no identity while connecting apps isn't in preview" do
     subscribe_push bearer(@grant)
     user = User.find(users(:kevin).id)
 
-    with_oauth_availability staff_only: false do
+    with_oauth_availability preview: false do
       Push::Subscription.deliverable_to(user).load
     end
 
@@ -292,7 +301,7 @@ class OauthDelegateResourcesTest < ActionDispatch::IntegrationTest
 
     assert_response :success
     assert_select "dialog li", text: /#{Regexp.escape(webhook.name)}/
-    assert_select "dialog[aria-labelledby=?] ##{ActionView::RecordIdentifier.dom_id(@client, :disconnect_title)}", ActionView::RecordIdentifier.dom_id(@client, :disconnect_title), text: "Disconnect #{@client.name}?"
+    assert_select "dialog[aria-labelledby=?] ##{ActionView::RecordIdentifier.dom_id(@client, :disconnect_title)}", ActionView::RecordIdentifier.dom_id(@client, :disconnect_title), text: "Revoke access for #{@client.name}?"
     assert_select "input[type=checkbox][name=remove_webhooks]:not([checked])"
   end
 
