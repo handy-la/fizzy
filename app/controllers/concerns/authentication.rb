@@ -158,8 +158,12 @@ module Authentication
     # supported one handles a challenge (docs/oauth.md, DS-3). OAuth clients
     # don't need it to find us: they discover through the MCP server's challenge
     # and our /.well-known metadata.
+    #
+    # Only an HTML GET is kept as the return URL: the redirect after login is a
+    # GET, so a PUT (the time zone form a revoked page submits by itself) would
+    # come back as a GET to an action that does not exist (Handy #2208).
     def request_authentication
-      if Current.account.present?
+      if Current.account.present? && request.get? && request.format.html?
         session[:return_to_after_authenticating] = request.url
       end
 
