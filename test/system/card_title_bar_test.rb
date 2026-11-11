@@ -80,7 +80,22 @@ class CardTitleBarTest < ApplicationSystemTestCase
     end
 
     def assert_title_bar(title)
-      assert_selector ".card-title-bar", text: title, wait: 5
+      assert_selector ".card-title-bar__title", text: title, wait: 5
+      assert_selector ".card-title-bar__board", text: /\A#{Regexp.escape(@card.board.name)}\z/i
+      assert_bar_lines_fit
+    end
+
+    def assert_bar_lines_fit
+      lines = page.evaluate_script(<<~JS)
+        [ ".card-title-bar__board", ".card-title-bar__title" ].map(selector => {
+          const rect = document.querySelector(selector).getBoundingClientRect()
+          return { height: rect.height, right: rect.right }
+        })
+      JS
+      lines.each do |line|
+        assert line["height"].positive?, "each line of the bar should be visible"
+        assert_operator line["right"], :<=, page.evaluate_script("document.documentElement.clientWidth") + 1
+      end
     end
 
     def assert_bar_matches_card_colors
