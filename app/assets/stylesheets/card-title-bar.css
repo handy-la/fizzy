@@ -21,7 +21,24 @@
     }
   }
 
-  /* The board names the product, so a scrolled card still says where it belongs. */
+  .card-title-bar__identity {
+    align-items: baseline;
+    display: flex;
+    gap: 0.5em;
+    justify-content: center;
+    min-inline-size: 0;
+    font-size: var(--text-x-small);
+    font-weight: 600;
+    letter-spacing: 0.04em;
+    text-transform: uppercase;
+  }
+
+  /* Keep the card number complete while long product names can shrink. */
+  .card-title-bar__number {
+    flex-shrink: 0;
+    white-space: nowrap;
+  }
+
   .card-title-bar__board,
   .card-title-bar__title {
     overflow: hidden;
@@ -30,10 +47,7 @@
   }
 
   .card-title-bar__board {
-    font-size: var(--text-x-small);
-    font-weight: 600;
-    letter-spacing: 0.04em;
-    text-transform: uppercase;
+    min-inline-size: 0;
   }
 
   .card-title-bar__title {

@@ -2,7 +2,10 @@
     data-controller="dialog-manager bridge--form card-title-bar"
     data-action="turbo:morph@window->card-title-bar#reobserve turbo:before-morph-attribute->card-title-bar#preserveVisibility">
   <div class="card-title-bar" data-card-title-bar-target="bar" aria-hidden="true" hidden>
-    <span class="card-title-bar__board" dir="auto"><%= card.board.name %></span>
+    <div class="card-title-bar__identity">
+      <span class="card-title-bar__board" dir="auto"><%= card.board.name %></span>
+      <span class="card-title-bar__number" dir="ltr">#<%= card.number %></span>
+    </div>
     <span class="card-title-bar__title" dir="auto"><%= card.title %></span>
   </div>
 

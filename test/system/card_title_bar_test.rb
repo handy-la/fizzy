@@ -12,6 +12,7 @@ class CardTitleBarTest < ApplicationSystemTestCase
     test "the title follows the card at #{width} pixels wide" do
       original_size = page.current_window.size
       page.current_window.resize_to(width, height)
+      @card.board.update!(name: "Un producto con un nombre muy largo para comprobar la franja en el celular")
       visit card_url(@card)
       assert_selector ".card-perma__bg"
       # A card opens on its latest message (Handy #1265); this case scrolls from the top.
@@ -82,6 +83,17 @@ class CardTitleBarTest < ApplicationSystemTestCase
     def assert_title_bar(title)
       assert_selector ".card-title-bar__title", text: title, wait: 5
       assert_selector ".card-title-bar__board", text: /\A#{Regexp.escape(@card.board.name)}\z/i
+      assert_selector ".card-title-bar__number", exact_text: "##{@card.number}"
+      number = page.evaluate_script(<<~JS)
+        (() => {
+          const number = document.querySelector(".card-title-bar__number")
+          const rect = number.getBoundingClientRect()
+          return { left: rect.left, right: rect.right, width: number.clientWidth, contentWidth: number.scrollWidth }
+        })()
+      JS
+      assert_operator number["left"], :>=, 0
+      assert_operator number["right"], :<=, page.evaluate_script("document.documentElement.clientWidth")
+      assert_operator number["width"], :>=, number["contentWidth"], "the card number should remain complete"
       assert_bar_lines_fit
     end
 
