@@ -221,6 +221,11 @@ el blob con `quota_upload` y envuelve `save` con `Storage::Mutation.wrap`, como
 
 ## Medios externos y saneado de Action Text
 
+`ActionText::Content#to_s` también usa el layout de Action Text al serializar
+respuestas. Agrega controles de lectura a las vistas que muestran el contenido,
+no a ese layout: sus atributos cambian el HTML que recibe la API. Evidencia:
+`docs/test-audits/handy-2272.md`.
+
 Action Text vuelve a sanear el HTML que generan los partials. Su lista por
 omisión quita `rel` y `target`: un enlace seguro en el partial pierde su
 protección al mostrar una tarjeta. Conserva esos atributos en el initializer
