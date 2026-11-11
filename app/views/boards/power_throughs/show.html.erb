@@ -1,0 +1,36 @@
+<% @page_title = "Power Through · #{@board.name}" %>
+<% turbo_exempts_page_from_cache %>
+<% focus_card = @entry&.card || @resolved_card %>
+
+<%= turbo_stream_from @board %>
+<%= turbo_stream_from focus_card if focus_card %>
+
+<% content_for :header do %>
+  <div class="header__actions header__actions--start">
+    <%= link_back_to_board @board %>
+  </div>
+
+  <h1 class="header__title divider divider--fade full-width">
+    <span class="overflow-ellipsis">Power Through</span>
+  </h1>
+<% end %>
+
+<section class="power-through" data-controller="power-through"
+    data-power-through-preferences-value="<%= power_through_preferences(@power_through).to_json %>"
+    data-power-through-explicit-value="<%= @explicit_stages %>"
+    data-action="keydown@document->power-through#navigate">
+  <%= render "boards/power_throughs/stages", power_through: @power_through %>
+
+  <% if focus_card %>
+    <% previous_entry, next_entry = power_through_neighbors(@power_through, @entry) %>
+    <%= render "boards/power_throughs/progress", power_through: @power_through, entry: @entry %>
+    <%= render "boards/power_throughs/card", power_through: @power_through, card: focus_card,
+          request: @entry&.request || Card::PendingRequest.for(focus_card),
+          resolved: @entry.nil?, previous_entry:, next_entry: %>
+  <% else %>
+    <div class="power-through__empty" role="status">
+      <p><strong>No hay tarjetas que esperen tu respuesta en estas etapas.</strong></p>
+      <p class="txt-subtle">Cambia las etapas para revisar otras, o vuelve al tablero.</p>
+    </div>
+  <% end %>
+</section>

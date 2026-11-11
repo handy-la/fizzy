@@ -88,6 +88,59 @@ class Cards::CommentsControllerTest < ActionDispatch::IntegrationTest
     assert_equal custom_time, Comment.last.created_at
   end
 
+  # Handy #2304 (docs/test-audits/handy-2304.md): a retry with the same client
+  # token answers with the comment that landed and never posts it twice.
+  test "a retry with the same client token returns the first comment" do
+    card = cards(:logo)
+    token = "pt-0123456789abcdef"
+
+    assert_difference -> { card.comments.count }, +1 do
+      post card_comments_path(card), params: { comment: { body: "Uno.", client_token: token } }, as: :json
+      assert_response :created
+      first_id = @response.parsed_body["id"]
+
+      post card_comments_path(card), params: { comment: { body: "Uno.", client_token: token } }, as: :json
+      assert_response :ok
+      assert_equal first_id, @response.parsed_body["id"]
+
+      post card_comments_path(card), params: { comment: { body: "Uno.", client_token: token } }, as: :turbo_stream
+      assert_response :ok
+    end
+  end
+
+  test "a client token is scoped to the person who posts" do
+    card = cards(:logo)
+    token = "pt-0123456789abcdef"
+
+    card.comments.create!(body: "De JZ.", client_token: token, creator: users(:jz))
+
+    assert_difference -> { card.comments.count }, +1 do
+      post card_comments_path(card), params: { comment: { body: "De Kevin.", client_token: token } }, as: :json
+    end
+    assert_response :created
+  end
+
+  test "a lost race on the client token answers with the comment that won" do
+    card = cards(:logo)
+    token = "pt-0123456789abcdef"
+    winner = card.comments.create!(body: "Uno.", client_token: token, creator: users(:kevin))
+
+    Cards::CommentsController.any_instance.stubs(:submitted_comment).returns(nil, winner)
+
+    assert_no_difference -> { card.comments.count } do
+      post card_comments_path(card), params: { comment: { body: "Uno.", client_token: token } }, as: :json
+    end
+    assert_response :ok
+    assert_equal winner.id, @response.parsed_body["id"]
+  end
+
+  test "a malformed client token is refused" do
+    assert_no_difference -> { cards(:logo).comments.count } do
+      post card_comments_path(cards(:logo)), params: { comment: { body: "Uno.", client_token: "short" } }, as: :json
+    end
+    assert_response :unprocessable_entity
+  end
+
   test "show as JSON" do
     comment = comments(:logo_agreement_kevin)
 

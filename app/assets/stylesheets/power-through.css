@@ -1,0 +1,214 @@
+/* Handy #2304: answer, one card after another, what a board asks of a person. */
+@layer components {
+  .power-through {
+    display: flex;
+    flex-direction: column;
+    gap: var(--block-space);
+    inline-size: 100%;
+    margin-inline: auto;
+    max-inline-size: 48rem;
+    padding-block-end: calc(var(--block-space-double) + var(--custom-safe-inset-bottom, 0px));
+    padding-inline: var(--inline-space);
+    text-align: start;
+  }
+
+  .power-through__stages {
+    > summary {
+      display: inline-flex;
+      gap: 0.5ch;
+      max-inline-size: 100%;
+      min-block-size: 2.75rem;
+    }
+  }
+
+  .power-through__stages-form {
+    align-items: flex-start;
+    display: flex;
+    flex-direction: column;
+    gap: var(--block-space-half);
+    padding-block: var(--block-space-half);
+
+    fieldset {
+      border: 0;
+      display: flex;
+      flex-wrap: wrap;
+      gap: 0.5ch;
+      margin: 0;
+      padding: 0;
+    }
+  }
+
+  .power-through__stage-option {
+    align-items: center;
+    border: 1px solid var(--card-color);
+    border-radius: 2em;
+    cursor: pointer;
+    display: inline-flex;
+    gap: 0.5ch;
+    min-block-size: 2.75rem;
+    padding-inline: 0.9em;
+
+    &:has(:checked) {
+      background-color: color-mix(in oklch, var(--card-color) 15%, var(--color-canvas));
+    }
+  }
+
+  .power-through__progress {
+    align-items: center;
+    display: flex;
+    flex-wrap: wrap;
+    font-size: var(--text-small);
+    gap: 0.5ch 1ch;
+
+    progress {
+      accent-color: var(--color-link);
+      block-size: 0.4em;
+      flex: 1 1 8rem;
+    }
+  }
+
+  .power-through__card {
+    border: 1px solid var(--color-ink-lighter);
+    border-block-start: 4px solid var(--card-color);
+    border-radius: 1em;
+    display: flex;
+    flex-direction: column;
+    gap: var(--block-space);
+    padding: var(--block-space);
+
+    @media (min-width: 640px) {
+      padding: var(--block-space-double);
+    }
+  }
+
+  .power-through__card-header {
+    display: grid;
+    gap: 0.25em 1ch;
+    grid-template-areas: "stage nav" "title title";
+    grid-template-columns: 1fr auto;
+  }
+
+  .power-through__nav {
+    display: flex;
+    gap: 0.5ch;
+    grid-area: nav;
+  }
+
+  .power-through__stage {
+    align-self: center;
+    color: var(--card-color);
+    font-size: var(--text-small);
+    font-weight: 700;
+    grid-area: stage;
+    text-transform: uppercase;
+  }
+
+  .power-through__title {
+    font-size: var(--text-large);
+    grid-area: title;
+    line-height: 1.25;
+    margin: 0;
+    overflow-wrap: anywhere;
+  }
+
+  .power-through__number {
+    color: var(--color-ink-dark);
+    margin-inline-end: 0.5ch;
+  }
+
+  .power-through__section {
+    display: flex;
+    flex-direction: column;
+    gap: var(--block-space-half);
+
+    p { margin: 0; }
+  }
+
+  .power-through__heading {
+    color: var(--color-ink-dark);
+    font-size: var(--text-small);
+    font-weight: 700;
+    margin: 0;
+  }
+
+  .power-through__source {
+    font-size: var(--text-x-small);
+  }
+
+  .power-through__request {
+    background-color: var(--color-ink-lightest);
+    border-radius: 0.75em;
+    overflow-wrap: anywhere;
+    padding: var(--block-space-half) var(--inline-space);
+  }
+
+  .power-through__request-author {
+    display: flex;
+    flex-wrap: wrap;
+    font-size: var(--text-small);
+    gap: 0.5ch;
+  }
+
+  .power-through__review,
+  .power-through__notice {
+    background-color: var(--color-highlight);
+    border-radius: 0.5em;
+    padding: 0.5em 0.75em;
+  }
+
+  .power-through__error {
+    border: 1px solid var(--color-negative);
+    border-radius: 0.5em;
+    color: var(--color-negative);
+    padding: 0.5em 0.75em;
+  }
+
+  .power-through__composer {
+    lexxy-editor {
+      max-block-size: 50dvh;
+      overflow-y: auto;
+    }
+  }
+
+  .power-through__send,
+  .power-through__actions .btn {
+    min-block-size: 2.75rem;
+  }
+
+  .power-through__actions {
+    align-items: center;
+    display: flex;
+    flex-wrap: wrap;
+    gap: 0.5ch 1ch;
+  }
+
+  .power-through__hotkeys {
+    font-size: var(--text-x-small);
+    margin-inline-start: auto;
+  }
+
+  .power-through__context {
+    > summary {
+      cursor: pointer;
+      font-weight: 700;
+      min-block-size: 2.75rem;
+      padding-block: 0.6em;
+    }
+  }
+
+  .power-through__timeline {
+    display: flex;
+    flex-direction: column;
+    gap: var(--block-space);
+  }
+
+  .power-through__empty {
+    padding-block: var(--block-space-double);
+    text-align: center;
+  }
+
+  .power-through :focus-visible {
+    outline: 2px solid var(--color-link);
+    outline-offset: 2px;
+  }
+}

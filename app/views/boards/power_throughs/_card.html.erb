@@ -1,0 +1,86 @@
+<% stage = power_through.stage_for(card) %>
+<% skip_entry = next_entry || (power_through.entries.first unless power_through.entries.first&.card == card) %>
+<% after_send_url = next_entry ? power_through_card_path(power_through, next_entry.card) : power_through_card_path(power_through) %>
+
+<article class="power-through__card" aria-labelledby="power_through_title" style="--card-color: <%= stage&.color || "var(--color-card-default)" %>;">
+  <header class="power-through__card-header">
+    <nav class="power-through__nav" aria-label="Tarjetas">
+      <% if previous_entry %>
+        <%= link_to power_through_card_path(power_through, previous_entry.card), class: "btn btn--circle", rel: "prev",
+              data: { power_through_target: "previous" }, title: "Anterior (K)" do %>
+          <%= icon_tag "arrow-left" %><span class="for-screen-reader">Anterior</span>
+        <% end %>
+      <% end %>
+      <% if next_entry %>
+        <%= link_to power_through_card_path(power_through, next_entry.card), class: "btn btn--circle", rel: "next",
+              data: { power_through_target: "next" }, title: "Siguiente (J)" do %>
+          <%= icon_tag "arrow-right" %><span class="for-screen-reader">Siguiente</span>
+        <% end %>
+      <% end %>
+    </nav>
+
+    <span class="power-through__stage"><%= stage&.name %></span>
+    <h2 id="power_through_title" class="power-through__title">
+      <%= link_to "##{card.number}", card_path(card), class: "power-through__number" %>
+      <span><%= card.title %></span>
+    </h2>
+  </header>
+
+  <% if resolved %>
+    <p class="power-through__notice" role="status">Esta tarjeta ya no espera una respuesta en estas etapas. Tu borrador sigue aquí.</p>
+  <% end %>
+
+  <section class="power-through__section" aria-labelledby="power_through_about">
+    <h3 id="power_through_about" class="power-through__heading">De qué trata</h3>
+    <% if summary = power_through_summary(card) %>
+      <p><%= summary %></p>
+      <p class="power-through__source txt-subtle">Inicio de la descripción de la tarjeta.</p>
+    <% else %>
+      <p class="txt-subtle">La tarjeta no tiene descripción.</p>
+    <% end %>
+  </section>
+
+  <section class="power-through__section" aria-labelledby="power_through_needs">
+    <h3 id="power_through_needs" class="power-through__heading">Qué necesita de ti</h3>
+
+    <% if request.review? %>
+      <p class="power-through__review"><strong>Revisar contexto.</strong> <%= request.reason %></p>
+    <% elsif !request.actionable? %>
+      <p class="txt-subtle">No hay una pregunta abierta.</p>
+    <% end %>
+
+    <% request.requests.each do |comment| %>
+      <div class="power-through__request">
+        <p class="power-through__request-author">
+          <strong><%= comment.creator.name %></strong>
+          <%= link_to card_comment_path(card, comment), class: "txt-subtle" do %>
+            <%= local_datetime_tag comment.created_at, style: :agoorweekday %>,
+            <%= local_datetime_tag comment.created_at, style: :time %>
+          <% end %>
+        </p>
+        <div class="lexxy-content" data-controller="retarget-links code-copy"><%= comment.body %></div>
+      </div>
+    <% end %>
+  </section>
+
+  <div id="power_through_state" hidden data-fingerprint="<%= request.fingerprint %>" data-status="<%= request.status %>"></div>
+
+  <%= render "boards/power_throughs/composer", card:, fingerprint: request.fingerprint, next_url: after_send_url %>
+
+  <div class="power-through__actions">
+    <% if skip_entry %>
+      <%= link_to "Saltar", power_through_card_path(power_through, skip_entry.card), class: "btn", data: { power_through_target: "skip" }, title: "Saltar sin responder" %>
+    <% end %>
+    <button type="button" class="btn" data-action="power-through#toggleContext" aria-controls="power_through_context">Ver contexto</button>
+    <span class="power-through__hotkeys txt-subtle hide-on-touch">
+      <kbd>J</kbd> siguiente · <kbd>K</kbd> anterior · <kbd>R</kbd> responder · <kbd>C</kbd> contexto
+    </span>
+  </div>
+
+  <details id="power_through_context" class="power-through__context" data-power-through-target="context">
+    <summary>Contexto completo: <%= pluralize(card.comments.size, "comentario", plural: "comentarios") %></summary>
+    <div class="power-through__timeline">
+      <%= render partial: "cards/comments/comment", collection: card.comments.sort_by { [ it.created_at, it.id ] }, as: :comment %>
+    </div>
+  </details>
+</article>

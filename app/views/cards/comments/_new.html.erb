@@ -9,8 +9,9 @@
             data: { controller: "form local-save ai-suggestion",
                   ai_suggestion_kind_value: "comment", ai_suggestion_url_value: card_suggestion_path(card),
                   ai_suggestion_user_value: Current.user.id,
-                  ai_suggestion_local_key_value: "comment-#{card.id}",
-                  local_save_key_value: "comment-#{card.id}",
+                  ai_suggestion_local_key_value: comment_draft_key(card),
+                  local_save_key_value: comment_draft_key(card),
+                  local_save_legacy_key_value: legacy_comment_draft_key(card),
                   action: "keydown.tab@document->ai-suggestion#intent turbo:submit-start->local-save#submitStart turbo:submit-end->local-save#submit turbo:submit-end->form#blurActiveInput keydown.ctrl+enter->form#debouncedSubmit:prevent keydown.meta+enter->form#debouncedSubmit:prevent keydown.esc->form#cancel:stop" } do |form| %>
         <%= form.rich_textarea :body, required: true, placeholder: new_comment_placeholder(card),
               data: { local_save_target: "input", ai_suggestion_target: "input", action: "pointerdown->ai-suggestion#intent click->ai-suggestion#intent focusin->ai-suggestion#focus input->ai-suggestion#change lexxy:change->ai-suggestion#change lexxy:change->form#disableSubmitWhenInvalid lexxy:change->local-save#save turbo:morph-element->local-save#restoreContent" } do %>

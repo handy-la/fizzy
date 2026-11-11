@@ -8,7 +8,7 @@ const SAVE_DELAY = 300
 // content has no draft, so a later restore cannot bring the sent text back.
 export default class extends Controller {
   static targets = ["input"]
-  static values = { key: String }
+  static values = { key: String, legacyKey: String }
 
   #saveTimer = null
   #submittedContent = null
@@ -42,7 +42,7 @@ export default class extends Controller {
 
   async restoreContent() {
     await nextFrame()
-    let savedContent = localStorage.getItem(this.keyValue)
+    let savedContent = this.#read()
 
     if (savedContent) {
       savedContent = `<div>${savedContent}</div>` // temporary for old markdown saves
@@ -66,7 +66,7 @@ export default class extends Controller {
 
   #store(content) {
     if (content && !this.inputTarget.isEmpty) {
-      localStorage.setItem(this.keyValue, content)
+      this.#write(content)
     } else {
       this.#clear()
     }
@@ -77,8 +77,30 @@ export default class extends Controller {
     this.#saveTimer = null
   }
 
+  // Handy #2304: a browser that refuses storage (private mode, a full quota)
+  // keeps the editor working; the draft just is not kept.
+  #read() {
+    try {
+      const saved = localStorage.getItem(this.keyValue)
+      if (saved || !this.hasLegacyKeyValue) return saved
+
+      const legacy = localStorage.getItem(this.legacyKeyValue)
+      if (legacy) {
+        localStorage.setItem(this.keyValue, legacy)
+        localStorage.removeItem(this.legacyKeyValue)
+      }
+      return legacy
+    } catch {
+      return null
+    }
+  }
+
+  #write(content) {
+    try { localStorage.setItem(this.keyValue, content) } catch {}
+  }
+
   #clear() {
-    localStorage.removeItem(this.keyValue)
+    try { localStorage.removeItem(this.keyValue) } catch {}
   }
 
   #triggerChangeEvent(newValue) {

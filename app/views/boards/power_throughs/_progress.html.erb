@@ -1,0 +1,13 @@
+<% total = power_through.entries.size %>
+<% position = entry ? power_through.index_of(entry) + 1 : 0 %>
+<div class="power-through__progress" role="status">
+  <% if entry %>
+    <span>Tarjeta <strong><%= position %></strong> de <strong><%= total %></strong></span>
+  <% else %>
+    <span><%= pluralize(total, "tarjeta pendiente", plural: "tarjetas pendientes") %></span>
+  <% end %>
+  <progress max="<%= [ total, 1 ].max %>" value="<%= position %>" aria-hidden="true"></progress>
+  <% if power_through.truncated? %>
+    <span class="txt-subtle">Sólo se revisan las primeras <%= Board::PowerThrough::MAX_CARDS %> tarjetas de estas etapas.</span>
+  <% end %>
+</div>

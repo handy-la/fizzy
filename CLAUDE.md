@@ -266,6 +266,16 @@ dejar una sugerencia pendiente puede consumir cupos y hacer que un job de
 una prueba posterior genere para la tarjeta anterior. Evidencia y limpieza:
 `docs/test-audits/handy-934.md`.
 
+## Power Through y pendientes de una persona
+
+`Card::PendingRequest` decide qué tarjeta espera a una persona sólo con lo que
+Fizzy ve: comentarios con la marca invisible de Dédalo y la etapa. La espera
+estructurada vive en Dédalo. No uses el último comentario, la antigüedad ni el
+autor como prueba: un caso dudoso es «Revisar contexto». Una respuesta reenvía
+su `client_token` hasta que el servidor la resuelve; el índice único de
+`comments` evita el duplicado. Contrato: `docs/power-through.md`; evidencia:
+`docs/test-audits/handy-2304.md`.
+
 ## Franja superior del título
 
 La franja superior del título vive en `cards/_container.html.erb`: el guardado

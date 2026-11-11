@@ -10,7 +10,7 @@
 #
 # It's strongly recommended that you check this file into your version control system.
 
-ActiveRecord::Schema[8.2].define(version: 2026_11_11_180000) do
+ActiveRecord::Schema[8.2].define(version: 2026_11_11_230000) do
   create_table "accesses", id: :uuid, force: :cascade do |t|
     t.datetime "accessed_at"
     t.uuid "account_id", null: false
@@ -368,10 +368,12 @@ ActiveRecord::Schema[8.2].define(version: 2026_11_11_180000) do
   create_table "comments", id: :uuid, force: :cascade do |t|
     t.uuid "account_id", null: false
     t.uuid "card_id", null: false
+    t.string "client_token", limit: 64
     t.datetime "created_at", null: false
     t.uuid "creator_id", null: false
     t.datetime "updated_at", null: false
     t.index ["account_id"], name: "index_comments_on_account_id"
+    t.index ["card_id", "creator_id", "client_token"], name: "index_comments_on_card_id_and_creator_id_and_client_token", unique: true
     t.index ["card_id"], name: "index_comments_on_card_id"
   end
 

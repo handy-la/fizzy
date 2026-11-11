@@ -1,0 +1,20 @@
+<details class="power-through__stages" data-power-through-target="stages">
+  <summary class="btn">
+    <span>Etapas:</span>
+    <strong class="overflow-ellipsis"><%= power_through.stages.select { power_through.selected?(it) }.map(&:name).to_sentence(words_connector: ", ", last_word_connector: " y ", two_words_connector: " y ") %></strong>
+  </summary>
+
+  <%= form_with url: board_power_through_path(power_through.board), method: :get, class: "power-through__stages-form",
+        data: { turbo_action: "replace", action: "submit->power-through#rememberStages" } do %>
+    <fieldset>
+      <legend class="for-screen-reader">Etapas que revisas</legend>
+      <% power_through.stages.each do |stage| %>
+        <label class="power-through__stage-option" style="--card-color: <%= stage.color %>;">
+          <%= check_box_tag "stages[]", stage.id, power_through.selected?(stage), id: "power_through_stage_#{stage.id}" %>
+          <span><%= stage.name %></span>
+        </label>
+      <% end %>
+    </fieldset>
+    <button type="submit" class="btn btn--reversed">Aplicar</button>
+  <% end %>
+</details>

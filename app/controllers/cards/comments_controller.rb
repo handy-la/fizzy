@@ -1,5 +1,5 @@
 class Cards::CommentsController < ApplicationController
-  wrap_parameters :comment, include: %i[ body created_at ]
+  wrap_parameters :comment, include: %i[ body created_at client_token ]
   include CardScoped
 
   before_action :set_comment, only: %i[ show edit update destroy ]
@@ -11,12 +11,19 @@ class Cards::CommentsController < ApplicationController
   end
 
   def create
-    @comment = @card.comments.create!(comment_params)
+    if @comment = submitted_comment
+      replay_create
+    else
+      @comment = @card.comments.create!(comment_params)
 
-    respond_to do |format|
-      format.turbo_stream
-      format.json { render :show, status: :created, location: card_comment_path(@card, @comment, format: :json) }
+      respond_to do |format|
+        format.turbo_stream
+        format.json { render :show, status: :created, location: card_comment_path(@card, @comment, format: :json) }
+      end
     end
+  rescue ActiveRecord::RecordNotUnique
+    @comment = submitted_comment or raise
+    replay_create
   end
 
   def show
@@ -57,6 +64,22 @@ class Cards::CommentsController < ApplicationController
     end
 
     def comment_params
-      params.expect(comment: [ :body, :created_at ])
+      params.expect(comment: [ :body, :created_at, :client_token ])
+    end
+
+    # Handy #2304: the same client token from the same person on the same card
+    # is the same comment. A retry after a timeout or a second click answers
+    # with the comment that already landed instead of posting it again.
+    def submitted_comment
+      if token = params.dig(:comment, :client_token).presence
+        @card.comments.find_by(creator: Current.user, client_token: token)
+      end
+    end
+
+    def replay_create
+      respond_to do |format|
+        format.turbo_stream { head :ok }
+        format.json { render :show, status: :ok, location: card_comment_path(@card, @comment, format: :json) }
+      end
     end
 end

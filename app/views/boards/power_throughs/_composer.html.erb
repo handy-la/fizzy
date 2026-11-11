@@ -1,0 +1,40 @@
+<%# Handy #2304: the card's own comment form, with the same draft, suggestions
+    and post endpoint. It never posts by itself: only the button or Ctrl+Enter
+    sends, and the page moves on only after the server confirms the comment. %>
+<div id="<%= dom_id(card, :power_through_composer) %>" class="power-through__composer comment comment--new" data-turbo-permanent>
+  <%= form_with model: Comment.new, url: card_comments_path(card), class: "flex flex-column gap full-width",
+        data: { turbo: false, controller: "form local-save ai-suggestion power-through-composer",
+              ai_suggestion_kind_value: "comment", ai_suggestion_url_value: card_suggestion_path(card),
+              ai_suggestion_user_value: Current.user.id,
+              ai_suggestion_local_key_value: comment_draft_key(card),
+              local_save_key_value: comment_draft_key(card),
+              local_save_legacy_key_value: legacy_comment_draft_key(card),
+              power_through_composer_state_url_value: board_power_through_card_path(card.board, card.number, format: :json),
+              power_through_composer_fingerprint_value: fingerprint,
+              power_through_composer_next_url_value: next_url,
+              power_through_composer_draft_key_value: comment_draft_key(card),
+              power_through_composer_token_key_value: "power-through-token:#{Current.user.id}:#{card.id}",
+              action: "submit->power-through-composer#submit turbo:morph@window->power-through-composer#revalidate keydown.tab@document->ai-suggestion#intent keydown.ctrl+enter->form#debouncedSubmit:prevent keydown.meta+enter->form#debouncedSubmit:prevent" } do |form| %>
+    <label for="<%= dom_id(card, :power_through_body) %>" class="power-through__heading">Tu respuesta</label>
+    <%= form.rich_textarea :body, required: true, id: dom_id(card, :power_through_body), placeholder: "Escribe tu respuesta…",
+          data: { local_save_target: "input", ai_suggestion_target: "input", power_through_composer_target: "input",
+                  action: "pointerdown->ai-suggestion#intent click->ai-suggestion#intent focusin->ai-suggestion#focus input->ai-suggestion#change lexxy:change->ai-suggestion#change lexxy:change->form#disableSubmitWhenInvalid lexxy:change->local-save#save lexxy:change->power-through-composer#edited" } do %>
+      <%= general_prompts(card.board) %>
+    <% end %>
+
+    <span data-ai-suggestion-target="status" role="status" class="for-screen-reader"></span>
+    <button type="button" class="btn" data-ai-suggestion-target="retry" data-action="ai-suggestion#retry" hidden>Reintentar sugerencia</button>
+
+    <p class="power-through__notice" data-power-through-composer-target="notice" role="status" hidden></p>
+    <p class="power-through__error" data-power-through-composer-target="error" role="alert" hidden></p>
+
+    <span class="flex-inline align-center gap">
+      <%= form.button class: "btn btn--reversed power-through__send", disabled: true,
+            title: "Enviar y pasar a la siguiente (#{hotkey_label(%w[ ctrl enter ])})",
+            data: { form_target: "submit", power_through_composer_target: "submit" } do %>
+        <span>Enviar y siguiente</span>
+      <% end %>
+      <span class="txt-subtle txt-small hide-on-touch"><%= hotkey_label(%w[ ctrl enter ]) %></span>
+    </span>
+  <% end %>
+</div>

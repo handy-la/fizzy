@@ -54,6 +54,11 @@ Rails.application.routes.draw do
       resource :involvement
       resource :publication
       resource :entropy
+      resource :power_through, only: :show
+
+      namespace :power_through do
+        resources :cards, only: :show
+      end
 
       namespace :columns do
         resource :not_now

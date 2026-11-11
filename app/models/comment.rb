@@ -17,6 +17,8 @@ class Comment < ApplicationRecord
   }
 
   validate :card_is_commentable
+  normalizes :client_token, with: ->(token) { token.presence }
+  validates :client_token, format: { with: /\A[A-Za-z0-9_-]{16,64}\z/ }, allow_nil: true
 
   scope :chronologically, -> { order created_at: :asc, id: :desc }
   scope :preloaded, -> { with_rich_text_body.includes(reactions: :reacter) }
