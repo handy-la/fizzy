@@ -56,7 +56,9 @@ y conserva el token.
 
 El editor es un elemento permanente de Turbo: conserva los atributos de la
 página que lo pintó. Lo que cambia con la página (la URL de avance, la huella)
-se lee de `#power_through_state`, que sí se actualiza.
+se lee de `#power_through_state`, que sí se actualiza. Ese estado lleva el id
+de la tarjeta enfocada: una confirmación que llega cuando la persona ya pasó a
+otra tarjeta conserva lo publicado y no navega.
 
 Antes de publicar, la página vuelve a leer el veredicto
 (`/boards/:id/power_through/cards/:number.json`). Si la huella cambió desde

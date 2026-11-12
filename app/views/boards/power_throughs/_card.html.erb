@@ -74,7 +74,7 @@
     <% end %>
   </section>
 
-  <div id="power_through_state" hidden data-fingerprint="<%= request.fingerprint %>" data-status="<%= request.status %>" data-next-url="<%= after_send_url %>"></div>
+  <div id="power_through_state" hidden data-card-id="<%= card.id %>" data-fingerprint="<%= request.fingerprint %>" data-status="<%= request.status %>" data-next-url="<%= after_send_url %>"></div>
 
   <%= render "boards/power_throughs/composer", card:, fingerprint: request.fingerprint %>
 

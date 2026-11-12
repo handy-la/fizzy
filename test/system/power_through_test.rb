@@ -218,6 +218,36 @@ class PowerThroughTest < ApplicationSystemTestCase
     assert_includes local_storage("comment-#{users(:david).id}-#{cards(:text).id}"), "Y algo más."
   end
 
+  test "a late confirmation does not move the person away from the card they went on to" do
+    ask cards(:layout), "❓ ¿Azul o verde?", at: 30.minutes.ago
+    visit_queue
+    write "Uno."
+    page.execute_script(<<~JS)
+      window.realFetch = window.fetch
+      window.fetch = async (url, options) => {
+        if (options?.method === "POST") {
+          window.posting = true
+          await new Promise(resolve => setTimeout(resolve, 2000))
+        }
+        return window.realFetch(url, options)
+      }
+    JS
+
+    send_reply
+    assert page.evaluate_async_script(<<~JS), "the reply never left"
+      const done = arguments[0], start = Date.now()
+      const check = () => window.posting ? done(true) : Date.now() - start > 5000 ? done(false) : setTimeout(check, 50)
+      check()
+    JS
+    find("[data-power-through-target=next]").click
+    assert_focused_card cards(:logo)
+
+    assert_equal [ "Uno." ], wait_for_replies(cards(:text))
+    sleep 1
+    assert_focused_card cards(:logo)
+    assert_current_path(/card=#{cards(:logo).number}/)
+  end
+
   test "chosen stages are remembered per account, person and board, and a corrupt value is ignored" do
     in_progress = columns(:writebook_in_progress).id
     visit board_power_through_url(@board, stages: in_progress)
@@ -277,6 +307,14 @@ class PowerThroughTest < ApplicationSystemTestCase
 
     def replies(card)
       card.comments.reload.where(creator: users(:david)).map { it.body.to_plain_text.strip }
+    end
+
+    def wait_for_replies(card, timeout: 5)
+      deadline = Time.current + timeout
+      until (found = replies(card)).any? || Time.current > deadline
+        sleep 0.1
+      end
+      found
     end
 
     def local_storage(key)

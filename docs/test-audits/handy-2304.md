@@ -265,3 +265,29 @@ Método igual que en las rondas anteriores: archivo productivo de
   200; cobertura, ninguna prueba usaba listas, citas o una redirección; seam,
   el mismo reemplazo de `window.fetch`. La cabecera `Comment-Replay` tiene un
   consumidor productivo: `power_through_composer_controller.js`.
+
+## Ronda 7: una confirmación tardía no mueve a quien ya cambió de tarjeta
+
+Revisión 6 sobre `024dc7b57520ff715c9d591c4436de7d550c2cd6` (rebasada sobre
+`origin/main` `11e2216a0`, ronda concedida por una persona): gate de Dédalo
+3→1. El bloqueante: si la persona pasa a otra tarjeta mientras el POST de la
+anterior espera respuesta, el 201 tardío llamaba a `Turbo.visit` con la URL
+siguiente de la página nueva y la sacaba de esa tarjeta sin responderla.
+Corrección: `#power_through_state` lleva el id de la tarjeta enfocada, y el
+compositor avanza sólo si sigue conectado y esa tarjeta es la suya. Lo
+publicado se conserva igual: borrador y token se liberan.
+
+Método: archivos productivos de `024dc7b57520ff715c9d591c4436de7d550c2cd6`
+(controlador JS, `_card` y `_composer`), prueba nueva, restauración.
+
+- `PARALLEL_WORKERS=1 SAAS=false BUNDLE_GEMFILE=Gemfile bin/rails test test/system/power_through_test.rb -n "/late confirmation/"`
+  sin la corrección: salida 1, «expected to find ".power-through__title" with
+  text "#1"… found "#2 Layout is broken"». Un primer intento dio
+  `Errno::EADDRINUSE` (puerto de Capybara ocupado); no cuenta como RED y se
+  repitió. GREEN del archivo de sistema completo: salida 0, «14 tests, 0
+  failures».
+- Cuatro respuestas: contrato, una confirmación sólo avanza desde la tarjeta
+  que la envió; regresión, volver a navegar sin comprobar el foco; cobertura,
+  ninguna prueba cambiaba de tarjeta durante el envío; seam, el mismo
+  reemplazo de `window.fetch`, que además marca cuándo sale el POST para que
+  el clic en «Siguiente» no se adelante al envío.

@@ -15,7 +15,7 @@ const TIMEOUT = 20_000
 
 export default class extends Controller {
   static targets = [ "input", "submit", "notice", "error" ]
-  static values = { stateUrl: String, fingerprint: String, draftKey: String, tokenKey: String }
+  static values = { stateUrl: String, fingerprint: String, draftKey: String, tokenKey: String, cardId: String }
 
   #busy = false
   #seen = null
@@ -122,13 +122,19 @@ export default class extends Controller {
       this.inputTarget.value = ""
       this.#forget(this.draftKeyValue)
       this.#show(this.noticeTarget, "Respuesta publicada.")
-      Turbo.visit(this.#nextUrl)
+      if (this.#focused) Turbo.visit(this.#nextUrl)
     } else {
       this.#write(this.draftKeyValue, this.inputTarget.value, { raw: true })
       this.#show(this.noticeTarget, landedNow
         ? "Se publicó tu respuesta. Lo que escribiste mientras se enviaba sigue aquí, sin publicar."
         : "Ya estaba publicada una versión anterior de tu respuesta. El texto del editor no se envió: revisa el contexto antes de enviar otra.")
     }
+  }
+
+  // The person may have gone on to another card while the post was on its
+  // way: then this card's confirmation keeps what landed and moves no one.
+  get #focused() {
+    return this.element.isConnected && document.getElementById("power_through_state")?.dataset.cardId === this.cardIdValue
   }
 
   // Read from the page as it is now, not from this editor: the editor is
