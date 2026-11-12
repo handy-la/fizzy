@@ -26,6 +26,20 @@ class PowerThroughTest < ApplicationSystemTestCase
     assert_nil local_storage("comment-#{users(:david).id}-#{cards(:text).id}")
   end
 
+  test "a reply to the last card of an approval stage leaves the editor empty" do
+    approval = columns(:writebook_review).tap { it.update!(name: "AWAITING APPROVAL") }
+    cards(:text).update!(column: approval)
+    visit board_power_through_url(@board, stages: approval.id, card: cards(:text).number)
+
+    write "Uno."
+    send_reply
+
+    assert_selector ".power-through__review", text: "Revisar contexto"
+    assert_no_selector ".power-through__composer lexxy-editor", text: "Uno."
+    assert_button "Enviar y siguiente", disabled: true
+    assert_equal [ "Uno." ], replies(cards(:text))
+  end
+
   test "keys typed into the reply never navigate, and outside they do" do
     visit_queue
     write "jk"

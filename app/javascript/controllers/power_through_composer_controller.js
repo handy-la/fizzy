@@ -112,6 +112,10 @@ export default class extends Controller {
     this.#settle()
 
     if (this.inputTarget.value === sent) {
+      // The next card can be this same one (an approval stage keeps it
+      // queued for review), and its permanent editor survives the visit:
+      // a published reply must not stay there, ready to post again.
+      this.inputTarget.value = ""
       this.#forget(this.draftKeyValue)
       this.#show(this.noticeTarget, "Respuesta publicada.")
       Turbo.visit(this.nextUrlValue)

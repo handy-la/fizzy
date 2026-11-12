@@ -177,3 +177,22 @@ códigos de salida: se agregó arriba.
 - La prueba cumple las cuatro respuestas de la ficha del controlador: el
   contrato es conservar el foco; la regresión es volver a filtrar por
   `active`; no había cobertura de una tarjeta cerrada o pospuesta; sin seam.
+
+## Ronda 4: el editor conservaba la respuesta publicada
+
+Revisión 3 sobre `db74f6eb4dc0336dada5575b6eab7c22e86d3a6b`:
+gate de Dédalo 4→1→1 y `bin/signoff` 2→2→1, el mismo defecto en ambos. En
+una etapa de aprobación la tarjeta contestada sigue en la cola para revisión,
+así que «Enviar y siguiente» puede volver a la misma tarjeta, y su editor
+permanente conservaba el texto publicado listo para enviarse con otro token.
+Ahora el editor se vacía antes de navegar cuando su texto es el confirmado;
+el texto escrito durante el envío sigue protegido (ronda 2).
+
+- Comando: `PARALLEL_WORKERS=1 bin/rails test test/system/power_through_test.rb -n "/approval stage leaves/"`,
+  con `app/javascript/controllers/power_through_composer_controller.js` de
+  `db74f6eb4dc0336dada5575b6eab7c22e86d3a6b`. RED: salida 1, «1 tests, 1 failures», `expected not to find
+  visible css ".power-through__composer lexxy-editor" with text "Uno.", found
+  1 match`. GREEN (archivo completo): salida 0, «9 tests, 0 failures».
+- Cuatro respuestas: contrato, un comentario publicado no queda listo para
+  publicarse otra vez; regresión, quitar el vaciado; cobertura, ninguna prueba
+  volvía a la misma tarjeta; seam, ninguno.
