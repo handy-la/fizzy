@@ -594,3 +594,14 @@ Por eso un token (personal, OAuth o delegado) recibe 403 al registrar push.
 Upstream sí lo permite y sus pruebas OAuth lo esperan: al sincronizar, conserva
 este controlador y adapta esas pruebas (403 y fila plantada en el modelo).
 Evidencia: `docs/test-audits/handy-1712.md`.
+
+## Mapa de trabajo
+
+`/{cuenta}/work_map` muestra en un grafo las tarjetas de todos los tableros
+accesibles y la ejecución que Dédalo responde. Fizzy no guarda dependencias:
+lee una respuesta agregada (`WorkMap::Source`, 30 s de caché) y la filtra por
+`User#accessible_cards`. Un extremo sin acceso no lleva producto, número ni
+título, y es un marcador por relación. El navegador recibe sólo los campos de
+`WorkMapsHelper`. Las flechas del lienzo detienen la propagación: la página
+tiene `keydown.left@document` hacia Home. Contrato: `docs/work-map.md`;
+evidencia: `docs/test-audits/handy-2348.md`.

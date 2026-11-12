@@ -1,0 +1,400 @@
+/* Handy #2348: the read-only work map of every product. */
+@layer components {
+  .work-map {
+    display: flex;
+    flex-direction: column;
+    gap: var(--block-space-half);
+    inline-size: 100%;
+    padding: var(--block-space-half) var(--inline-space) calc(var(--block-space) + var(--custom-safe-inset-bottom, 0px));
+    text-align: start;
+  }
+
+  .work-map__toolbar {
+    align-items: center;
+    display: flex;
+    flex-wrap: wrap;
+    gap: var(--block-space-half);
+  }
+
+  .work-map__search {
+    display: flex;
+    flex: 1 1 18rem;
+    gap: 0.5ch;
+    min-inline-size: 0;
+  }
+
+  .work-map__search-input {
+    flex: 1;
+    min-inline-size: 0;
+  }
+
+  .work-map__search-result {
+    font-size: var(--text-small);
+    inline-size: 100%;
+    margin: 0;
+  }
+
+  .work-map__buttons {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 0.5ch;
+
+    .btn {
+      min-block-size: 2.75rem;
+      min-inline-size: 2.75rem;
+    }
+  }
+
+  .work-map__filters {
+    position: relative;
+
+    > summary {
+      list-style: none;
+      min-block-size: 2.75rem;
+    }
+  }
+
+  .work-map__filters-body {
+    background: var(--color-canvas);
+    border: var(--border);
+    border-radius: 0.75rem;
+    box-shadow: var(--shadow);
+    display: grid;
+    gap: var(--block-space-half);
+    inset-inline-end: 0;
+    max-block-size: 70vh;
+    max-inline-size: min(22rem, calc(100vw - 2 * var(--inline-space)));
+    overflow: auto;
+    padding: var(--block-space-half);
+    position: absolute;
+    z-index: 3;
+
+    fieldset {
+      border: 0;
+      display: flex;
+      flex-direction: column;
+      gap: 0.25em;
+      margin: 0;
+      padding: 0;
+    }
+
+    legend {
+      font-weight: 700;
+      margin-block-end: 0.25em;
+    }
+
+    label {
+      align-items: center;
+      display: flex;
+      gap: 0.5ch;
+      min-block-size: 2rem;
+    }
+  }
+
+  .work-map__status {
+    color: var(--color-ink-dark);
+    font-size: var(--text-small);
+  }
+
+  .work-map__coverage {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 0.5ch;
+    list-style: none;
+    margin: 0;
+    padding: 0;
+  }
+
+  .work-map__coverage-item {
+    border: 1px solid var(--product-color);
+    border-radius: 2em;
+    font-size: var(--text-x-small);
+    padding: 0.2em 0.8em;
+
+    &.work-map__coverage-item--failed,
+    &.work-map__coverage-item--source_failed {
+      border-style: dashed;
+      color: var(--color-negative);
+      font-weight: 700;
+    }
+
+    &.work-map__coverage-item--partial,
+    &.work-map__coverage-item--source_not_configured,
+    &.work-map__coverage-item--unregistered {
+      border-style: dashed;
+    }
+  }
+
+  .work-map__body {
+    display: flex;
+    gap: var(--block-space-half);
+    min-block-size: 0;
+    position: relative;
+  }
+
+  .work-map__canvas {
+    background:
+      radial-gradient(circle, var(--color-ink-lightest) 1px, transparent 1px) 0 0 / 24px 24px,
+      var(--color-canvas);
+    border: var(--border);
+    border-radius: 0.75rem;
+    block-size: max(24rem, calc(100dvh - 17rem));
+    cursor: grab;
+    flex: 1;
+    min-inline-size: 0;
+    overflow: hidden;
+    position: relative;
+    touch-action: none;
+    user-select: none;
+
+    &:active {
+      cursor: grabbing;
+    }
+
+    &:focus-visible {
+      outline: 2px solid var(--focus-ring-color);
+      outline-offset: 2px;
+    }
+  }
+
+  .work-map__svg {
+    block-size: 100%;
+    display: block;
+    inline-size: 100%;
+  }
+
+  .work-map__group-label {
+    fill: var(--color-ink-dark);
+    font-size: 15px;
+    font-weight: 800;
+  }
+
+  .work-map__node {
+    cursor: pointer;
+    transition: opacity 150ms ease;
+  }
+
+  .work-map__node-box {
+    fill: var(--color-canvas);
+    stroke: var(--color-ink-lighter);
+    stroke-width: 1;
+  }
+
+  .work-map__node-stripe {
+    fill: var(--product-color);
+  }
+
+  .work-map__node-heading {
+    fill: var(--color-ink);
+    font-size: 12px;
+    font-weight: 800;
+  }
+
+  .work-map__node-title {
+    fill: var(--color-ink);
+    font-size: 12px;
+  }
+
+  .work-map__node-footer {
+    fill: var(--color-ink-dark);
+    font-size: 10px;
+  }
+
+  .work-map__node--waiting .work-map__node-box {
+    stroke: var(--color-card-3);
+    stroke-width: 2;
+  }
+
+  .work-map__node--human .work-map__node-box {
+    stroke: var(--color-negative);
+    stroke-width: 2;
+  }
+
+  .work-map__node--maybe .work-map__node-box,
+  .work-map__node--not_now .work-map__node-box {
+    stroke-dasharray: 5 3;
+  }
+
+  .work-map__node--closed .work-map__node-box {
+    fill: var(--color-ink-lightest);
+  }
+
+  .work-map__node--inaccessible,
+  .work-map__node--missing {
+    .work-map__node-box {
+      fill: var(--color-ink-lightest);
+      stroke-dasharray: 2 3;
+    }
+
+    .work-map__node-stripe {
+      fill: var(--color-ink-light);
+    }
+  }
+
+  .work-map__node.is-selected .work-map__node-box {
+    stroke: var(--color-link);
+    stroke-width: 3;
+  }
+
+  .work-map__node.is-upstream .work-map__node-box,
+  .work-map__node.is-downstream .work-map__node-box {
+    stroke: var(--color-link);
+    stroke-width: 2;
+  }
+
+  .work-map__svg--selecting {
+    .work-map__node:not(.is-related) {
+      opacity: 0.3;
+    }
+
+    .work-map__edge:not(.is-related) {
+      opacity: 0.15;
+    }
+
+    .work-map__edge.is-related {
+      stroke-width: 3;
+    }
+  }
+
+  .work-map__edge {
+    fill: none;
+    stroke-width: 2;
+  }
+
+  .work-map__edge--pending {
+    stroke: var(--color-ink);
+  }
+
+  .work-map__edge--satisfied {
+    stroke: oklch(var(--lch-green-dark));
+    stroke-dasharray: 8 4;
+  }
+
+  .work-map__edge--reconciled {
+    stroke: var(--color-ink-medium);
+    stroke-dasharray: 2 4;
+  }
+
+  .work-map__edge--ended {
+    stroke: var(--color-negative);
+    stroke-dasharray: 10 3 2 3;
+  }
+
+  .work-map__arrow--pending { fill: var(--color-ink); }
+  .work-map__arrow--satisfied { fill: oklch(var(--lch-green-dark)); }
+  .work-map__arrow--reconciled { fill: var(--color-ink-medium); }
+  .work-map__arrow--ended { fill: var(--color-negative); }
+
+  .work-map__panel {
+    background: var(--color-canvas);
+    border: var(--border);
+    border-radius: 0.75rem;
+    flex: 0 0 22rem;
+    font-size: var(--text-small);
+    max-block-size: max(24rem, calc(100dvh - 17rem));
+    overflow: auto;
+    padding: var(--block-space-half) var(--inline-space);
+
+    &[hidden] {
+      display: none;
+    }
+
+    h2 {
+      font-size: var(--text-medium);
+      margin: 0;
+    }
+
+    h3 {
+      font-size: var(--text-small);
+      margin: var(--block-space-half) 0 0.25em;
+    }
+
+    dl {
+      display: grid;
+      gap: 0.25em 1ch;
+      grid-template-columns: auto 1fr;
+      margin: var(--block-space-half) 0 0;
+    }
+
+    dt {
+      color: var(--color-ink-dark);
+    }
+
+    dd {
+      margin: 0;
+      overflow-wrap: anywhere;
+    }
+  }
+
+  .work-map__panel-title {
+    font-weight: 700;
+    margin: 0.25em 0 0;
+    overflow-wrap: anywhere;
+  }
+
+  .work-map__panel-close {
+    float: inline-end;
+  }
+
+  .work-map__relations {
+    margin: 0;
+    padding-inline-start: 1.2em;
+  }
+
+  .work-map__relation--satisfied,
+  .work-map__relation--reconciled {
+    color: var(--color-ink-dark);
+  }
+
+  .work-map__relation--ended {
+    color: var(--color-negative);
+  }
+
+  .work-map__open {
+    margin-block-start: var(--block-space-half);
+  }
+
+  .work-map__legend {
+    color: var(--color-ink-dark);
+    display: flex;
+    flex-wrap: wrap;
+    font-size: var(--text-x-small);
+    gap: 0.5em 1.5em;
+
+    span {
+      align-items: center;
+      display: inline-flex;
+      gap: 0.5ch;
+    }
+
+    svg {
+      block-size: 0.5rem;
+      inline-size: 2.5rem;
+    }
+  }
+
+  @media (max-width: 799px) {
+    .work-map__coverage-time {
+      display: none;
+    }
+
+    .work-map__status {
+      font-size: var(--text-x-small);
+    }
+
+    .work-map__body {
+      flex-direction: column;
+    }
+
+    .work-map__panel {
+      flex-basis: auto;
+      max-block-size: 45dvh;
+    }
+
+    /* In a column, flex: 1 would shrink the canvas to nothing. */
+    .work-map__canvas {
+      block-size: max(20rem, calc(100dvh - 22rem));
+      flex: none;
+    }
+  }
+}

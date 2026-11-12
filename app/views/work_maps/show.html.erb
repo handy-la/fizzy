@@ -1,0 +1,84 @@
+<% @page_title = "Mapa de trabajo" %>
+
+<% content_for :header do %>
+  <div class="header__actions header__actions--start">
+    <%= back_link_to "Home", root_path, "keydown.left@document->hotkey#click" %>
+  </div>
+
+  <h1 class="header__title" data-bridge--title-target="header"><%= @page_title %></h1>
+<% end %>
+
+<div class="work-map" data-controller="work-map">
+  <script type="application/json" data-work-map-target="data"><%= work_map_json(@work_map) %></script>
+
+  <div class="work-map__toolbar" role="toolbar" aria-label="Herramientas del mapa">
+    <form class="work-map__search" role="search" data-action="submit->work-map#search">
+      <label class="for-screen-reader" for="work-map-search">Buscar tarjeta</label>
+      <input id="work-map-search" class="input work-map__search-input" type="search" autocomplete="off"
+        placeholder="Producto y número, o título" data-work-map-target="search">
+      <button type="submit" class="btn">Buscar</button>
+    </form>
+
+    <div class="work-map__buttons">
+      <button type="button" class="btn" data-action="work-map#zoomIn" aria-label="Acercar" title="Acercar (+)">+</button>
+      <button type="button" class="btn" data-action="work-map#zoomOut" aria-label="Alejar" title="Alejar (−)">−</button>
+      <button type="button" class="btn" data-action="work-map#fit" title="Ajustar al mapa (0)">Ajustar</button>
+      <button type="button" class="btn" data-action="work-map#focusChain" data-work-map-target="chainButton" disabled title="Enfocar la cadena de la tarjeta elegida (c)">Enfocar cadena</button>
+    </div>
+
+    <details class="work-map__filters" data-work-map-target="filters">
+      <summary class="btn">Filtros <span data-work-map-target="filterCount"></span></summary>
+      <div class="work-map__filters-body" data-action="change->work-map#filter">
+        <fieldset>
+          <legend>Producto</legend>
+          <div data-work-map-target="productFilters"></div>
+        </fieldset>
+        <fieldset>
+          <legend>Estado</legend>
+          <label><input type="checkbox" name="disposition" value="maybe"> Maybe?</label>
+          <label><input type="checkbox" name="disposition" value="column"> En una columna</label>
+          <label><input type="checkbox" name="disposition" value="not_now"> Not Now</label>
+          <label><input type="checkbox" name="disposition" value="closed"> Cerrada</label>
+        </fieldset>
+        <fieldset>
+          <legend>Tipo de espera</legend>
+          <label><input type="checkbox" name="wait" value="card"> Otra tarjeta</label>
+          <label><input type="checkbox" name="wait" value="human"> Decisión humana</label>
+          <label><input type="checkbox" name="wait" value="resource"> Recursos</label>
+          <label><input type="checkbox" name="wait" value="window"> Ventana operativa</label>
+          <label><input type="checkbox" name="wait" value="deployment"> Despliegue</label>
+          <label><input type="checkbox" name="wait" value="publication"> Publicación</label>
+          <label><input type="checkbox" name="wait" value="other"> Otra</label>
+        </fieldset>
+        <fieldset>
+          <legend>Atención</legend>
+          <label><input type="checkbox" name="human" value="1"> Requiere intervención humana</label>
+          <label><input type="checkbox" name="blocking" value="1"> Bloquea otras tarjetas</label>
+        </fieldset>
+        <button type="button" class="btn" data-action="work-map#resetFilters">Restablecer filtros</button>
+      </div>
+    </details>
+  </div>
+
+  <div class="work-map__status" data-work-map-target="status" aria-live="polite"></div>
+  <ul class="work-map__coverage" data-work-map-target="coverage" aria-label="Cobertura por producto"></ul>
+
+  <div class="work-map__body">
+    <div class="work-map__canvas" data-work-map-target="canvas" tabindex="0" role="application"
+      aria-label="Mapa de tarjetas. Flechas para moverse entre tarjetas, Enter para abrir el detalle, + y − para zoom, 0 para ajustar, c para enfocar la cadena, Escape para quitar la selección."
+      aria-describedby="work-map-legend"
+      data-action="keydown->work-map#keydown wheel->work-map#wheel pointerdown->work-map#pointerdown pointermove->work-map#pointermove pointerup->work-map#pointerup pointercancel->work-map#pointerup">
+      <svg class="work-map__svg" data-work-map-target="svg" xmlns="http://www.w3.org/2000/svg"></svg>
+    </div>
+
+    <aside class="work-map__panel" data-work-map-target="panel" aria-live="polite" hidden></aside>
+  </div>
+
+  <div class="work-map__legend" id="work-map-legend">
+    <span><svg viewBox="0 0 40 8" aria-hidden="true"><line x1="0" y1="4" x2="40" y2="4" class="work-map__edge work-map__edge--pending" /></svg> Vigente: el dependiente espera al prerrequisito</span>
+    <span><svg viewBox="0 0 40 8" aria-hidden="true"><line x1="0" y1="4" x2="40" y2="4" class="work-map__edge work-map__edge--satisfied" /></svg> Satisfecha con evidencia</span>
+    <span><svg viewBox="0 0 40 8" aria-hidden="true"><line x1="0" y1="4" x2="40" y2="4" class="work-map__edge work-map__edge--reconciled" /></svg> Reconciliada por otra tarjeta</span>
+    <span><svg viewBox="0 0 40 8" aria-hidden="true"><line x1="0" y1="4" x2="40" y2="4" class="work-map__edge work-map__edge--ended" /></svg> Terminó sin cumplirse</span>
+    <span>La flecha va del prerrequisito al dependiente. Cerrar una tarjeta no cumple una dependencia.</span>
+  </div>
+</div>

@@ -167,6 +167,7 @@ Rails.application.routes.draw do
 
   resources :activities, only: :index
   resource :leaderboard, only: :show
+  resource :work_map, only: :show
   resources :events, only: :index
   namespace :events do
     resources :days
