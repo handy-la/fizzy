@@ -248,6 +248,44 @@ class PowerThroughTest < ApplicationSystemTestCase
     assert_current_path(/card=#{cards(:logo).number}/)
   end
 
+  test "a late confirmation keeps the draft a newer editor of the same card wrote" do
+    ask cards(:layout), "❓ ¿Azul o verde?", at: 30.minutes.ago
+    visit_queue
+    write "Uno."
+    page.execute_script(<<~JS)
+      window.realFetch = window.fetch
+      window.fetch = async (url, options) => {
+        if (options?.method === "POST") {
+          window.posting = true
+          await new Promise(resolve => window.releasePost = resolve)
+        }
+        return window.realFetch(url, options)
+      }
+    JS
+
+    send_reply
+    assert page.evaluate_async_script(<<~JS), "the reply never left"
+      const done = arguments[0], start = Date.now()
+      const check = () => window.posting ? done(true) : Date.now() - start > 5000 ? done(false) : setTimeout(check, 50)
+      check()
+    JS
+    find("[data-power-through-target=next]").click
+    assert_focused_card cards(:logo)
+    find("[data-power-through-target=previous]").click
+    assert_focused_card cards(:text)
+    assert_selector ".power-through__composer lexxy-editor", text: "Uno."
+    find(".power-through__composer lexxy-editor [contenteditable='true']").send_keys(" Otra cosa.")
+    draft_key = "comment-#{users(:david).id}-#{cards(:text).id}"
+    Timeout.timeout(5) { sleep 0.1 until local_storage(draft_key)&.include?("Otra cosa.") }
+
+    page.execute_script("window.releasePost()")
+
+    assert_equal [ "Uno." ], wait_for_replies(cards(:text))
+    sleep 1
+    assert_focused_card cards(:text)
+    assert_includes local_storage(draft_key).to_s, "Otra cosa."
+  end
+
   test "chosen stages are remembered per account, person and board, and a corrupt value is ignored" do
     in_progress = columns(:writebook_in_progress).id
     visit board_power_through_url(@board, stages: in_progress)

@@ -291,3 +291,26 @@ Método: archivos productivos de `024dc7b57520ff715c9d591c4436de7d550c2cd6`
   ninguna prueba cambiaba de tarjeta durante el envío; seam, el mismo
   reemplazo de `window.fetch`, que además marca cuándo sale el POST para que
   el clic en «Siguiente» no se adelante al envío.
+
+## Ronda 8: una confirmación tardía no borra un borrador posterior
+
+Revisión 7 sobre `64886b6323acf752b252f50e7798f15348596bdd` (rebasada sobre
+`origin/main` `013bf8d61`, ronda concedida por una persona): gate de Dédalo
+1→1. El bloqueante: enviar desde A con el POST demorado, pasar a B, volver a
+A y editar el borrador restaurado. El compositor anterior, ya fuera de la
+página, comparaba lo enviado con su editor desconectado y borraba la clave de
+borrador que ahora usa el editor nuevo. Corrección: un compositor
+desconectado no escribe el borrador y sólo lo borra si es exactamente lo
+publicado.
+
+Método: `power_through_composer_controller.js` de
+`64886b6323acf752b252f50e7798f15348596bdd`, prueba nueva, restauración.
+
+- `PARALLEL_WORKERS=1 SAAS=false BUNDLE_GEMFILE=Gemfile bin/rails test test/system/power_through_test.rb -n "/newer editor/"`
+  sin la corrección: salida 1, `Expected "" to include "Otra cosa."`. GREEN
+  del archivo de sistema completo: salida 0, «15 tests, 0 failures».
+- Cuatro respuestas: contrato, una confirmación tardía nunca borra texto sin
+  publicar de otro editor de la misma tarjeta; regresión, volver a decidir con
+  el editor desconectado; cobertura, la prueba de la ronda 7 no volvía a la
+  tarjeta; seam, el mismo reemplazo de `window.fetch`, que ahora retiene el
+  POST hasta que la prueba lo suelta.

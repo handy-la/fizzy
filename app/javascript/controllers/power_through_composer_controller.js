@@ -115,6 +115,14 @@ export default class extends Controller {
     this.#settle()
     const landedNow = response.status === 201 || response.headers.get("Comment-Replay") === "same"
 
+    // The person left this card while the post was on its way: this editor
+    // is gone, and the stored draft may now belong to a newer editor of the
+    // same card. Only a draft that is exactly what landed is cleared.
+    if (!this.element.isConnected) {
+      if (landedNow && this.#readRaw(this.draftKeyValue) === sent) this.#forget(this.draftKeyValue)
+      return
+    }
+
     if (landedNow && this.inputTarget.value === sent) {
       // The next card can be this same one (an approval stage keeps it
       // queued for review), and its permanent editor survives the visit:
@@ -187,6 +195,10 @@ export default class extends Controller {
 
   #read(key) {
     try { return JSON.parse(localStorage.getItem(key)) } catch { return null }
+  }
+
+  #readRaw(key) {
+    try { return localStorage.getItem(key) } catch { return null }
   }
 
   #write(key, value, { raw = false } = {}) {
