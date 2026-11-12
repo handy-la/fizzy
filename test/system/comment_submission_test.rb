@@ -15,7 +15,7 @@ class CommentSubmissionTest < ApplicationSystemTestCase
   # Capybara reuses the browser: a draft left here would appear in the next test's
   # editor. Teardown callbacks run after Capybara resets the page, so this goes first.
   def before_teardown
-    page.execute_script("localStorage.removeItem('comment-#{@card.id}')")
+    page.execute_script("localStorage.removeItem(arguments[0])", draft_key)
   ensure
     super
   end
@@ -190,7 +190,12 @@ class CommentSubmissionTest < ApplicationSystemTestCase
     end
 
     def saved_draft
-      page.evaluate_script("localStorage.getItem('comment-#{@card.id}')")
+      page.evaluate_script("localStorage.getItem(arguments[0])", draft_key)
+    end
+
+    # Handy #2304: the draft is kept per person and card.
+    def draft_key
+      "comment-#{users(:david).id}-#{@card.id}"
     end
 
     def record_submitted_bodies

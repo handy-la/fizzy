@@ -367,3 +367,21 @@ Método: `power_through_composer_controller.js` de
   rechazo; seam, el reemplazo de `window.fetch`, que aquí devuelve un 422 sin
   llegar al servidor. La aserción del 422 sólo busca «error 422», presente en
   el mensaje anterior y en el nuevo, para que el RED dependa del contrato.
+
+## Integración con Handy #2341
+
+`origin/main` `1c7919f36` (Handy #2341) reescribió `local_save_controller.js`
+(guardado diferido propio, `submitStart`, guardado al desconectar) y la acción
+de `cards/comments/_new.html.erb`. El rebase conserva ese comportamiento y le
+suma lo de esta tarjeta: clave por persona y tarjeta, migración de la clave
+anterior y acceso a `localStorage` protegido con `try/catch` (`#store` escribe
+por `#write`). En `_new` quedan las claves de esta tarjeta y la acción de
+#2341.
+
+`test/system/comment_submission_test.rb` (de #2341) leía y limpiaba la clave
+`comment-<tarjeta>`. Con la clave por persona, sin adaptar, falla:
+`PARALLEL_WORKERS=1 SAAS=false BUNDLE_GEMFILE=Gemfile bin/rails test test/system/comment_submission_test.rb`
+da salida 1, «6 tests, 4 failures» (el borrador está en la clave nueva). La
+prueba ahora usa `comment-<usuario>-<tarjeta>`; con ella y con Power Through:
+salida 0, «23 tests, 0 failures». Sólo cambia la clave que la prueba observa;
+sus aserciones y su contrato quedan iguales.
