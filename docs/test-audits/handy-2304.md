@@ -123,27 +123,57 @@ BUNDLE_GEMFILE=Gemfile bin/rails test …`, SQLite.
 
 ## Ronda 2: bloqueantes de la revisión
 
-Revisión 1 sobre `0d517bf97`: el gate de Dédalo dio 4 bloqueantes y
-`bin/signoff` 2 (los mismos dos más dos propios del gate). Cada corrección
-tiene su prueba; RED contra los archivos de `0d517bf97`, GREEN con el cambio.
+Revisión 1 sobre `0d517bf97bb5abda2e5c4f0cba8f7b81ff900b0f`: el gate de
+Dédalo dio 4 bloqueantes y `bin/signoff` 2 (los mismos dos del gate más dos
+propios del gate). Cada corrección tiene su prueba.
 
-- **El refresco cambiaba la tarjeta enfocada al entrar sin `card`.** Ahora la
-  página redirige a la misma URL con la tarjeta fijada. Prueba:
-  `power_throughs_controller_test.rb` «entering without a card pins…». RED:
-  `Expected response to be a <3XX: redirect>, but was a <200: OK>`.
+Método de RED: en el checkout de la tarjeta, con las pruebas nuevas ya
+escritas, se reemplazó sólo el archivo productivo corregido por su versión
+de `0d517bf97bb5abda2e5c4f0cba8f7b81ff900b0f` (`git show
+0d517bf97bb5abda2e5c4f0cba8f7b81ff900b0f:<archivo> > <archivo>`), se corrió
+la prueba y se restauró el archivo. Entorno: `fizzy-custom`, Ruby 4.0.9 de
+mise, SQLite, `SAAS=false BUNDLE_GEMFILE=Gemfile`; las de sistema con
+`PARALLEL_WORKERS=1`.
+
+- **El refresco cambiaba la tarjeta enfocada al entrar sin `card`.** La página
+  redirige a la misma URL con la tarjeta fijada. Archivo:
+  `app/controllers/boards/power_throughs_controller.rb`. Comando:
+  `bin/rails test test/controllers/boards/power_throughs_controller_test.rb -n "/pins/"`.
+  RED: salida 1, «1 tests, 1 failures», `Expected response to be a <3XX:
+  redirect>, but was a <200: OK>`. GREEN: salida 0, 0 fallos.
 - **Un fallo al leer el veredicto permitía publicar.** `#verified` sólo deja
-  enviar si leyó una huella igual a la que la persona vio; un error detiene el
-  envío y lo dice. Prueba de sistema «a verdict that cannot be read…». RED:
-  no aparece el error y el comentario se publica.
+  enviar si leyó una huella igual a la última que la persona vio; un error
+  detiene el envío. Archivo:
+  `app/javascript/controllers/power_through_composer_controller.js`.
 - **El texto escrito durante el envío se perdía.** Al confirmar, si el editor
-  ya no es el texto enviado, se guarda como borrador y la página no avanza.
-  Prueba de sistema «text typed while the reply is on its way…». RED: la
-  página avanza con «Respuesta publicada.».
+  ya no es el texto enviado, queda como borrador y la página no avanza. Mismo
+  archivo. Comando de ambas:
+  `bin/rails test test/system/power_through_test.rb -n "/cannot be read|on its way/"`.
+  RED: salida 1, «2 tests, 2 failures»: no aparece `.power-through__error`
+  con «no envié tu respuesta», y no aparece el aviso «sigue aquí, sin
+  publicar». GREEN: salida 0 (corrida completa del archivo: «8 tests, 0
+  failures», dos veces).
 - **La huella no detectaba una pregunta editada.** Incluye un resumen del
-  texto de cada pregunta abierta. Prueba: `pending_request_test.rb` «the
-  fingerprint changes when an open question is edited». RED: la huella no
-  cambia.
+  texto de cada pregunta abierta. Archivo: `app/models/card/pending_request.rb`.
+  Comando: `bin/rails test test/models/card/pending_request_test.rb -n "/edited/"`.
+  RED: salida 1, «1 tests, 1 failures» (`assert_not_equal` con la misma
+  huella). GREEN: salida 0.
 
-Las cuatro pruebas cumplen las cuatro respuestas de la ficha de su archivo:
-el contrato es el de esta página, ningún seam nuevo (las de sistema reemplazan
-`window.fetch` como la prueba de respuesta perdida).
+## Ronda 3: foco en una tarjeta cerrada o pospuesta
+
+Revisión 2 sobre `38cf59edb294ff3b22e1a390ecc39570d039b344`: gate de Dédalo
+4→1 y `bin/signoff` 2→2. El defecto común: la tarjeta enfocada que otra
+persona cierra o pospone salía también de la búsqueda de `@resolved_card`
+(filtro `active`), y el refresco ponía otra tarjeta en su lugar. Ahora la
+busca entre todas las tarjetas accesibles del tablero. El segundo bloqueante
+de `bin/signoff` era esta misma evidencia sin SHA completo, comandos ni
+códigos de salida: se agregó arriba.
+
+- Comando: `bin/rails test test/controllers/boards/power_throughs_controller_test.rb -n "/closed or postponed/"`,
+  con `app/controllers/boards/power_throughs_controller.rb` de
+  `38cf59edb294ff3b22e1a390ecc39570d039b344`. RED: salida 1, «1 tests, 1
+  failures», `Expected at least 1 element matching ".power-through__title",
+  found 0`. GREEN (archivo completo): salida 0, «9 tests, 0 failures».
+- La prueba cumple las cuatro respuestas de la ficha del controlador: el
+  contrato es conservar el foco; la regresión es volver a filtrar por
+  `active`; no había cobertura de una tarjeta cerrada o pospuesta; sin seam.

@@ -14,7 +14,9 @@ class Boards::PowerThroughsController < ApplicationController
   private
     def set_focus
       if params[:card].present? && (@entry = @power_through.entry_for(params[:card])).nil?
-        @resolved_card = Current.user.accessible_cards.active.find_by(board: @board, number: params[:card].to_i)
+        # Closed, postponed or answered elsewhere: the card keeps the focus, and
+        # its draft, until the person moves on.
+        @resolved_card = Current.user.accessible_cards.find_by(board: @board, number: params[:card].to_i)
       end
 
       @entry ||= @power_through.entries.first unless @resolved_card

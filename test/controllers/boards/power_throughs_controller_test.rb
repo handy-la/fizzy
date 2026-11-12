@@ -39,6 +39,19 @@ class Boards::PowerThroughsControllerTest < ActionDispatch::IntegrationTest
     assert_select ".power-through__notice", text: /ya no espera una respuesta/
   end
 
+  test "a focused card closed or postponed elsewhere keeps the focus" do
+    with_current_user(:david) { cards(:text).close }
+    get board_power_through_path(@board, card: cards(:text).number)
+
+    assert_select ".power-through__title", text: /#3/
+    assert_select ".power-through__notice", text: /ya no espera una respuesta/
+
+    with_current_user(:david) { cards(:text).reopen; cards(:text).postpone }
+    get board_power_through_path(@board, card: cards(:text).number)
+
+    assert_select ".power-through__title", text: /#3/
+  end
+
   test "an empty queue says so" do
     get board_power_through_path(@board, stages: columns(:writebook_on_hold).id)
 
