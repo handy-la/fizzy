@@ -15,6 +15,23 @@ cards the person cannot see is dropped» falló (dos marcadores sobrantes) hasta
 corregirlo. Riesgo sin probar: el contrato real de Dédalo, que aún no existe
 (Dédalo #2369); las pruebas usan respuestas construidas según el contrato.
 
+### Corrección de la ronda 1: unión por producto y tablero
+
+Las dos revisiones de la ronda 1 encontraron que `WorkMap` unía la respuesta
+de Dédalo con las tarjetas sólo por número. Los números son únicos por cuenta
+(`index_cards_on_account_id_and_number`), no por instancia: la ejecución de la
+tarjeta #1 de otra cuenta aparecía en la #1 de ésta.
+
+- **Prueba:** «execution and relations join a card only through its product's
+  board, never by number alone» en `test/models/work_map_test.rb`.
+- **RED:** con `app/models/work_map.rb` de `5228ed1ad` (la versión revisada),
+  `bin/rails test test/models/work_map_test.rb -n /never_by_number/` (Ruby
+  4.0.9, `SAAS=false BUNDLE_GEMFILE=Gemfile PARALLEL_WORKERS=1`) falla:
+  `Expected {"product" => "otra-cuenta", "card" => 1, … "reason" => "Motivo
+  de otra cuenta" …} to be nil`. 1 runs, 1 failures.
+- **GREEN:** el mismo archivo de pruebas con la corrección: 15 runs, 0
+  failures.
+
 ## Autoría antes de editar pruebas
 
 Seis archivos nuevos y una prueba agregada a `test/javascript_test.rb`. No se
@@ -56,7 +73,8 @@ cambia ni retira ninguna prueba existente.
   ejecución; relaciones entre productos con su condición; una cerrada sólo si
   explica una cadena; varios bloqueadores con su propia satisfacción; un
   extremo sin acceso sin identidad, uno por relación; relación entre dos
-  ocultos descartada; borrador oculto, nunca «ausente»; número inexistente en
+  ocultos descartada; ejecución y extremos unidos por el tablero del producto,
+  nunca sólo por número; borrador oculto, nunca «ausente»; número inexistente en
   un tablero accesible como «ausente»; ciclos; «sin información de ejecución»
   distinto de fuente fallida, producto fallido, parcial y sin registro;
   inventario acotado. Dueño: `app/models/work_map.rb`.

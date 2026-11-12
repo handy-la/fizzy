@@ -155,8 +155,15 @@ class WorkMap
       end
     end
 
+    # Card numbers are unique per account, not per Dédalo: a reference is this
+    # card only when its product's board is the card's board.
     def endpoint(reference, cards, slot)
-      cards[reference["card"]] || placeholder(reference, slot)
+      card = cards[reference["card"]]
+      card && board_of(reference["product"]) == card.board_id ? card : placeholder(reference, slot)
+    end
+
+    def board_of(product_id)
+      registry[product_id]&.fetch("board_id")
     end
 
     def placeholder(reference, slot)
@@ -190,12 +197,12 @@ class WorkMap
 
     def node(card)
       product = products_by_board.fetch(card.board_id)
-      execution = items[card.number]
+      execution = items[[ card.board_id, card.number ]]
       Node.new(card:, product:, execution:, execution_status: execution_status(product, execution))
     end
 
     def items
-      @items ||= Array(snapshot&.items).index_by { |item| item["card"] }
+      @items ||= Array(snapshot&.items).index_by { |item| [ board_of(item["product"]), item["card"] ] }
     end
 
     # «Sin información de ejecución» is never «sin bloqueos»: this says why a

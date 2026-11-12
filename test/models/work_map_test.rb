@@ -77,6 +77,26 @@ class WorkMapTest < ActiveSupport::TestCase
     assert_equal "pending", map.edges.first.status, "its relation is still in force"
   end
 
+  test "execution and relations join a card only through its product's board, never by number alone" do
+    other_account_card = cards(:radio)
+    same_number = Card.find_by!(account: accounts("37s"), number: other_account_card.number)
+    answer = work_map_answer(
+      products: [ work_map_product("alpha", @writebook), work_map_product("otra-cuenta", boards(:miltons_wish_list)),
+        work_map_product("beta", @private) ],
+      items: [ work_map_item("otra-cuenta", other_account_card, state: "held", wait: work_map_wait(reason: "Motivo de otra cuenta")),
+        work_map_item("beta", cards(:text), state: "held", wait: work_map_wait(reason: "Motivo de otro tablero")) ],
+      relations: [ work_map_relation([ "otra-cuenta", other_account_card ], [ "alpha", cards(:text) ]),
+        work_map_relation([ "beta", cards(:layout) ], [ "alpha", cards(:text) ]) ])
+    map = WorkMap.new(user: users(:kevin), source: work_map_source(answer))
+
+    assert_nil map.nodes.find { |node| node.card == same_number }.execution
+    assert_nil map.nodes.find { |node| node.card == cards(:text) }.execution
+    assert_equal [ "inaccessible", "inaccessible" ], map.placeholders.map(&:kind)
+    assert_equal [ "card-#{cards(:text).number}" ], map.edges.map(&:to).uniq
+    assert_not_includes map.edges.map(&:from), "card-#{same_number.number}"
+    assert_not_includes map.edges.map(&:from), "card-#{cards(:layout).number}"
+  end
+
   test "an endpoint on a board the person cannot access keeps no identity" do
     answer = work_map_answer(
       products: [ work_map_product("alpha", @writebook), work_map_product("beta", @private) ],
