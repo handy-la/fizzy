@@ -40,6 +40,45 @@ class PowerThroughTest < ApplicationSystemTestCase
     assert_equal [ "Uno." ], replies(cards(:text))
   end
 
+  test "an answer that is not a confirmation keeps the token, so the retry does not duplicate" do
+    visit_queue
+    write "Uno."
+    page.execute_script(<<~JS)
+      window.realFetch = window.fetch
+      window.fetch = async (url, options) => {
+        if (options?.method !== "POST") return window.realFetch(url, options)
+        await window.realFetch(url, options)
+        return new Response("<html>Sign in</html>", { status: 200, headers: { "Content-Type": "text/html" } })
+      }
+    JS
+
+    send_reply
+    assert_selector ".power-through__error", text: "No pude confirmar si tu respuesta se publicó"
+
+    page.execute_script("window.fetch = window.realFetch")
+    send_reply
+    assert_selector "[data-power-through-composer-target=notice]", text: "cambió mientras escribías"
+    send_reply
+
+    assert_focused_card cards(:logo)
+    assert_equal [ "Uno." ], replies(cards(:text))
+  end
+
+  test "a reply with a list or a quote moves on once published" do
+    visit_queue
+    write "x"
+    page.execute_script(<<~JS)
+      const editor = document.querySelector(".power-through__composer lexxy-editor")
+      editor.value = "<ul><li>Uno</li></ul><blockquote>Cita</blockquote>"
+      editor.dispatchEvent(new CustomEvent("lexxy:change", { bubbles: true }))
+    JS
+
+    send_reply
+
+    assert_focused_card cards(:logo)
+    assert_equal 1, cards(:text).comments.where(creator: users(:david)).count
+  end
+
   test "keys typed into the reply never navigate, and outside they do" do
     visit_queue
     write "jk"

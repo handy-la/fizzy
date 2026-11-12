@@ -108,6 +108,20 @@ class Cards::CommentsControllerTest < ActionDispatch::IntegrationTest
     end
   end
 
+  test "a replay says whether the comment that landed is the body sent now" do
+    card = cards(:logo)
+    token = "pt-0123456789abcdef"
+    sent = "<ul><li>Uno <a href=\"https://a.example\">enlace</a></li></ul>"
+    post card_comments_path(card), params: { comment: { body: sent, client_token: token } }, as: :json
+
+    post card_comments_path(card), params: { comment: { body: sent, client_token: token } }, as: :json
+    assert_equal "same", @response.headers["Comment-Replay"]
+
+    post card_comments_path(card), params: { comment: { body: sent.sub("a.example", "b.example"), client_token: token } }, as: :json
+    assert_response :ok
+    assert_equal "different", @response.headers["Comment-Replay"]
+  end
+
   test "a client token is scoped to the person who posts" do
     card = cards(:logo)
     token = "pt-0123456789abcdef"

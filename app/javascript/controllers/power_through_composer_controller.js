@@ -79,6 +79,7 @@ export default class extends Controller {
 
   async #post() {
     const body = new FormData(this.element)
+    const sent = body.get("comment[body]") || ""
     body.set("comment[client_token]", this.#token())
 
     let response
@@ -93,24 +94,28 @@ export default class extends Controller {
       return
     }
 
-    if (response.ok) {
-      this.#settle()
-      await this.#confirmed(response)
+    if (response.status === 201 || (response.status === 200 && response.headers.has("Comment-Replay"))) {
+      this.#confirmed(response, sent)
+    } else if (response.ok) {
+      // A redirect (an expired session) or any other page is no confirmation:
+      // the token stays, so a retry after signing in cannot duplicate.
+      this.#show(this.errorTarget, "No pude confirmar si tu respuesta se publicó: la sesión pudo haber terminado. Tu texto sigue aquí. Recarga la página y vuelve a enviar: no se duplica.")
     } else {
       if (response.status < 500) this.#settle()
       this.#show(this.errorTarget, `No se publicó tu respuesta (error ${response.status}). Tu texto sigue aquí.`)
     }
   }
 
-  // The server answers with the comment that landed under this token: the
-  // one just created (201) or one an earlier attempt already left (200). The
-  // page moves on only when that comment is what the editor holds now; any
-  // other text was not published and stays in the editor and the draft.
-  async #confirmed(response) {
-    let landed = null
-    try { landed = (await response.json())?.body?.plain_text } catch {}
+  // The status and headers are the confirmation; the body is never needed.
+  // What landed is exactly the HTML this request sent, unless the server
+  // answers a replay with an earlier version under the same token. The page
+  // moves on only when what landed is exactly what the editor holds now: any
+  // other text (typed during the post, or never sent) stays in the editor.
+  #confirmed(response, sent) {
+    this.#settle()
+    const landedNow = response.status === 201 || response.headers.get("Comment-Replay") === "same"
 
-    if (landed != null && this.#sameText(landed, this.#editorText)) {
+    if (landedNow && this.inputTarget.value === sent) {
       // The next card can be this same one (an approval stage keeps it
       // queued for review), and its permanent editor survives the visit:
       // a published reply must not stay there, ready to post again.
@@ -120,19 +125,10 @@ export default class extends Controller {
       Turbo.visit(this.#nextUrl)
     } else {
       this.#write(this.draftKeyValue, this.inputTarget.value, { raw: true })
-      this.#show(this.noticeTarget, response.status === 201
+      this.#show(this.noticeTarget, landedNow
         ? "Se publicó tu respuesta. Lo que escribiste mientras se enviaba sigue aquí, sin publicar."
         : "Ya estaba publicada una versión anterior de tu respuesta. El texto del editor no se envió: revisa el contexto antes de enviar otra.")
     }
-  }
-
-  get #editorText() {
-    return new DOMParser().parseFromString(this.inputTarget.value || "", "text/html").body.textContent
-  }
-
-  // Rich text and its plain rendering differ only in spacing.
-  #sameText(a, b) {
-    return a.replace(/\s+/g, "") === b.replace(/\s+/g, "")
   }
 
   // Read from the page as it is now, not from this editor: the editor is

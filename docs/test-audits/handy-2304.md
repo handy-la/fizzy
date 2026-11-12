@@ -235,3 +235,33 @@ cobertura: nueva; seam: ninguno, las pruebas declaran por
 la condición declarada no existía en la base anterior de esta tarjeta; las
 pruebas fallarían sólo por carga. GREEN: `bin/rails test
 test/models/card/pending_request_test.rb`, salida 0, «22 tests, 0 failures».
+
+## Ronda 6: confirmación exacta sin leer el cuerpo
+
+Revisión 5 sobre `cfc46dab6aab251f97830ead47b23d10868ee10e` (ronda concedida
+por una persona): gate de Dédalo 4→1→1→2→3. Los tres bloqueantes venían de
+comparar texto plano en el navegador (una lista, una cita o un enlace cambiado
+dan el mismo texto o uno distinto del HTML) y de soltar el token antes de leer
+el cuerpo JSON. Rediseño: el servidor dice en `Comment-Replay` si el
+comentario repetido es el cuerpo enviado ahora; el navegador compara HTML
+exacto y sólo con estado y cabecera; una respuesta 200 sin esa cabecera (una
+redirección por sesión vencida, encontrada al revisar el código propio) no
+confirma y conserva el token.
+
+Método igual que en las rondas anteriores: archivo productivo de
+`cfc46dab6aab251f97830ead47b23d10868ee10e`, prueba nueva, restauración.
+
+- `bin/rails test test/controllers/cards/comments_controller_test.rb -n "/replay says/"`
+  con `comments_controller.rb` anterior: salida 1, `Expected: "same"` (no hay
+  cabecera). GREEN: salida 0, «21 tests, 0 failures».
+- `PARALLEL_WORKERS=1 bin/rails test test/system/power_through_test.rb -n "/list or a quote/"`
+  con el controlador JS anterior: salida 1, no avanza a la tarjeta #1.
+- `PARALLEL_WORKERS=1 bin/rails test test/system/power_through_test.rb -n "/not a confirmation/"`
+  con el controlador JS anterior: salida 1, no aparece «No pude confirmar».
+  GREEN del archivo de sistema completo: salida 0, «13 tests, 0 failures».
+- Cuatro respuestas: contrato, avanzar sólo con lo publicado exactamente y no
+  duplicar ante una respuesta que no confirma; regresiones, volver a comparar
+  texto plano, leer el cuerpo para confirmar o soltar el token con cualquier
+  200; cobertura, ninguna prueba usaba listas, citas o una redirección; seam,
+  el mismo reemplazo de `window.fetch`. La cabecera `Comment-Replay` tiene un
+  consumidor productivo: `power_through_composer_controller.js`.

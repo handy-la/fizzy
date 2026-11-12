@@ -43,10 +43,16 @@ la página avanza sólo cuando el servidor confirma el comentario.
 Cada respuesta lleva un `client_token` hasta que el servidor la resuelve; un
 reintento (doble clic, timeout, respuesta perdida) con el mismo token devuelve
 el comentario existente (200) en vez de crear otro. El índice único
-`comments(card_id, creator_id, client_token)` cierra la carrera. La página
-avanza sólo si el texto del comentario confirmado es el que tiene el editor;
-si no (se escribió durante el envío, o llegó una versión anterior), conserva
-el editor y el borrador y lo dice.
+`comments(card_id, creator_id, client_token)` cierra la carrera.
+
+La confirmación es el estado y una cabecera, nunca el cuerpo: un 201 publicó
+exactamente el HTML de esa petición; un 200 de repetición lleva
+`Comment-Replay: same` si el comentario guardado es el cuerpo enviado ahora
+(comparado con `ActionText::Content#to_html`) o `different` si es una versión
+anterior. La página avanza sólo si lo publicado es exactamente el HTML que
+tiene el editor; si no, conserva el editor y el borrador y lo dice. Cualquier
+otra respuesta correcta (una redirección por sesión vencida) no confirma nada
+y conserva el token.
 
 El editor es un elemento permanente de Turbo: conserva los atributos de la
 página que lo pintó. Lo que cambia con la página (la URL de avance, la huella)

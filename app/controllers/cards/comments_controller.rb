@@ -76,10 +76,18 @@ class Cards::CommentsController < ApplicationController
       end
     end
 
+    # The client cannot tell from the comment's rendering whether what landed is
+    # the text it sends now or an earlier version of it, so the replay says so.
     def replay_create
+      response.headers["Comment-Replay"] = submitted_body_landed? ? "same" : "different"
+
       respond_to do |format|
         format.turbo_stream { head :ok }
         format.json { render :show, status: :ok, location: card_comment_path(@card, @comment, format: :json) }
       end
+    end
+
+    def submitted_body_landed?
+      ActionText::Content.new(params.dig(:comment, :body).to_s).to_html == @comment.body.body.to_html
     end
 end
