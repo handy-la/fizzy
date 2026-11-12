@@ -314,3 +314,33 @@ Método: `power_through_composer_controller.js` de
   el editor desconectado; cobertura, la prueba de la ronda 7 no volvía a la
   tarjeta; seam, el mismo reemplazo de `window.fetch`, que ahora retiene el
   POST hasta que la prueba lo suelta.
+
+## Ronda 9: volver a la tarjeta durante el envío no permite duplicar
+
+`bin/signoff`, ronda 4 sobre `3853bf7e1a963b54ae5f2a8534a8156cd0adbfb9`
+(ronda autorizada por una persona en la tarjeta; el gate de Dédalo había
+pasado en su ronda 8 sobre el mismo diff). El bloqueante: enviar desde A,
+pasar a B y volver a A antes del 201. El editor nuevo restaura el borrador
+con el texto enviado; el compositor anterior, desconectado, libera el token y
+no avisa a nadie. Un segundo envío usa otro token y publica el mismo texto.
+Corrección: el compositor desconectado emite `power-through:confirmed` con la
+tarjeta, el HTML enviado y si se publicó; el editor vigente de esa tarjeta
+vacía el texto si coincide y avisa si no. Si el editor ya está comprobando el
+veredicto para su propio envío, recuerda lo publicado y no envía ese texto.
+
+Método: controlador JS y `_composer` de
+`3853bf7e1a963b54ae5f2a8534a8156cd0adbfb9`, prueba nueva, restauración.
+
+- `PARALLEL_WORKERS=1 SAAS=false BUNDLE_GEMFILE=Gemfile bin/rails test test/system/power_through_test.rb -n "/returning to the card/"`
+  sin la corrección: salida 1, no aparece «Tu respuesta ya se publicó.» y el
+  editor conserva la respuesta publicada con el botón habilitado. GREEN del
+  archivo de sistema completo: salida 0, «16 tests, 0 failures».
+- Cuatro respuestas: contrato, una respuesta publicada nunca queda lista para
+  enviarse otra vez en otro editor de la misma tarjeta; regresión, no avisar
+  al editor vigente; cobertura, la prueba «newer editor» sólo comprobaba texto
+  modificado; seam, el reemplazo de `window.fetch` retiene el POST
+  (`hold_posts`/`wait_for_post`). El evento tiene un consumidor productivo: el
+  mismo controlador en el editor vigente.
+- Sin prueba de sistema: el editor nuevo que ya comprueba el veredicto cuando
+  llega el aviso. La ventana es la lectura del veredicto; el código lo cubre
+  con `#landedElsewhere`, revisado a mano.

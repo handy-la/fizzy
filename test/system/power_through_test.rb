@@ -286,6 +286,29 @@ class PowerThroughTest < ApplicationSystemTestCase
     assert_includes local_storage(draft_key).to_s, "Otra cosa."
   end
 
+  test "returning to the card during the post shows the published reply as published, not ready to send again" do
+    ask cards(:layout), "❓ ¿Azul o verde?", at: 30.minutes.ago
+    visit_queue
+    write "Uno."
+    hold_posts
+
+    send_reply
+    wait_for_post
+    find("[data-power-through-target=next]").click
+    assert_focused_card cards(:logo)
+    find("[data-power-through-target=previous]").click
+    assert_focused_card cards(:text)
+    assert_selector ".power-through__composer lexxy-editor", text: "Uno."
+
+    page.execute_script("window.releasePost()")
+
+    assert_selector "[data-power-through-composer-target=notice]", text: "Tu respuesta ya se publicó."
+    assert_no_selector ".power-through__composer lexxy-editor", text: "Uno."
+    assert_button "Enviar y siguiente", disabled: true
+    assert_nil local_storage("comment-#{users(:david).id}-#{cards(:text).id}")
+    assert_equal [ "Uno." ], replies(cards(:text))
+  end
+
   test "chosen stages are remembered per account, person and board, and a corrupt value is ignored" do
     in_progress = columns(:writebook_in_progress).id
     visit board_power_through_url(@board, stages: in_progress)
@@ -345,6 +368,27 @@ class PowerThroughTest < ApplicationSystemTestCase
 
     def replies(card)
       card.comments.reload.where(creator: users(:david)).map { it.body.to_plain_text.strip }
+    end
+
+    def hold_posts
+      page.execute_script(<<~JS)
+        window.realFetch = window.fetch
+        window.fetch = async (url, options) => {
+          if (options?.method === "POST") {
+            window.posting = true
+            await new Promise(resolve => window.releasePost = resolve)
+          }
+          return window.realFetch(url, options)
+        }
+      JS
+    end
+
+    def wait_for_post
+      assert page.evaluate_async_script(<<~JS), "the reply never left"
+        const done = arguments[0], start = Date.now()
+        const check = () => window.posting ? done(true) : Date.now() - start > 5000 ? done(false) : setTimeout(check, 50)
+        check()
+      JS
     end
 
     def wait_for_replies(card, timeout: 5)

@@ -58,7 +58,10 @@ El editor es un elemento permanente de Turbo: conserva los atributos de la
 página que lo pintó. Lo que cambia con la página (la URL de avance, la huella)
 se lee de `#power_through_state`, que sí se actualiza. Ese estado lleva el id
 de la tarjeta enfocada: una confirmación que llega cuando la persona ya pasó a
-otra tarjeta conserva lo publicado y no navega.
+otra tarjeta conserva lo publicado y no navega. Si la persona volvió a esa
+tarjeta, el editor nuevo recibe el aviso `power-through:confirmed`: vacía el
+texto que coincide con lo publicado y avisa si tiene otro, para que un segundo
+envío con otro token no duplique la respuesta.
 
 Antes de publicar, la página vuelve a leer el veredicto
 (`/boards/:id/power_through/cards/:number.json`). Si la huella cambió desde

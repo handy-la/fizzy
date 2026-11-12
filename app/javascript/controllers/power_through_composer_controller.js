@@ -18,6 +18,7 @@ export default class extends Controller {
   static values = { stateUrl: String, fingerprint: String, draftKey: String, tokenKey: String, cardId: String }
 
   #busy = false
+  #landedElsewhere = null
   #seen = null
   #attempt = null
 
@@ -44,6 +45,27 @@ export default class extends Controller {
 
   edited() {
     this.#hide(this.errorTarget)
+  }
+
+  // An earlier editor of this same card, gone since, had its post confirmed:
+  // this editor may show the reply it sent, restored from the draft. Its
+  // token is settled, so sending that text again would post it twice. An
+  // editor still checking the verdict before its own post remembers what
+  // landed, so that post is not sent.
+  reconcile({ detail: { cardId, sent, landedNow } }) {
+    if (cardId !== this.cardIdValue || !this.element.isConnected) return
+    if (this.#busy) {
+      if (landedNow) this.#landedElsewhere = sent
+      return
+    }
+
+    if (landedNow && this.inputTarget.value === sent) {
+      this.#clearPublished()
+    } else {
+      this.#show(this.noticeTarget, landedNow
+        ? "Tu respuesta anterior ya se publicó. Lo que escribiste después sigue aquí, sin publicar."
+        : "Ya estaba publicada una versión anterior de tu respuesta. El texto del editor no se envió: revisa el contexto antes de enviar otra.")
+    }
   }
 
   // A live refresh of the page changed what the card asks.
@@ -80,6 +102,11 @@ export default class extends Controller {
   async #post() {
     const body = new FormData(this.element)
     const sent = body.get("comment[body]") || ""
+    if (sent === this.#landedElsewhere) {
+      this.#landedElsewhere = null
+      this.#clearPublished()
+      return
+    }
     body.set("comment[client_token]", this.#token())
 
     let response
@@ -117,9 +144,11 @@ export default class extends Controller {
 
     // The person left this card while the post was on its way: this editor
     // is gone, and the stored draft may now belong to a newer editor of the
-    // same card. Only a draft that is exactly what landed is cleared.
+    // same card. Only a draft that is exactly what landed is cleared, and the
+    // newer editor, if there is one, reconciles what it shows.
     if (!this.element.isConnected) {
       if (landedNow && this.#readRaw(this.draftKeyValue) === sent) this.#forget(this.draftKeyValue)
+      window.dispatchEvent(new CustomEvent("power-through:confirmed", { detail: { cardId: this.cardIdValue, sent, landedNow } }))
       return
     }
 
@@ -137,6 +166,13 @@ export default class extends Controller {
         ? "Se publicó tu respuesta. Lo que escribiste mientras se enviaba sigue aquí, sin publicar."
         : "Ya estaba publicada una versión anterior de tu respuesta. El texto del editor no se envió: revisa el contexto antes de enviar otra.")
     }
+  }
+
+  #clearPublished() {
+    this.inputTarget.value = ""
+    this.#forget(this.draftKeyValue)
+    this.submitTarget.disabled = true
+    this.#show(this.noticeTarget, "Tu respuesta ya se publicó.")
   }
 
   // The person may have gone on to another card while the post was on its
@@ -168,6 +204,7 @@ export default class extends Controller {
 
   #settle() {
     this.#attempt = null
+    this.#landedElsewhere = null
     this.#forget(this.tokenKeyValue)
   }
 

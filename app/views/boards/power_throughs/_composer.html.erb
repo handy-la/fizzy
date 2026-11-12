@@ -14,7 +14,7 @@
               power_through_composer_card_id_value: card.id,
               power_through_composer_draft_key_value: comment_draft_key(card),
               power_through_composer_token_key_value: "power-through-token:#{Current.user.id}:#{card.id}",
-              action: "submit->power-through-composer#submit turbo:morph@window->power-through-composer#revalidate keydown.tab@document->ai-suggestion#intent keydown.ctrl+enter->form#debouncedSubmit:prevent keydown.meta+enter->form#debouncedSubmit:prevent" } do |form| %>
+              action: "submit->power-through-composer#submit turbo:morph@window->power-through-composer#revalidate power-through:confirmed@window->power-through-composer#reconcile keydown.tab@document->ai-suggestion#intent keydown.ctrl+enter->form#debouncedSubmit:prevent keydown.meta+enter->form#debouncedSubmit:prevent" } do |form| %>
     <label for="<%= dom_id(card, :power_through_body) %>" class="power-through__heading">Tu respuesta</label>
     <%= form.rich_textarea :body, required: true, id: dom_id(card, :power_through_body), placeholder: "Escribe tu respuesta…",
           data: { local_save_target: "input", ai_suggestion_target: "input", power_through_composer_target: "input",
