@@ -46,7 +46,7 @@ class Board::PowerThrough
 
   def entries
     @entries ||= candidate_cards.filter_map do |card|
-      request = Card::PendingRequest.for(card, comments: card.comments.sort_by { |comment| [ comment.created_at, comment.id ] })
+      request = Card::PendingRequest.for(card, comments: card.comments)
       Entry.new(card:, request:) if request.actionable?
     end.sort_by { |entry| [ entry.request.since, entry.card.number ] }
   end

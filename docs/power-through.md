@@ -9,7 +9,10 @@ Un tablero es un producto: la cola nunca mezcla tableros.
 La espera estructurada de Dédalo (pregunta pendiente, contestada, vencida,
 sustituida) vive en Dédalo, no en Fizzy. Fizzy sólo ve los comentarios de
 Dédalo, cerrados con la marca invisible `​⁠⁣`, y la etapa de
-la tarjeta. `Card::PendingRequest` recorre los comentarios en orden:
+la tarjeta. `Card::PendingRequest` recorre los comentarios en orden (fecha y,
+con la misma fecha, id; los dos ascendentes). Ese orden vive sólo en el
+selector: la cola y la revalidación JSON lo comparten, y otro desempate daría
+otra huella y un aviso de cambio falso (Handy #2355):
 
 - Pregunta: comentario marcado con ❓ en su texto. Las preguntas sin respuesta
   entre ellas quedan abiertas juntas (la pregunta del agente y el aviso de

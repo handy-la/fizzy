@@ -44,13 +44,17 @@ class Card::PendingRequest
   attr_reader :card, :status, :requests, :reason_code, :waits
 
   def self.for(card, comments: nil)
-    new(card, comments || card.comments.chronologically.with_rich_text_body.includes(:creator))
+    new(card, comments || card.comments.with_rich_text_body.includes(:creator))
   end
 
+  # Every reader walks the comments in this one order (Handy #2355): oldest
+  # first and, at the same instant, the lower id first. The queue and the check
+  # before sending must agree, or the page warns that a request changed when
+  # nothing did. Comment.chronologically breaks ties the other way.
   def initialize(card, comments)
     @card = card
     @waits = []
-    @status, @requests, @reason_code = evaluate(comments.to_a)
+    @status, @requests, @reason_code = evaluate(comments.to_a.sort_by { |comment| [ comment.created_at, comment.id ] })
   end
 
   def pending?

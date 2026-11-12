@@ -72,6 +72,24 @@ class Boards::PowerThroughsControllerTest < ActionDispatch::IntegrationTest
     assert_equal Card::PendingRequest.for(cards(:text)).fingerprint, @response.parsed_body["fingerprint"]
   end
 
+  # Handy #2355: docs/test-audits/handy-2355.md.
+  test "a question and its answer at the same instant read the same in the page and in the card state" do
+    card = cards(:text)
+    card.comments.destroy_all
+    at = 1.hour.ago
+    answer_id, question_id = 2.times.map { ActiveRecord::Type::Uuid.generate }.sort
+    card.comments.create!(id: answer_id, body: "Uno.", creator: users(:david), created_at: at)
+    card.comments.create!(id: question_id, body: "❓ ¿Uno o dos?#{MARKER}", creator: users(:jz), created_at: at)
+
+    get board_power_through_path(@board, card: card.number)
+    page = css_select("#power_through_state").first
+    get board_power_through_card_path(@board, card.number, format: :json)
+
+    assert_equal "pending", page["data-status"]
+    assert_equal page["data-status"], @response.parsed_body["status"]
+    assert_equal page["data-fingerprint"], @response.parsed_body["fingerprint"]
+  end
+
   test "the card state of a card outside the board is not found" do
     get board_power_through_card_path(@board, cards(:radio).number + 100, format: :json)
 
