@@ -20,7 +20,7 @@ class Card::AutomaticWait::DeclarationTest < ActiveSupport::TestCase
     assert_equal 1, @card.automatic_waits.count
   end
 
-  test "a retry is recognised after its dates have passed; a new write with those dates is not" do
+  test "a retry is recognised after its dates have passed; a new write with those dates is expired evidence" do
     declare(body)
 
     travel 5.minutes
@@ -30,9 +30,43 @@ class Card::AutomaticWait::DeclarationTest < ActiveSupport::TestCase
     assert_equal :replayed, declare(body).status
 
     late = declare(body(expected_revision: 1, reason: "CI de rails, otra escritura"))
-    assert_equal :invalid, late.status
-    assert_includes late.details, { attribute: "valid_until", code: "out_of_range" }
-    assert_equal 1, wait.revision
+    assert_equal :updated, late.status
+    assert_equal 2, wait.revision
+    assert_equal Time.utc(2026, 11, 11, 19, 0, 0), wait.valid_until
+    assert wait.stale?
+  end
+
+  # Handy #2314 — authoring answers: docs/test-audits/handy-2314.md.
+  test "a report that expired before its first write is stored stale with its original date" do
+    result = declare(body(producer: "monitor", state: "monitoring", run_id: "mon-1",
+      next_check_at: "2026-11-11T17:20:00Z", valid_until: "2026-11-11T17:30:00Z"), key: "monitor:fleet")
+
+    assert_equal :created, result.status
+    assert_equal Time.utc(2026, 11, 11, 17, 30, 0), wait("monitor:fleet").valid_until
+    assert wait("monitor:fleet").stale?
+    assert_equal "stale", Card::AutomaticWait::Summary.new(@card.reload).human
+  end
+
+  test "a human question on expired evidence prevails, keeps the expiry, and ending it leaves the follow-up stale" do
+    expired = { producer: "monitor", state: "monitoring", run_id: "mon-1", next_check_at: nil, valid_until: "2026-11-11T18:20:00Z" }
+    declare(body(**expired), key: "monitor:fleet")
+    travel 30.minutes
+
+    question = declare(body(**expired, expected_revision: 1, human_condition: "required"), key: "monitor:fleet")
+    assert_equal :updated, question.status
+    summary = Card::AutomaticWait::Summary.new(@card.reload)
+    assert_equal "required", summary.human
+    assert summary.waits.sole.stale?
+    assert_equal Time.utc(2026, 11, 11, 18, 20, 0), wait("monitor:fleet").valid_until
+
+    assert_equal :revision_mismatch, declare(body(**expired, expected_revision: 1, human_condition: "pending"), key: "monitor:fleet").code
+    assert_equal :run_conflict, declare(body(**expired, expected_revision: 2, run_id: "mon-1b"), key: "monitor:fleet").code
+
+    answered = declare(body(**expired, expected_revision: 2, human_condition: "not_required"), key: "monitor:fleet")
+    assert_equal :updated, answered.status
+    assert_equal "stale", Card::AutomaticWait::Summary.new(@card.reload).human
+    assert_equal Time.utc(2026, 11, 11, 18, 20, 0), wait("monitor:fleet").valid_until
+    assert_equal 3, wait("monitor:fleet").revision
   end
 
   test "the owner clears a pending human decision that closing kept on the card, while it stays closed" do
@@ -195,7 +229,6 @@ class Card::AutomaticWait::DeclarationTest < ActiveSupport::TestCase
     [ [ "valid_until", "mañana", "invalid_date" ],
       [ "valid_until", "2026-11-11 19:00:00", "invalid_date" ],
       [ "valid_until", 1794420000, "invalid_date" ],
-      [ "valid_until", "2026-11-11T17:59:00Z", "out_of_range" ],
       [ "valid_until", "2026-11-12T18:00:01Z", "out_of_range" ],
       [ "next_check_at", "2026-11-11T17:58:00Z", "out_of_range" ],
       [ "next_check_at", "2026-11-11T20:00:00Z", "out_of_range" ],
@@ -203,6 +236,10 @@ class Card::AutomaticWait::DeclarationTest < ActiveSupport::TestCase
       result = declare(body(name.to_sym => value))
       assert_includes result.details, { attribute: name, code: code }, "#{name}=#{value}"
     end
+
+    # Expired evidence: its next check may be past, but never after the evidence itself.
+    result = declare(body(valid_until: "2026-11-11T17:30:00Z", next_check_at: "2026-11-11T17:40:00Z"))
+    assert_includes result.details, { attribute: "next_check_at", code: "out_of_range" }
 
     assert_equal 0, @card.automatic_waits.count
   end

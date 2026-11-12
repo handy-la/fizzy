@@ -137,6 +137,18 @@ class Cards::AutomaticWaitsControllerTest < ActionDispatch::IntegrationTest
     assert_equal "card_closed", response.parsed_body["error"]
   end
 
+  # Handy #2314 — authoring answers: docs/test-audits/handy-2314.md.
+  test "expired evidence is published as stale with its original date" do
+    put card_automatic_wait_path(@card, "monitor:fleet"), headers: json_headers, env: @write,
+      params: body("producer" => "monitor", "state" => "monitoring", "next_check_at" => "2026-11-11T17:20:00Z",
+        "valid_until" => "2026-11-11T17:30:00Z", "human_condition" => "pending").to_json
+
+    assert_response :created
+    assert_equal "pending", response.parsed_body.dig("summary", "human")
+    wait = response.parsed_body["waits"].sole
+    assert_equal [ "2026-11-11T17:30:00.000000Z", "stale", "overdue" ], wait.values_at("valid_until", "freshness", "review")
+  end
+
   test "clearing a key that was never declared is not found" do
     delete card_automatic_wait_path(@card, "ci:nunca"), headers: json_headers, env: @write,
       params: { epoch: 0, expected_revision: 1, owner: "dedalo:handy", run_id: "ci-1", run_sequence: 1 }.to_json

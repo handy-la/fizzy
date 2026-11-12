@@ -288,6 +288,10 @@ propagación. Una prueba de sistema nueva usa el driver común: otra clase con
 `driven_by :selenium, using: :headless_chrome` comparte el driver que
 `CodeBlockCopyTest` cierra, y Chrome muere en la suite completa. Contrato:
 `docs/automatic-waits.md`; evidencia: `docs/test-audits/handy-2306.md`.
+Un `valid_until` pasado es evidencia vencida, no un error: guárdalo con su
+fecha original y nunca lo renueves. Así el productor actualiza un pendiente
+humano sin simular otro reporte del monitor. Evidencia:
+`docs/test-audits/handy-2314.md`.
 
 ## Pegado en pruebas de sistema
 

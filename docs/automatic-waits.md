@@ -58,15 +58,50 @@ de 8 KiB como máximo y **ninguna propiedad fuera de la lista**.
 | `reason` | texto ≤ 200 | sí | Motivo visible en la tarjeta. |
 | `expected_event` | texto ≤ 200 | sí | Evento que se espera; se muestra si no hay revisión programada. |
 | `next_check_at` | fecha | no | Próxima revisión. Sin ella, la espera es sólo por evento. |
-| `valid_until` | fecha | sí | Vigencia de la declaración. |
+| `valid_until` | fecha | sí | Vigencia de la evidencia del productor. Una fecha pasada es evidencia vencida (ver abajo). |
 | `human_condition` | `required` \| `pending` \| `unknown` \| `not_required` | sí | Condición humana declarada. |
 
 Un identificador cumple `^[a-z0-9][a-z0-9._:-]{0,99}$`. Una fecha es
 `AAAA-MM-DDTHH:MM:SS[.ffffff]` con zona explícita (`Z` o `±HH:MM`); una fecha
 que no existe (30 de febrero) es inválida. Los enteros son enteros JSON, no
 textos. Los límites usan el reloj del **servidor**:
-`valid_until` en `(ahora, ahora + 24 h]`; `next_check_at` en
-`[ahora − 60 s, valid_until]`.
+`valid_until` como máximo `ahora + 24 h`; si `valid_until > ahora`,
+`next_check_at` en `[ahora − 60 s, valid_until]`; si `valid_until ≤ ahora`,
+`next_check_at` como máximo `valid_until`.
+
+### Evidencia vencida y pendientes humanos (Handy #2314)
+
+`valid_until` es la fecha de la evidencia, no la fecha del envío. El productor
+envía siempre la fecha **original** de su último reporte; Fizzy nunca la
+renueva y no hay heartbeat implícito.
+
+- **El reporte venció antes del primer envío.** El `PUT` con un
+  `valid_until` pasado se acepta (`created` o `updated`). La espera queda
+  `freshness: "stale"` desde la primera escritura y la tarjeta muestra
+  «Seguimiento desactualizado», sin una vigencia inventada.
+- **Una pregunta humana aparece sobre una evidencia vencida.** El owner
+  envía la misma ejecución (`run_id`, `run_sequence`) y el mismo
+  `valid_until` original, con el `human_condition` nuevo y la revisión que
+  leyó. `required` o `pending` prevalece en `summary.human`; la fila sigue
+  `stale`.
+- **El pendiente humano termina sin otro reporte.** El mismo envío con
+  `not_required` (o `unknown`): `summary.human` vuelve a `stale`, porque la
+  evidencia sigue vencida. Sólo un reporte nuevo del monitor, con su propia
+  fecha, la hace vigente otra vez.
+
+`updated_at` es la hora de la escritura en el servidor, no la hora de un
+reporte. Una fecha antigua sólo hace que la espera se lea vencida: no da
+vigencia, no reanuda trabajo y no implica éxito. Época, revisión, owner,
+ejecución, idempotencia, cierre y reapertura se aplican igual que a cualquier
+escritura.
+
+**Compatibilidad.** El cambio sólo amplía lo aceptado: todo cuerpo que antes
+daba 2xx da el mismo resultado. Antes, un `valid_until ≤ ahora` (y un
+`next_check_at` anterior a `ahora − 60 s` con esa vigencia) era 422
+`out_of_range`; ahora se guarda como evidencia vencida. No hay propiedades,
+códigos ni campos de respuesta nuevos. Un productor que dependía de ese 422
+para no publicar una vigencia vencida debe comprobarla él mismo antes del
+`PUT`. El límite superior (`ahora + 24 h`) no cambia.
 
 El texto no lleva saltos de línea, espacios al borde ni caracteres de control,
 y se rechaza (`sensitive_text`) si tiene forma de secreto, token o comando:
@@ -152,7 +187,8 @@ decide en este orden:
    escribió con el mismo cuerpo y su revisión es `expected_revision + 1`, la
    respuesta es 200 `replayed` con la fila guardada. Nada cambia.
 2. **Límites de fecha** (sólo `PUT`): `valid_until` y `next_check_at` contra
-   el reloj del servidor, 422 `out_of_range`. Van después del paso 1: un
+   el reloj del servidor, 422 `out_of_range`. Una vigencia pasada no es un
+   error: es evidencia vencida. Van después del paso 1: un
    reintento cuyas fechas ya pasaron sigue siendo `replayed`. El formato de la
    fecha se valida antes, sin bloqueo.
 3. **Tarjeta cerrada** (sólo `PUT`): 409 `card_closed`.

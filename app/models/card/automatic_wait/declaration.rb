@@ -4,7 +4,8 @@
 # and the run may only move forward. A retry of a write that already applied is
 # answered with the stored row instead of a conflict. Ordering never trusts the
 # client's clock: it rests on epoch, revision and run sequence; client dates are
-# only bounded against the server's clock.
+# only bounded against the server's clock, and a past valid_until is stored as
+# expired evidence, never renewed.
 #
 # Contract and codes: docs/automatic-waits.md.
 class Card::AutomaticWait::Declaration
@@ -239,15 +240,21 @@ class Card::AutomaticWait::Declaration
 
     # Bounds against the server's clock, checked under the lock and only for a
     # write that is not a retry. A missing next_check_at is an event-only wait.
+    #
+    # A valid_until already past is expired evidence, kept with its original
+    # date: the wait is stale from the first write, and a producer can still
+    # update its human condition without renewing a report the monitor never
+    # made (Handy #2314). Only the future is bounded, so a date can never claim
+    # more validity than the horizon. A next check of expired evidence is only
+    # bounded by that evidence.
     def validate_time_ranges
       valid_until = parse_time(@body["valid_until"])
       next_check_at = parse_time(@body["next_check_at"]) unless @body["next_check_at"].nil?
+      expired = valid_until <= @now
 
       errors = []
-      if valid_until <= @now || valid_until > @now + MAX_HORIZON
-        errors << error("valid_until", :out_of_range)
-      end
-      if next_check_at && (next_check_at < @now - CLOCK_SKEW || next_check_at > valid_until)
+      errors << error("valid_until", :out_of_range) if valid_until > @now + MAX_HORIZON
+      if next_check_at && (next_check_at > valid_until || (!expired && next_check_at < @now - CLOCK_SKEW))
         errors << error("next_check_at", :out_of_range)
       end
       errors
