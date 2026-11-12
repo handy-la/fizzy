@@ -78,6 +78,53 @@ class PowerThroughTest < ApplicationSystemTestCase
     assert_equal [ "Uno." ], replies(cards(:text))
   end
 
+  test "a retry whose earlier attempt landed the edited text moves on without a second comment" do
+    visit_queue
+    write "Uno."
+    page.execute_script(<<~JS)
+      window.realFetch = window.fetch
+      window.fetch = async (url, options) => {
+        if (options?.method !== "POST") return window.realFetch(url, options)
+        window.posts = (window.posts || 0) + 1
+        if (window.posts === 1) throw new TypeError("Failed to fetch")
+        await window.realFetch(url, options)
+        throw new TypeError("Failed to fetch")
+      }
+    JS
+
+    send_reply
+    assert_selector ".power-through__error", text: "No sabemos si tu respuesta se publicó"
+    find(".power-through__composer lexxy-editor [contenteditable='true']").send_keys(" Dos.")
+    send_reply
+    assert_selector ".power-through__error", text: "No sabemos si tu respuesta se publicó"
+    assert_equal [ "Uno. Dos." ], replies(cards(:text))
+
+    page.execute_script("window.fetch = window.realFetch")
+    send_reply
+    assert_selector "[data-power-through-composer-target=notice]", text: "cambió mientras escribías"
+    send_reply
+
+    assert_focused_card cards(:logo)
+    assert_equal [ "Uno. Dos." ], replies(cards(:text))
+  end
+
+  test "after changing stages, the next card follows the stages chosen now" do
+    visit_queue
+    write "Uno."
+
+    find(".power-through__stages summary").click
+    uncheck "Triage"
+    click_button "Aplicar"
+    assert_selector ".power-through__stages summary strong", exact_text: "In progress"
+    assert_selector ".power-through__composer lexxy-editor", text: "Uno."
+
+    send_reply
+
+    assert_selector ".power-through__empty"
+    assert_selector ".power-through__stages summary strong", exact_text: "In progress"
+    assert_equal [ "Uno." ], replies(cards(:text))
+  end
+
   test "a request that changes while someone writes is flagged and the draft is kept" do
     visit_queue
     write "Uno."

@@ -43,9 +43,14 @@ la página avanza sólo cuando el servidor confirma el comentario.
 Cada respuesta lleva un `client_token` hasta que el servidor la resuelve; un
 reintento (doble clic, timeout, respuesta perdida) con el mismo token devuelve
 el comentario existente (200) en vez de crear otro. El índice único
-`comments(card_id, creator_id, client_token)` cierra la carrera. Si el texto
-cambió tras un intento cuyo resultado se perdió y ese intento sí llegó, la
-página lo dice y no avanza.
+`comments(card_id, creator_id, client_token)` cierra la carrera. La página
+avanza sólo si el texto del comentario confirmado es el que tiene el editor;
+si no (se escribió durante el envío, o llegó una versión anterior), conserva
+el editor y el borrador y lo dice.
+
+El editor es un elemento permanente de Turbo: conserva los atributos de la
+página que lo pintó. Lo que cambia con la página (la URL de avance, la huella)
+se lee de `#power_through_state`, que sí se actualiza.
 
 Antes de publicar, la página vuelve a leer el veredicto
 (`/boards/:id/power_through/cards/:number.json`). Si la huella cambió desde

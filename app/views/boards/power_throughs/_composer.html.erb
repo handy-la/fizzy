@@ -11,7 +11,6 @@
               local_save_legacy_key_value: legacy_comment_draft_key(card),
               power_through_composer_state_url_value: board_power_through_card_path(card.board, card.number, format: :json),
               power_through_composer_fingerprint_value: fingerprint,
-              power_through_composer_next_url_value: next_url,
               power_through_composer_draft_key_value: comment_draft_key(card),
               power_through_composer_token_key_value: "power-through-token:#{Current.user.id}:#{card.id}",
               action: "submit->power-through-composer#submit turbo:morph@window->power-through-composer#revalidate keydown.tab@document->ai-suggestion#intent keydown.ctrl+enter->form#debouncedSubmit:prevent keydown.meta+enter->form#debouncedSubmit:prevent" } do |form| %>

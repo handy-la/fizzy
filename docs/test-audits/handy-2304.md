@@ -196,3 +196,26 @@ el texto escrito durante el envío sigue protegido (ronda 2).
 - Cuatro respuestas: contrato, un comentario publicado no queda listo para
   publicarse otra vez; regresión, quitar el vaciado; cobertura, ninguna prueba
   volvía a la misma tarjeta; seam, ninguno.
+
+## Ronda 5: reconciliación contra el comentario confirmado
+
+Revisión 4 sobre `1df946afc857b4b323e69cb8b9fc1a4da3cafb44` (ronda concedida
+por una persona): gate de Dédalo 4→1→1→2. Los dos bloqueantes nuevos tienen
+la misma raíz: el editor permanente guardaba datos de la primera vez que se
+pintó. La comparación del reintento usaba el texto del primer intento, no el
+del comentario que el servidor confirmó; y la URL de avance seguía siendo la
+de las etapas anteriores después de cambiarlas. Rediseño: el envío compara el
+`plain_text` del comentario que devuelve el servidor con el texto actual del
+editor, y la URL de avance se lee de `#power_through_state`.
+
+- Comando: `PARALLEL_WORKERS=1 bin/rails test test/system/power_through_test.rb -n "/edited text moves on|stages chosen now/"`,
+  con `power_through_composer_controller.js`, `_card.html.erb` y
+  `_composer.html.erb` de `1df946afc857b4b323e69cb8b9fc1a4da3cafb44`. RED:
+  salida 1, «2 tests, 2 failures»: no avanza a la tarjeta #1 tras el
+  reintento que confirmó el texto editado, y no llega a la cola vacía de las
+  etapas nuevas. GREEN (archivo completo): salida 0, «11 tests, 0 failures».
+- Cuatro respuestas: contrato, avanzar sólo con el texto confirmado y con las
+  etapas vigentes; regresiones, comparar contra el primer intento o leer la URL
+  del editor permanente; cobertura, ninguna prueba editaba entre dos intentos
+  perdidos ni cambiaba etapas con un borrador; seam, el mismo reemplazo de
+  `window.fetch` de las otras pruebas de red.

@@ -15,7 +15,7 @@ const TIMEOUT = 20_000
 
 export default class extends Controller {
   static targets = [ "input", "submit", "notice", "error" ]
-  static values = { stateUrl: String, fingerprint: String, nextUrl: String, draftKey: String, tokenKey: String }
+  static values = { stateUrl: String, fingerprint: String, draftKey: String, tokenKey: String }
 
   #busy = false
   #seen = null
@@ -79,9 +79,7 @@ export default class extends Controller {
 
   async #post() {
     const body = new FormData(this.element)
-    const html = body.get("comment[body]") || ""
-    const attempt = this.#attemptFor(html)
-    body.set("comment[client_token]", attempt.token)
+    body.set("comment[client_token]", this.#token())
 
     let response
     try {
@@ -95,48 +93,67 @@ export default class extends Controller {
       return
     }
 
-    if (response.status === 200 && attempt.html !== html) {
+    if (response.ok) {
       this.#settle()
-      this.#show(this.noticeTarget, "Tu respuesta anterior ya estaba publicada. Los cambios que hiciste después no se enviaron: revisa el contexto antes de enviar otra.")
-    } else if (response.ok) {
-      this.#done(html)
+      await this.#confirmed(response)
     } else {
       if (response.status < 500) this.#settle()
       this.#show(this.errorTarget, `No se publicó tu respuesta (error ${response.status}). Tu texto sigue aquí.`)
     }
   }
 
-  // Text typed while the post was on its way is not part of the comment: it
-  // stays in the editor and in the draft, and the page does not move on.
-  #done(sent) {
-    this.#settle()
+  // The server answers with the comment that landed under this token: the
+  // one just created (201) or one an earlier attempt already left (200). The
+  // page moves on only when that comment is what the editor holds now; any
+  // other text was not published and stays in the editor and the draft.
+  async #confirmed(response) {
+    let landed = null
+    try { landed = (await response.json())?.body?.plain_text } catch {}
 
-    if (this.inputTarget.value === sent) {
+    if (landed != null && this.#sameText(landed, this.#editorText)) {
       // The next card can be this same one (an approval stage keeps it
       // queued for review), and its permanent editor survives the visit:
       // a published reply must not stay there, ready to post again.
       this.inputTarget.value = ""
       this.#forget(this.draftKeyValue)
       this.#show(this.noticeTarget, "Respuesta publicada.")
-      Turbo.visit(this.nextUrlValue)
+      Turbo.visit(this.#nextUrl)
     } else {
       this.#write(this.draftKeyValue, this.inputTarget.value, { raw: true })
-      this.#show(this.noticeTarget, "Se publicó tu respuesta. Lo que escribiste mientras se enviaba sigue aquí, sin publicar.")
+      this.#show(this.noticeTarget, response.status === 201
+        ? "Se publicó tu respuesta. Lo que escribiste mientras se enviaba sigue aquí, sin publicar."
+        : "Ya estaba publicada una versión anterior de tu respuesta. El texto del editor no se envió: revisa el contexto antes de enviar otra.")
     }
+  }
+
+  get #editorText() {
+    return new DOMParser().parseFromString(this.inputTarget.value || "", "text/html").body.textContent
+  }
+
+  // Rich text and its plain rendering differ only in spacing.
+  #sameText(a, b) {
+    return a.replace(/\s+/g, "") === b.replace(/\s+/g, "")
+  }
+
+  // Read from the page as it is now, not from this editor: the editor is
+  // permanent and keeps the attributes of the page that first drew it, so a
+  // change of stages would otherwise send the person back to the old ones.
+  get #nextUrl() {
+    return document.getElementById("power_through_state")?.dataset.nextUrl || window.location.href
   }
 
   // One token per reply until the server settles it: an attempt whose answer
   // was lost keeps its token even if the text is edited, so a retry can never
   // post a second comment next to one that already landed. It lives in memory
   // and, when the browser allows storage, across reloads.
-  #attemptFor(html) {
-    const saved = this.#attempt || this.#read(this.tokenKeyValue)
-    if (saved?.token) return (this.#attempt = saved)
-
-    const token = "pt-" + Array.from(crypto.getRandomValues(new Uint8Array(16)), byte => byte.toString(16).padStart(2, "0")).join("")
-    this.#attempt = { token, html }
-    this.#write(this.tokenKeyValue, this.#attempt)
-    return this.#attempt
+  #token() {
+    this.#attempt ||= this.#read(this.tokenKeyValue)
+    if (!this.#attempt?.token) {
+      const token = "pt-" + Array.from(crypto.getRandomValues(new Uint8Array(16)), byte => byte.toString(16).padStart(2, "0")).join("")
+      this.#attempt = { token }
+      this.#write(this.tokenKeyValue, this.#attempt)
+    }
+    return this.#attempt.token
   }
 
   #settle() {
