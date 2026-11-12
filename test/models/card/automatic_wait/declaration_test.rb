@@ -240,6 +240,19 @@ class Card::AutomaticWait::DeclarationTest < ActiveSupport::TestCase
     assert_equal :too_many_waits, declare(body, key: "ci:one-more").code
   end
 
+  test "declaring a cleared key again counts against the active limit" do
+    declare(body, key: "ci:reused")
+    clear(clear_body, key: "ci:reused")
+    Card::AutomaticWait::Declaration::MAX_ACTIVE_PER_CARD.times do |index|
+      assert_equal :created, declare(body, key: "ci:job-#{index}").status
+    end
+
+    reactivated = declare(body(expected_revision: 2, run_sequence: 2, run_id: "ci-2"), key: "ci:reused")
+
+    assert_equal :too_many_waits, reactivated.code
+    assert_equal Card::AutomaticWait::Declaration::MAX_ACTIVE_PER_CARD, @card.automatic_waits.active.count
+  end
+
   test "writing never touches the card's activity, column or closure" do
     assert_no_changes -> { @card.reload.slice(:last_active_at, :column_id, :board_id, :status) } do
       declare(body)

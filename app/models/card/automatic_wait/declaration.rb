@@ -80,7 +80,7 @@ class Card::AutomaticWait::Declaration
       next conflict(:revision_mismatch, wait: wait) unless @body["expected_revision"] == (wait&.revision || 0)
 
       if wait
-        refusal = refuse_takeover(wait)
+        refusal = refuse_takeover(wait) || refuse_reactivation(wait)
         next refusal if refusal
       elsif (limit = refuse_new_key)
         next limit
@@ -146,6 +146,11 @@ class Card::AutomaticWait::Declaration
       elsif @body["run_sequence"] == wait.run_sequence && @body["run_id"] != wait.run_id
         conflict(:run_conflict, wait: wait)
       end
+    end
+
+    # Declaring a tombstone again makes it active, so it counts like a new key.
+    def refuse_reactivation(wait)
+      conflict(:too_many_waits) if wait.retired? && @card.automatic_waits.active.count >= MAX_ACTIVE_PER_CARD
     end
 
     def refuse_new_key

@@ -164,7 +164,8 @@ respuestas de arriba): dos casos nuevos, «a retry is recognised after its
 dates have passed…» y «the owner clears a pending human decision that closing
 kept on the card…». Regresión que detectan: los dos defectos citados.
 
-- **RED:** `declaration.rb` de `233b93c5c` con la prueba nueva:
+- **RED:** `declaration.rb` del commit revisado en la ronda 1,
+  `233b93c5c642149f7260b9b8832535a4fd1bc140` (sin la corrección), con la prueba nueva:
   `bin/rails test test/models/card/automatic_wait/declaration_test.rb -n "/retry is recognised after|clears a pending human decision/"`,
   salida 1; 2 casos, 2 fallos por aserción (`Expected: :replayed, Actual:
   :invalid`; `Expected: :cleared, Actual: :conflict`). Log local:
@@ -172,3 +173,26 @@ kept on the card…». Regresión que detectan: los dos defectos citados.
 - **GREEN:** el mismo comando con la corrección, salida 0; 2 casos, 15
   aserciones. Log local: `.context/handy-2306-green-r1.log`. Archivos del
   contrato: 40 casos, 0 fallos.
+
+## Ronda 2 de revisión: un bloqueante por gate
+
+Sobre `2e2215dc999de42afc20b0da17db256e64036bb2`, cada gate dio FAIL con un
+bloqueante (2→1 en los dos):
+
+1. Gate de Dédalo: volver a declarar una clave limpia no contaba contra el
+   límite de 20 esperas activas. Corrección: `refuse_reactivation` aplica el
+   límite cuando una lápida vuelve a estar activa.
+2. `bin/signoff`: la evidencia RED de la ronda 1 no daba el SHA completo.
+   Corregido arriba.
+
+Autoría (amplía `declaration_test.rb`, mismo contrato): el caso «declaring a
+cleared key again counts against the active limit». Regresión: reactivar una
+lápida con 20 esperas activas deja 21.
+
+- **RED:** `declaration.rb` de `2e2215dc999de42afc20b0da17db256e64036bb2` con
+  la prueba nueva:
+  `bin/rails test test/models/card/automatic_wait/declaration_test.rb -n "/counts against the active limit/"`,
+  salida 1; 1 caso, 1 fallo por aserción (`Expected: :too_many_waits, Actual:
+  :updated`). Log local: `.context/handy-2306-red-r2.log`.
+- **GREEN:** el mismo comando con la corrección, salida 0. Log local:
+  `.context/handy-2306-green-r2.log`.
