@@ -66,12 +66,17 @@ class Card::PendingRequest
   end
 
   # Changes when anything a person reads before answering changes: a new
-  # comment, another stage, the verdict or the set of open questions.
+  # comment, another stage, the verdict, the set of open questions or the
+  # text of one of them.
   def fingerprint
-    Digest::SHA256.hexdigest([ status, reason_code, requests.map(&:id), @last_comment_id, card.column_id, card.closed? ].to_json)[0, 16]
+    Digest::SHA256.hexdigest([ status, reason_code, request_revisions, @last_comment_id, card.column_id, card.closed? ].to_json)[0, 16]
   end
 
   private
+    def request_revisions
+      requests.map { |comment| [ comment.id, Digest::SHA256.hexdigest(comment.body.to_s) ] }
+    end
+
     def evaluate(comments)
       @last_comment_id = comments.last&.id
 

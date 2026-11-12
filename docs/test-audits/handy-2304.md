@@ -120,3 +120,30 @@ BUNDLE_GEMFILE=Gemfile bin/rails test …`, SQLite.
 - El teclado virtual de un celular real: se comprobó el diseño a 390 px y el
   límite de altura del editor, no un dispositivo.
 - La integración con el reloj de Dédalo #2302: todavía no existe en Fizzy.
+
+## Ronda 2: bloqueantes de la revisión
+
+Revisión 1 sobre `0d517bf97`: el gate de Dédalo dio 4 bloqueantes y
+`bin/signoff` 2 (los mismos dos más dos propios del gate). Cada corrección
+tiene su prueba; RED contra los archivos de `0d517bf97`, GREEN con el cambio.
+
+- **El refresco cambiaba la tarjeta enfocada al entrar sin `card`.** Ahora la
+  página redirige a la misma URL con la tarjeta fijada. Prueba:
+  `power_throughs_controller_test.rb` «entering without a card pins…». RED:
+  `Expected response to be a <3XX: redirect>, but was a <200: OK>`.
+- **Un fallo al leer el veredicto permitía publicar.** `#verified` sólo deja
+  enviar si leyó una huella igual a la que la persona vio; un error detiene el
+  envío y lo dice. Prueba de sistema «a verdict that cannot be read…». RED:
+  no aparece el error y el comentario se publica.
+- **El texto escrito durante el envío se perdía.** Al confirmar, si el editor
+  ya no es el texto enviado, se guarda como borrador y la página no avanza.
+  Prueba de sistema «text typed while the reply is on its way…». RED: la
+  página avanza con «Respuesta publicada.».
+- **La huella no detectaba una pregunta editada.** Incluye un resumen del
+  texto de cada pregunta abierta. Prueba: `pending_request_test.rb` «the
+  fingerprint changes when an open question is edited». RED: la huella no
+  cambia.
+
+Las cuatro pruebas cumplen las cuatro respuestas de la ficha de su archivo:
+el contrato es el de esta página, ningún seam nuevo (las de sistema reemplazan
+`window.fetch` como la prueba de respuesta perdida).

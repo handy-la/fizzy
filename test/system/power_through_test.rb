@@ -81,6 +81,43 @@ class PowerThroughTest < ApplicationSystemTestCase
     assert_equal [ "Uno." ], replies(cards(:text))
   end
 
+  test "a verdict that cannot be read stops the post and keeps the draft" do
+    visit_queue
+    write "Uno."
+    page.execute_script(<<~JS)
+      window.realFetch = window.fetch
+      window.fetch = (url, options) => String(url).includes("/power_through/cards/") ? Promise.reject(new TypeError("Failed to fetch")) : window.realFetch(url, options)
+    JS
+
+    send_reply
+
+    assert_selector ".power-through__error", text: "no envié tu respuesta"
+    assert_focused_card cards(:text)
+    assert_empty replies(cards(:text))
+    assert_selector ".power-through__composer lexxy-editor", text: "Uno."
+  end
+
+  test "text typed while the reply is on its way stays unsent in the editor" do
+    visit_queue
+    write "Uno."
+    page.execute_script(<<~JS)
+      window.realFetch = window.fetch
+      window.fetch = async (url, options) => {
+        if (options?.method === "POST") await new Promise(resolve => setTimeout(resolve, 1500))
+        return window.realFetch(url, options)
+      }
+    JS
+
+    send_reply
+    assert_button "Enviar y siguiente", disabled: true
+    find(".power-through__composer lexxy-editor [contenteditable='true']").send_keys(" Y algo más.")
+
+    assert_selector "[data-power-through-composer-target=notice]", text: "sigue aquí, sin publicar"
+    assert_focused_card cards(:text)
+    assert_equal [ "Uno." ], replies(cards(:text))
+    assert_includes local_storage("comment-#{users(:david).id}-#{cards(:text).id}"), "Y algo más."
+  end
+
   test "chosen stages are remembered per account, person and board, and a corrupt value is ignored" do
     in_progress = columns(:writebook_in_progress).id
     visit board_power_through_url(@board, stages: in_progress)
@@ -114,7 +151,7 @@ class PowerThroughTest < ApplicationSystemTestCase
     end
 
     def visit_queue
-      visit board_power_through_url(@board, stages: @stages)
+      visit board_power_through_url(@board, stages: @stages, card: cards(:text).number)
     end
 
     def open_from_board

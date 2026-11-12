@@ -11,8 +11,14 @@ class Boards::PowerThroughsControllerTest < ActionDispatch::IntegrationTest
     cards(:text).comments.create!(body: "❓ ¿Uno o dos?#{MARKER}", creator: users(:jz))
   end
 
-  test "shows the first card that waits, with its request" do
+  test "entering without a card pins the first card that waits in the URL" do
     get board_power_through_path(@board)
+
+    assert_redirected_to board_power_through_path(@board, card: cards(:text).number)
+  end
+
+  test "shows the focused card that waits, with its request" do
+    get board_power_through_path(@board, card: cards(:text).number)
 
     assert_response :success
     assert_select ".power-through__title", text: /#3\s+The text is too small/

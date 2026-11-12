@@ -7,6 +7,8 @@ class Boards::PowerThroughsController < ApplicationController
     @power_through = Board::PowerThrough.new(board: @board, user: Current.user, stage_ids: params[:stages])
     @explicit_stages = params[:stages].present?
     set_focus
+
+    pin_focus if params[:card].blank? && @entry
   end
 
   private
@@ -16,5 +18,12 @@ class Boards::PowerThroughsController < ApplicationController
       end
 
       @entry ||= @power_through.entries.first unless @resolved_card
+    end
+
+    # The focused card is always in the URL: a live refresh reloads this same
+    # URL, and without it a card answered elsewhere would hand the screen to
+    # the next card while someone writes.
+    def pin_focus
+      redirect_to board_power_through_path(@board, stages: params[:stages].presence, card: @entry.card.number)
     end
 end

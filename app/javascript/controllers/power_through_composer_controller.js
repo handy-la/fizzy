@@ -6,9 +6,11 @@ import { getMetaContent } from "helpers/meta_helpers"
 //
 // Every reply carries a client token until the server settles it: a second
 // click, a retry after a timeout or a lost answer reuse it, and the server
-// returns the comment that already landed instead of posting it twice. Before posting it
-// reads the card's verdict again; if the request changed while the person
-// wrote, it warns once and keeps the draft.
+// returns the comment that already landed instead of posting it twice.
+//
+// Before every post it reads the card's verdict again: if the request changed
+// since the person last saw it, it warns and keeps the draft, and if the
+// verdict cannot be read it does not post at all.
 const TIMEOUT = 20_000
 
 export default class extends Controller {
@@ -16,8 +18,12 @@ export default class extends Controller {
   static values = { stateUrl: String, fingerprint: String, nextUrl: String, draftKey: String, tokenKey: String }
 
   #busy = false
-  #acknowledged = false
+  #seen = null
   #attempt = null
+
+  connect() {
+    this.#seen = this.fingerprintValue
+  }
 
   async submit(event) {
     event.preventDefault()
@@ -29,8 +35,7 @@ export default class extends Controller {
     this.#hide(this.errorTarget)
 
     try {
-      if (await this.#changed()) return
-      await this.#post()
+      if (await this.#verified()) await this.#post()
     } finally {
       this.#busy = false
       if (this.element.isConnected) this.submitTarget.disabled = this.inputTarget.isEmpty
@@ -44,29 +49,32 @@ export default class extends Controller {
   // A live refresh of the page changed what the card asks.
   revalidate() {
     const state = document.getElementById("power_through_state")
-    if (state && state.dataset.fingerprint !== this.fingerprintValue && !this.#acknowledged) {
+    if (state && state.dataset.fingerprint !== this.#seen) {
       this.#show(this.noticeTarget, this.#changeMessage(state.dataset.status))
     }
   }
 
   // Private
 
-  async #changed() {
-    if (this.#acknowledged) return false
-
+  // True only when the card's current verdict is the one the person saw. A
+  // change is shown and becomes the one seen, so the next press sends; a
+  // verdict that cannot be read stops the post.
+  async #verified() {
+    let state
     try {
       const response = await this.#fetch(this.stateUrlValue, { headers: { Accept: "application/json" } })
-      if (!response.ok) return false
-
-      const state = await response.json()
-      if (state.fingerprint === this.fingerprintValue) return false
-
-      this.#acknowledged = true
-      this.#show(this.noticeTarget, `${this.#changeMessage(state.status)} Pulsa «Enviar y siguiente» otra vez para enviar tu respuesta.`)
-      return true
+      if (!response.ok) throw new Error(`HTTP ${response.status}`)
+      state = await response.json()
     } catch {
+      this.#show(this.errorTarget, "No pude comprobar si la tarjeta cambió, así que no envié tu respuesta. Tu texto sigue aquí: intenta otra vez.")
       return false
     }
+
+    if (state.fingerprint === this.#seen) return true
+
+    this.#seen = state.fingerprint
+    this.#show(this.noticeTarget, `${this.#changeMessage(state.status)} Pulsa «Enviar y siguiente» otra vez para enviar tu respuesta.`)
+    return false
   }
 
   async #post() {
@@ -91,18 +99,26 @@ export default class extends Controller {
       this.#settle()
       this.#show(this.noticeTarget, "Tu respuesta anterior ya estaba publicada. Los cambios que hiciste después no se enviaron: revisa el contexto antes de enviar otra.")
     } else if (response.ok) {
-      this.#done()
+      this.#done(html)
     } else {
       if (response.status < 500) this.#settle()
       this.#show(this.errorTarget, `No se publicó tu respuesta (error ${response.status}). Tu texto sigue aquí.`)
     }
   }
 
-  #done() {
+  // Text typed while the post was on its way is not part of the comment: it
+  // stays in the editor and in the draft, and the page does not move on.
+  #done(sent) {
     this.#settle()
-    this.#forget(this.draftKeyValue)
-    this.#show(this.noticeTarget, "Respuesta publicada.")
-    Turbo.visit(this.nextUrlValue)
+
+    if (this.inputTarget.value === sent) {
+      this.#forget(this.draftKeyValue)
+      this.#show(this.noticeTarget, "Respuesta publicada.")
+      Turbo.visit(this.nextUrlValue)
+    } else {
+      this.#write(this.draftKeyValue, this.inputTarget.value, { raw: true })
+      this.#show(this.noticeTarget, "Se publicó tu respuesta. Lo que escribiste mientras se enviaba sigue aquí, sin publicar.")
+    }
   }
 
   // One token per reply until the server settles it: an attempt whose answer
@@ -150,8 +166,8 @@ export default class extends Controller {
     try { return JSON.parse(localStorage.getItem(key)) } catch { return null }
   }
 
-  #write(key, value) {
-    try { localStorage.setItem(key, JSON.stringify(value)) } catch {}
+  #write(key, value, { raw = false } = {}) {
+    try { localStorage.setItem(key, raw ? value : JSON.stringify(value)) } catch {}
   }
 
   #forget(key) {

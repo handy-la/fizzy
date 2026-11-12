@@ -144,6 +144,14 @@ class Card::PendingRequestTest < ActiveSupport::TestCase
     assert_not_equal before, pending.fingerprint
   end
 
+  test "the fingerprint changes when an open question is edited" do
+    question = dedalo "❓ ¿Qué opción?"
+    before = pending.fingerprint
+    question.update!(body: "❓ ¿Qué opción, la A o la B?#{MARKER}")
+
+    assert_not_equal before, pending.fingerprint
+  end
+
   private
     def pending
       Card::PendingRequest.for(@card.reload)
