@@ -308,6 +308,17 @@ a ese campo. Un clic en el contenedor
 seguido de un pegado a `document.activeElement` puede enviarlo a `BODY`.
 Evidencia: `docs/test-audits/handy-568.md`.
 
+## Comentario nuevo y borrador local
+
+Después de publicar, el formulario se renueva con `turbo_stream.replace`, no
+con `update`: el partial ya trae el `div` con el mismo id, y `update` lo anida.
+Con el DOM anidado, el refresco de la tarjeta no empareja el `div`
+`data-turbo-permanent` y `local-save#restoreContent` sobrescribe el editor con
+un borrador más viejo. `local-save` nunca vuelve a guardar el contenido de un
+envío exitoso: el guardado diferido de 300 ms lo reescribía y el comentario
+anterior volvía al editor (Handy #2341). Evidencia:
+`docs/test-audits/handy-2341.md`.
+
 ## Fireworks y RubyLLM
 
 RubyLLM 2.0 usa Responses como protocolo OpenAI predeterminado. Para Fireworks,

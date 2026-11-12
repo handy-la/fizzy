@@ -1,31 +1,43 @@
 import { Controller } from "@hotwired/stimulus"
-import { debounce, nextFrame } from "helpers/timing_helpers"
+import { nextFrame } from "helpers/timing_helpers"
 
+const SAVE_DELAY = 300
+
+// Keeps an unsent draft in localStorage. The draft is the text the person
+// still has to send: once a submission succeeds, an editor holding exactly that
+// content has no draft, so a later restore cannot bring the sent text back.
 export default class extends Controller {
   static targets = ["input"]
   static values = { key: String }
 
-  initialize() {
-    this.save = debounce(this.save.bind(this), 300)
-  }
+  #saveTimer = null
+  #submittedContent = null
+  #sentContent = null
 
   connect() {
     this.restoreContent()
   }
 
-  submit({ detail: { success } }) {
-    if (success) {
-      this.#clear()
-    }
+  disconnect() {
+    if (this.#saveTimer) this.#saveNow()
   }
 
   save() {
-    const content = this.inputTarget.value
-    if (content && !this.inputTarget.isEmpty) {
-      localStorage.setItem(this.keyValue, content)
-    } else {
-      this.#clear()
-    }
+    clearTimeout(this.#saveTimer)
+    this.#saveTimer = setTimeout(() => this.#saveNow(), SAVE_DELAY)
+  }
+
+  // The draft becomes exactly the submitted content until the response arrives.
+  submitStart() {
+    this.#cancelSave()
+    this.#submittedContent = this.inputTarget.value
+    this.#store(this.#submittedContent)
+  }
+
+  submit({ detail: { success } }) {
+    this.#sentContent = success ? this.#submittedContent : null
+    this.#submittedContent = null
+    this.#saveNow()
   }
 
   async restoreContent() {
@@ -40,6 +52,30 @@ export default class extends Controller {
   }
 
   // Private
+
+  #saveNow() {
+    this.#cancelSave()
+    const content = this.inputTarget.value
+
+    if (content === this.#sentContent) {
+      this.#clear()
+    } else {
+      this.#store(content)
+    }
+  }
+
+  #store(content) {
+    if (content && !this.inputTarget.isEmpty) {
+      localStorage.setItem(this.keyValue, content)
+    } else {
+      this.#clear()
+    }
+  }
+
+  #cancelSave() {
+    clearTimeout(this.#saveTimer)
+    this.#saveTimer = null
+  }
 
   #clear() {
     localStorage.removeItem(this.keyValue)
