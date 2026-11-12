@@ -145,3 +145,30 @@ Antes (base, sin cambios) y después, en 1280×900 y 390×844, tema claro. La
 actualización en vivo se probó con la API real: un `PUT` con token de escritura
 local agregó un tercer motivo a una tarjeta con cero comentarios; la página no
 se recargó (marca en `window`) y siguió con un botón por tarjeta.
+
+## Ronda 1 de revisión: dos bloqueantes
+
+Los dos gates (Dédalo y `bin/signoff`) dieron FAIL en la ronda 1 con los
+mismos dos bloqueantes sobre `233b93c5c`:
+
+1. Una espera retirada por la tarjeta con pendiente humano no se podía limpiar
+   (`already_retired`). Corrección: la limpieza sólo rechaza una espera ya
+   limpiada por su owner; una retirada por la tarjeta se limpia, también con
+   la tarjeta cerrada.
+2. Los límites de fecha contra el reloj se comprobaban antes de reconocer un
+   reintento, y un reintento tardío recibía 422. Corrección: el formato se
+   valida sin bloqueo; los límites, bajo el bloqueo y después del reintento.
+
+Autoría (amplía `declaration_test.rb`, mismo contrato y mismas cuatro
+respuestas de arriba): dos casos nuevos, «a retry is recognised after its
+dates have passed…» y «the owner clears a pending human decision that closing
+kept on the card…». Regresión que detectan: los dos defectos citados.
+
+- **RED:** `declaration.rb` de `233b93c5c` con la prueba nueva:
+  `bin/rails test test/models/card/automatic_wait/declaration_test.rb -n "/retry is recognised after|clears a pending human decision/"`,
+  salida 1; 2 casos, 2 fallos por aserción (`Expected: :replayed, Actual:
+  :invalid`; `Expected: :cleared, Actual: :conflict`). Log local:
+  `.context/handy-2306-red-r1.log`.
+- **GREEN:** el mismo comando con la corrección, salida 0; 2 casos, 15
+  aserciones. Log local: `.context/handy-2306-green-r1.log`. Archivos del
+  contrato: 40 casos, 0 fallos.

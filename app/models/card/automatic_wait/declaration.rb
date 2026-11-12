@@ -66,9 +66,14 @@ class Card::AutomaticWait::Declaration
     serialize do |fence|
       wait = @card.automatic_waits.find_by(key: @key)
 
+      # A retry is recognised before the clock bounds, which belong to a new
+      # write: its dates may have passed since the write it repeats applied.
       if wait&.active? && wait.request_digest == digest && wait.revision == @body["expected_revision"] + 1 && wait.epoch == fence.epoch
         next result(:replayed, wait)
       end
+
+      time_errors = validate_time_ranges
+      next invalid(time_errors) if time_errors.any?
 
       next conflict(:card_closed) if card_closed?
       next conflict(:epoch_mismatch, fence: fence) unless @body["epoch"] == fence.epoch
@@ -101,7 +106,9 @@ class Card::AutomaticWait::Declaration
       next conflict(:epoch_mismatch, fence: fence) unless @body["epoch"] == fence.epoch
       next conflict(:revision_mismatch, wait: wait) unless @body["expected_revision"] == wait.revision
       next conflict(:owner_mismatch, wait: wait) unless @body["owner"] == wait.owner
-      next conflict(:already_retired, wait: wait) if wait.retired?
+      # A wait the card retired can still be cleared by its owner: it may keep a
+      # human condition on view, and the clear is what takes it off the card.
+      next conflict(:already_retired, wait: wait) if wait.cleared?
       next conflict(:stale_run, wait: wait) if @body["run_sequence"] < wait.run_sequence
       next conflict(:run_conflict, wait: wait) if @body["run_sequence"] == wait.run_sequence && @body["run_id"] != wait.run_id
 
@@ -202,7 +209,7 @@ class Card::AutomaticWait::Declaration
 
       errors << error("human_condition", :unknown_value) unless @body["human_condition"].in?(Card::AutomaticWait::HUMAN_CONDITIONS)
       %w[ reason expected_event ].each { |name| errors.concat(validate_text(name)) }
-      errors.concat(validate_times)
+      errors.concat(validate_time_formats)
     end
 
     def validate_text(name)
@@ -216,22 +223,26 @@ class Card::AutomaticWait::Declaration
       end
     end
 
-    def validate_times
+    def validate_time_formats
+      errors = []
+      errors << error("valid_until", :invalid_date) unless parse_time(@body["valid_until"])
+      if !@body["next_check_at"].nil? && parse_time(@body["next_check_at"]).nil?
+        errors << error("next_check_at", :invalid_date)
+      end
+      errors
+    end
+
+    # Bounds against the server's clock, checked under the lock and only for a
+    # write that is not a retry. A missing next_check_at is an event-only wait.
+    def validate_time_ranges
       valid_until = parse_time(@body["valid_until"])
-      next_check_at = @body["next_check_at"].nil? ? nil : parse_time(@body["next_check_at"])
+      next_check_at = parse_time(@body["next_check_at"]) unless @body["next_check_at"].nil?
 
       errors = []
-      if valid_until.nil?
-        errors << error("valid_until", :invalid_date)
-      elsif valid_until <= @now || valid_until > @now + MAX_HORIZON
+      if valid_until <= @now || valid_until > @now + MAX_HORIZON
         errors << error("valid_until", :out_of_range)
       end
-
-      if @body["next_check_at"].nil?
-        # An event-only wait: shows its expected event, no date.
-      elsif next_check_at.nil?
-        errors << error("next_check_at", :invalid_date)
-      elsif next_check_at < @now - CLOCK_SKEW || (valid_until && next_check_at > valid_until)
+      if next_check_at && (next_check_at < @now - CLOCK_SKEW || next_check_at > valid_until)
         errors << error("next_check_at", :out_of_range)
       end
       errors

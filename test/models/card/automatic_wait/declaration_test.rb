@@ -20,6 +20,38 @@ class Card::AutomaticWait::DeclarationTest < ActiveSupport::TestCase
     assert_equal 1, @card.automatic_waits.count
   end
 
+  test "a retry is recognised after its dates have passed; a new write with those dates is not" do
+    declare(body)
+
+    travel 5.minutes
+    assert_equal :replayed, declare(body).status
+
+    travel 1.hour
+    assert_equal :replayed, declare(body).status
+
+    late = declare(body(expected_revision: 1, reason: "CI de rails, otra escritura"))
+    assert_equal :invalid, late.status
+    assert_includes late.details, { attribute: "valid_until", code: "out_of_range" }
+    assert_equal 1, wait.revision
+  end
+
+  test "the owner clears a pending human decision that closing kept on the card, while it stays closed" do
+    declare(body(human_condition: "pending"))
+    @card.close
+    assert_equal [ "ci:rails-test" ], Card::AutomaticWait::Summary.new(@card.reload).waits.map(&:key)
+
+    other = clear(clear_body(epoch: 1, expected_revision: 2, owner: "otro:producto"))
+    assert_equal :owner_mismatch, other.code
+
+    cleared = clear(clear_body(epoch: 1, expected_revision: 2))
+    assert_equal :cleared, cleared.status
+    assert_empty Card::AutomaticWait::Summary.new(@card.reload).waits
+    assert_predicate @card, :closed?
+
+    assert_equal :replayed, clear(clear_body(epoch: 1, expected_revision: 2)).status
+    assert_equal :already_retired, clear(clear_body(epoch: 1, expected_revision: 3)).code
+  end
+
   test "a concurrent writer that read the same revision loses the compare-and-swap" do
     declare(body)
 

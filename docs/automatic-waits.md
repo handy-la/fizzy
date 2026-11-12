@@ -132,7 +132,7 @@ fecha), `overdue` o `event_only`. `freshness` es `current` o `stale`.
 | 409 | `run_conflict` | Misma `run_sequence` con otro `run_id` | Descartar. |
 | 409 | `retired_run` | Reclamar una lápida con la misma ejecución | Usar una ejecución nueva. |
 | 409 | `owner_mismatch` | Otro owner, o relevo sin `replaces_owner` correcto | No reintentar. |
-| 409 | `already_retired` | Limpiar una espera ya limpia o retirada | Nada. |
+| 409 | `already_retired` | Limpiar una espera que su owner ya limpió | Nada. |
 | 409 | `card_closed` | Declarar en una tarjeta cerrada | No reintentar. |
 | 413 | `body_too_large` | Más de 8 KiB | Corregir. |
 | 415 | `json_required` | Otro tipo de contenido | Corregir. |
@@ -151,12 +151,16 @@ decide en este orden:
 1. **Reintento idéntico.** Si la fila activa (o la lápida, en `DELETE`) se
    escribió con el mismo cuerpo y su revisión es `expected_revision + 1`, la
    respuesta es 200 `replayed` con la fila guardada. Nada cambia.
-2. **Tarjeta cerrada** (sólo `PUT`): 409 `card_closed`.
-3. **Época:** distinta de la actual, 409 `epoch_mismatch`.
-4. **Revisión** (comparación atómica): distinta de la guardada (`0` si no
+2. **Límites de fecha** (sólo `PUT`): `valid_until` y `next_check_at` contra
+   el reloj del servidor, 422 `out_of_range`. Van después del paso 1: un
+   reintento cuyas fechas ya pasaron sigue siendo `replayed`. El formato de la
+   fecha se valida antes, sin bloqueo.
+3. **Tarjeta cerrada** (sólo `PUT`): 409 `card_closed`.
+4. **Época:** distinta de la actual, 409 `epoch_mismatch`.
+5. **Revisión** (comparación atómica): distinta de la guardada (`0` si no
    existe), 409 `revision_mismatch`.
-5. **Owner y ejecución:** ver abajo.
-6. Escribe, con revisión + 1, la época actual y el tablero actual.
+6. **Owner y ejecución:** ver abajo.
+7. Escribe, con revisión + 1, la época actual y el tablero actual.
 
 La fecha del cliente nunca ordena: el orden es época, revisión y
 `run_sequence`. `updated_at` es del servidor.
@@ -185,7 +189,9 @@ fila de protección no se borra mientras exista la tarjeta.
 Un pendiente humano no se pierde: una espera retirada por la tarjeta con
 `human_condition` `required` o `pending` se sigue mostrando («Seguimiento
 retirado: …» y la condición humana) hasta que su owner declare o limpie esa
-clave otra vez. Retirar nunca reanuda trabajo ni implica éxito.
+clave otra vez. La limpieza de una espera retirada por la tarjeta es válida,
+también con la tarjeta cerrada: el owner lee la época y la revisión actuales y
+envía `DELETE`. Retirar nunca reanuda trabajo ni implica éxito.
 
 ## Reinicio del productor
 
