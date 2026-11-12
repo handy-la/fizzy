@@ -87,6 +87,12 @@ muestra como revisión `due` u `overdue`, también con la evidencia vigente.
 - **Una pregunta humana aparece con la evidencia vigente y la revisión ya
   pasada.** El mismo envío se acepta: la fila sigue `current`, su revisión
   sigue `due` u `overdue` y la pregunta prevalece.
+- **El primer envío llega después de su revisión y antes de su vigencia**
+  (Handy #2337). Se acepta (`created`) con las dos fechas como llegan: la fila
+  queda `current` y `due` u `overdue`, y `summary.next_check_at` no la cuenta,
+  porque sólo publica revisiones futuras. Un `pending` o `required` del mismo
+  envío prevalece de inmediato. Al vencer `valid_until`, la fila pasa a
+  `stale` sin ninguna escritura: Fizzy no inventa un heartbeat.
 - **El pendiente humano termina sin otro reporte.** El mismo envío con
   `not_required` (o `unknown`): `summary.human` vuelve a `stale`, porque la
   evidencia sigue vencida. Sólo un reporte nuevo del monitor, con su propia

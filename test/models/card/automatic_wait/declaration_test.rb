@@ -69,6 +69,32 @@ class Card::AutomaticWait::DeclarationTest < ActiveSupport::TestCase
     assert_equal 3, wait("monitor:fleet").revision
   end
 
+  # Handy #2337 — authoring answers: docs/test-audits/handy-2337.md.
+  test "a first write that arrives after its next check keeps both dates, and its expiry writes nothing" do
+    late = { producer: "monitor", state: "monitoring", run_id: "mon-1",
+      next_check_at: "2026-11-11T17:58:00Z", valid_until: "2026-11-11T18:05:00Z" }
+    kept = -> {
+      assert_equal [ Time.utc(2026, 11, 11, 17, 58, 0), Time.utc(2026, 11, 11, 18, 5, 0) ],
+        wait("monitor:fleet").slice(:next_check_at, :valid_until).values
+    }
+
+    assert_equal :created, declare(body(**late, human_condition: "pending"), key: "monitor:fleet").status
+    kept.call
+    assert_equal "due", wait("monitor:fleet").review
+    assert_not wait("monitor:fleet").stale?
+    assert_equal "pending", Card::AutomaticWait::Summary.new(@card.reload).human
+
+    assert_equal :updated, declare(body(**late, expected_revision: 1, human_condition: "not_required"), key: "monitor:fleet").status
+    kept.call
+    assert_equal "not_required", Card::AutomaticWait::Summary.new(@card.reload).human
+
+    travel 6.minutes
+    kept.call
+    assert_equal 2, wait("monitor:fleet").revision
+    assert_equal [ true, "overdue" ], [ wait("monitor:fleet").stale?, wait("monitor:fleet").review ]
+    assert_equal "stale", Card::AutomaticWait::Summary.new(@card.reload).human
+  end
+
   test "the owner clears a pending human decision that closing kept on the card, while it stays closed" do
     declare(body(human_condition: "pending"))
     @card.close

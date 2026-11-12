@@ -149,6 +149,20 @@ class Cards::AutomaticWaitsControllerTest < ActionDispatch::IntegrationTest
     assert_equal [ "2026-11-11T17:30:00.000000Z", "stale", "overdue" ], wait.values_at("valid_until", "freshness", "review")
   end
 
+  # Handy #2337 — authoring answers: docs/test-audits/handy-2337.md.
+  test "a late first write keeps its overdue review and current evidence" do
+    put card_automatic_wait_path(@card, "monitor:fleet"), headers: json_headers, env: @write,
+      params: body("producer" => "monitor", "state" => "monitoring", "next_check_at" => "2026-11-11T17:50:00Z",
+        "valid_until" => "2026-11-11T18:05:00Z", "human_condition" => "pending").to_json
+
+    assert_response :created
+    assert_equal "pending", response.parsed_body.dig("summary", "human")
+    assert_nil response.parsed_body.dig("summary", "next_check_at")
+    wait = response.parsed_body["waits"].sole
+    assert_equal [ "2026-11-11T17:50:00.000000Z", "2026-11-11T18:05:00.000000Z", "current", "overdue" ],
+      wait.values_at("next_check_at", "valid_until", "freshness", "review")
+  end
+
   test "clearing a key that was never declared is not found" do
     delete card_automatic_wait_path(@card, "ci:nunca"), headers: json_headers, env: @write,
       params: { epoch: 0, expected_revision: 1, owner: "dedalo:handy", run_id: "ci-1", run_sequence: 1 }.to_json
