@@ -23,6 +23,8 @@ class ActiveRecordSqlRedactionTest < ActiveSupport::TestCase
     "active_storage_variant_records.variation_digest" => "a digest of the image transformation",
     "audits1984_auditor_tokens.token_digest" => "a digest; the token itself isn't stored",
     "board_publications.key" => "a published board's public link, which is in its URL path anyway",
+    "card_automatic_waits.key" => "a producer's name for a wait (ci:rails-test), which is in its URL path anyway",
+    "card_automatic_waits.request_digest" => "a SHA-256 digest of the producer's declaration, to recognise a retry",
     "card_suggestion_requests.token" => "a request revision; the channel also requires the owning user, account and card access",
     "filters.params_digest" => "a digest of the filter's parameters",
     "oauth_clients.client_secret_digest" => "a digest; the secret itself isn't stored",

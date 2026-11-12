@@ -123,6 +123,8 @@ Rails.application.routes.draw do
       resource :self_assignment, only: :create
       resources :steps
       resources :taggings
+      resources :automatic_waits, only: %i[ index update destroy ], param: :key,
+        format: false, defaults: { format: :json }, constraints: { key: /[^\/]+/ }
 
       resources :comments do
         resources :reactions, module: :comments

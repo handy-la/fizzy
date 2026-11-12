@@ -273,6 +273,22 @@ local actualiza ese contenedor mediante Turbo Stream. Ponerla sólo en `show`
 deja el título anterior después de editar, aunque el refresco remoto funcione.
 Evidencia: `docs/test-audits/handy-1217.md`.
 
+## Espera automática en tarjetas
+
+Fizzy guarda y muestra las esperas que declara Dédalo; nunca las infiere de
+comentarios, antigüedad o columna, y mostrarlas no cambia la tarjeta. Sólo
+`Card::AutomaticWait::Declaration` escribe: bloqueo de tarjeta, época,
+revisión esperada y ejecución creciente. Una limpieza deja una lápida; no
+borres filas, porque la lápida impide que una ejecución retirada reclame la
+espera. La lista de vistas previas usa `cached: true`: el texto que depende
+de la hora lo recalcula `automatic_wait_controller.js`. En el tablero, la
+lista navegable convierte Enter en un clic en el enlace de la tarjeta: un
+control dentro de la vista previa maneja Enter y Espacio y detiene la
+propagación. Una prueba de sistema nueva usa el driver común: otra clase con
+`driven_by :selenium, using: :headless_chrome` comparte el driver que
+`CodeBlockCopyTest` cierra, y Chrome muere en la suite completa. Contrato:
+`docs/automatic-waits.md`; evidencia: `docs/test-audits/handy-2306.md`.
+
 ## Pegado en pruebas de sistema
 
 Lexxy 1.0.1 emite `lexxy:change` antes de programar su validez para el siguiente

@@ -33,6 +33,7 @@ module Card::Closeable
       transaction do
         not_now&.destroy
         create_closure! user: user
+        retire_automatic_waits("closed")
         track_event :closed, creator: user
       end
     end
@@ -42,6 +43,7 @@ module Card::Closeable
     if closed?
       transaction do
         closure&.destroy
+        retire_automatic_waits("reopened")
         track_event :reopened, creator: user
       end
     end

@@ -1,0 +1,44 @@
+<%# Automatic waits declared by an external producer (docs/automatic-waits.md).
+    Rendering only reads: it never changes the card, its column or a person's pending work. %>
+<% summary = card.automatic_wait_summary %>
+<% if summary.present? %>
+  <% popover_id = dom_id(card, :automatic_waits) %>
+  <div class="card__automatic-waits card__automatic-waits--<%= summary.human %>"
+       data-controller="automatic-wait"
+       data-automatic-wait-human-value="<%= summary.declared_human %>"
+       data-automatic-wait-overdue-after-value="<%= Card::AutomaticWait::OVERDUE_AFTER.to_i %>">
+    <button type="button" class="card__automatic-waits-button"
+            aria-label="<%= automatic_wait_label(summary) %>" aria-controls="<%= popover_id %>" aria-expanded="false"
+            data-automatic-wait-target="button"
+            data-action="mouseenter->automatic-wait#show mouseleave->automatic-wait#hideUnlessPinned focus->automatic-wait#show blur->automatic-wait#hideUnlessPinned click->automatic-wait#toggle keydown.enter->automatic-wait#toggle keydown.space->automatic-wait#toggle keydown.esc->automatic-wait#dismiss">
+      <%= icon_tag "clock" %>
+    </button>
+
+    <div id="<%= popover_id %>" popover="auto" class="card__automatic-waits-popover"
+         data-automatic-wait-target="popover" data-action="toggle->automatic-wait#popoverToggled">
+      <strong class="card__automatic-waits-title"><%= automatic_wait_title(summary) %></strong>
+      <p class="card__automatic-waits-human" data-automatic-wait-target="human"><%= automatic_wait_human_text(summary.human) %></p>
+
+      <ul class="card__automatic-waits-list">
+        <% summary.waits.each do |wait| %>
+          <li class="card__automatic-waits-item" data-automatic-wait-target="wait"
+              data-status="<%= wait.status %>"
+              data-next-check-at="<%= wait.next_check_at&.utc&.iso8601 %>"
+              data-valid-until="<%= wait.valid_until.utc.iso8601 %>"
+              data-expected-event="<%= wait.expected_event %>">
+            <span class="card__automatic-waits-reason"><%= wait.reason %></span>
+            <% if wait.active? %>
+              <span class="card__automatic-waits-review" data-role="review"><%= automatic_wait_review_text(wait, now: summary.now) %></span>
+            <% else %>
+              <span class="card__automatic-waits-review"><%= AutomaticWaitsHelper::AUTOMATIC_WAIT_RETIRED_TEXT.fetch(wait.retired_reason) %></span>
+            <% end %>
+            <% if (human_text = AutomaticWaitsHelper::AUTOMATIC_WAIT_WAIT_HUMAN_TEXT[wait.human_condition]) %>
+              <span class="card__automatic-waits-attention"><%= human_text %></span>
+            <% end %>
+            <span class="card__automatic-waits-stale" data-role="stale" <%= "hidden" unless wait.stale?(summary.now) %>>Seguimiento desactualizado</span>
+          </li>
+        <% end %>
+      </ul>
+    </div>
+  </div>
+<% end %>

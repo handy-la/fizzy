@@ -54,6 +54,7 @@
   .icon--check-circle { --svg: url("check-circle.svg "); }
   .icon--check-all { --svg: url("check-all.svg "); }
   .icon--clipboard { --svg: url("clipboard.svg "); }
+  .icon--clock { --svg: url("clock.svg "); }
   .icon--close { --svg: url("close.svg "); }
   .icon--close-circle { --svg: url("close-circle.svg "); }
   .icon--collapse { --svg: url("collapse.svg "); }

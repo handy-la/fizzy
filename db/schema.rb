@@ -10,7 +10,7 @@
 #
 # It's strongly recommended that you check this file into your version control system.
 
-ActiveRecord::Schema[8.2].define(version: 2026_10_19_150000) do
+ActiveRecord::Schema[8.2].define(version: 2026_11_11_180000) do
   create_table "accesses", id: :uuid, charset: "utf8mb4", collation: "utf8mb4_0900_ai_ci", force: :cascade do |t|
     t.datetime "accessed_at"
     t.uuid "account_id", null: false
@@ -219,6 +219,45 @@ ActiveRecord::Schema[8.2].define(version: 2026_10_19_150000) do
     t.datetime "updated_at", null: false
     t.index ["account_id"], name: "index_card_activity_spikes_on_account_id"
     t.index ["card_id"], name: "index_card_activity_spikes_on_card_id", unique: true
+  end
+
+  create_table "card_automatic_wait_fences", id: :uuid, charset: "utf8mb4", collation: "utf8mb4_0900_ai_ci", force: :cascade do |t|
+    t.uuid "account_id", null: false
+    t.uuid "card_id", null: false
+    t.bigint "epoch", default: 0, null: false
+    t.string "reason", limit: 32
+    t.datetime "created_at", null: false
+    t.datetime "updated_at", null: false
+    t.index ["account_id"], name: "index_card_automatic_wait_fences_on_account_id"
+    t.index ["card_id"], name: "index_card_automatic_wait_fences_on_card_id", unique: true
+  end
+
+  create_table "card_automatic_waits", id: :uuid, charset: "utf8mb4", collation: "utf8mb4_0900_ai_ci", force: :cascade do |t|
+    t.uuid "account_id", null: false
+    t.uuid "board_id", null: false
+    t.uuid "card_id", null: false
+    t.datetime "created_at", null: false
+    t.uuid "declared_by_id"
+    t.bigint "epoch", null: false
+    t.string "expected_event", limit: 200, null: false
+    t.string "human_condition", limit: 16, null: false
+    t.string "key", limit: 64, null: false
+    t.datetime "next_check_at"
+    t.string "owner", limit: 100, null: false
+    t.string "producer", limit: 16, null: false
+    t.string "reason", limit: 200, null: false
+    t.string "request_digest", limit: 64, null: false
+    t.datetime "retired_at"
+    t.string "retired_reason", limit: 32
+    t.bigint "revision", default: 1, null: false
+    t.string "run_id", limit: 100, null: false
+    t.bigint "run_sequence", null: false
+    t.string "state", limit: 16, null: false
+    t.datetime "updated_at", null: false
+    t.datetime "valid_until", null: false
+    t.index ["account_id"], name: "index_card_automatic_waits_on_account_id"
+    t.index ["card_id", "key"], name: "index_card_automatic_waits_on_card_id_and_key", unique: true
+    t.index ["card_id", "retired_at"], name: "index_card_automatic_waits_on_card_id_and_retired_at"
   end
 
   create_table "card_goldnesses", id: :uuid, charset: "utf8mb4", collation: "utf8mb4_0900_ai_ci", force: :cascade do |t|

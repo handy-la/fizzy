@@ -22,6 +22,7 @@ a bot to perform various actions for you.
 - [Rich Text](sections/rich_text.md)
 - [Exports](sections/exports.md)
 - [Webhooks](sections/webhooks.md)
+- [Automatic waits](../automatic-waits.md) (Handy fork: Dédalo's CI and monitors; contract in Spanish)
 
 ## Authentication
 
