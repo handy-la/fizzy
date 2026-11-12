@@ -117,6 +117,37 @@ class PowerThroughTest < ApplicationSystemTestCase
     assert_equal [ "Uno." ], replies(cards(:text))
   end
 
+  test "a rejected retry keeps the token of an earlier attempt that may have landed" do
+    visit_queue
+    write "Uno."
+    page.execute_script(<<~JS)
+      window.realFetch = window.fetch
+      window.posts = 0
+      window.fetch = async (url, options) => {
+        if (options?.method !== "POST") return window.realFetch(url, options)
+        window.posts += 1
+        if (window.posts === 1) {
+          await window.realFetch(url, options)
+          throw new TypeError("Failed to fetch")
+        }
+        if (window.posts === 2) return new Response("", { status: 422 })
+        return window.realFetch(url, options)
+      }
+    JS
+
+    send_reply
+    assert_selector ".power-through__error", text: "No sabemos si tu respuesta se publicó"
+    # The comment that landed changed the card: this retry only warns.
+    send_reply
+    assert_selector "[data-power-through-composer-target=notice]", text: "cambió mientras escribías"
+    send_reply
+    assert_selector ".power-through__error", text: "error 422"
+    send_reply
+
+    assert_focused_card cards(:logo)
+    assert_equal [ "Uno." ], replies(cards(:text))
+  end
+
   test "a retry whose earlier attempt landed the edited text moves on without a second comment" do
     visit_queue
     write "Uno."

@@ -344,3 +344,26 @@ Método: controlador JS y `_composer` de
 - Sin prueba de sistema: el editor nuevo que ya comprueba el veredicto cuando
   llega el aviso. La ventana es la lectura del veredicto; el código lo cubre
   con `#landedElsewhere`, revisado a mano.
+
+## Ronda 10: un rechazo no suelta el token de un envío que pudo llegar
+
+Gate de Dédalo, ronda 9 sobre `2543f5807122462e6fec5d857ebddf5057151977`
+(ronda concedida por una persona). El bloqueante: el primer POST guarda el
+comentario y su respuesta se pierde; un reintento recibe 422 (por ejemplo,
+CSRF tras volver a entrar en otra pestaña) y el compositor soltaba el token
+con cualquier 4xx. El siguiente envío usaba otro token y duplicaba.
+Corrección: sólo una confirmación del servidor libera el token; un error
+rechaza ese intento y lo dice, y reintentar con el mismo token es seguro.
+
+Método: `power_through_composer_controller.js` de
+`2543f5807122462e6fec5d857ebddf5057151977`, prueba nueva, restauración.
+
+- `PARALLEL_WORKERS=1 SAAS=false BUNDLE_GEMFILE=Gemfile bin/rails test test/system/power_through_test.rb -n "/rejected retry/"`
+  sin la corrección: salida 1, `Expected: ["Uno."]`, `Actual: ["Uno.", "Uno."]`.
+  GREEN del archivo de sistema completo: salida 0, «17 tests, 0 failures».
+- Cuatro respuestas: contrato, un rechazo de un intento nunca permite
+  duplicar uno anterior con el mismo token; regresión, volver a soltar el
+  token con un 4xx; cobertura, ninguna prueba combinaba respuesta perdida y
+  rechazo; seam, el reemplazo de `window.fetch`, que aquí devuelve un 422 sin
+  llegar al servidor. La aserción del 422 sólo busca «error 422», presente en
+  el mensaje anterior y en el nuevo, para que el RED dependa del contrato.

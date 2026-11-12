@@ -128,8 +128,11 @@ export default class extends Controller {
       // the token stays, so a retry after signing in cannot duplicate.
       this.#show(this.errorTarget, "No pude confirmar si tu respuesta se publicó: la sesión pudo haber terminado. Tu texto sigue aquí. Recarga la página y vuelve a enviar: no se duplica.")
     } else {
-      if (response.status < 500) this.#settle()
-      this.#show(this.errorTarget, `No se publicó tu respuesta (error ${response.status}). Tu texto sigue aquí.`)
+      // A rejection speaks for this attempt only: an earlier one under the
+      // same token may have landed while its answer was lost. The token is
+      // kept until the server confirms a comment, so a retry replays it
+      // instead of posting a second one.
+      this.#show(this.errorTarget, `Este envío no se publicó (error ${response.status}). Tu texto sigue aquí. Reintentar es seguro: no se duplica.`)
     }
   }
 

@@ -52,7 +52,10 @@ exactamente el HTML de esa petición; un 200 de repetición lleva
 anterior. La página avanza sólo si lo publicado es exactamente el HTML que
 tiene el editor; si no, conserva el editor y el borrador y lo dice. Cualquier
 otra respuesta correcta (una redirección por sesión vencida) no confirma nada
-y conserva el token.
+y conserva el token. Un error (4xx o 5xx) tampoco lo suelta: sólo rechaza ese
+intento, y uno anterior con el mismo token pudo haberse publicado (por ejemplo,
+un 422 de CSRF tras volver a entrar en otra pestaña). Sólo una confirmación
+del servidor libera el token.
 
 El editor es un elemento permanente de Turbo: conserva los atributos de la
 página que lo pintó. Lo que cambia con la página (la URL de avance, la huella)
