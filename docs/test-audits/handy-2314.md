@@ -78,6 +78,45 @@ Caso: «expired evidence is published as stale with its original date».
 - **GREEN:** el mismo comando con la corrección, salida 0: 44 casos, 246
   aserciones, 0 fallos.
 
+## Corrección residual (caso de Dédalo #2302)
+
+Base: `11e2216a0098db1dd5bc9e795ccf75cb4acfce71` (`origin/main` después del primer aterrizaje). El owner
+de Dédalo #2302 reportó que una evidencia **vigente** con `next_check_at` ya
+pasado seguía recibiendo 422 `out_of_range` al reenviar sus fechas originales
+con un pendiente humano. Lo reproduje antes de editar.
+
+### Prueba nueva: «a human update on current evidence keeps its original next check, already past»
+
+- **Contrato:** con `valid_until` vigente, el owner reenvía su `next_check_at`
+  original ya pasado con otro `human_condition`; se guarda sin cambiar las
+  fechas, la revisión se lee `overdue`, la fila no está vencida y `pending`
+  prevalece. Al volver a `not_required` el resumen es `not_required` porque la
+  evidencia sigue vigente. La revisión y la ejecución siguen protegiendo
+  (`revision_mismatch`, `run_conflict`). Dueño: `validate_time_ranges`.
+- **Regresión:** volver a exigir `next_check_at ≥ ahora − 60 s` con evidencia
+  vigente (el defecto residual), o renovar esa fecha.
+- **Cobertura:** las pruebas de la primera corrección sólo usan evidencia
+  vencida; ninguna reenvía una `next_check_at` pasada con evidencia vigente.
+- **Seam:** ninguno.
+
+### Prueba cambiada
+
+«refuses invalid dates and dates outside the server's horizon»: se retira la
+fila `next_check_at 17:58 → out_of_range` (con evidencia vigente). Ese rechazo
+ya no es el contrato; la prueba nueva cubre el comportamiento que lo sustituye.
+Se conservan `next_check_at > valid_until` (vigente y vencida) y el límite
+superior de `valid_until`. Se retira la constante `CLOCK_SKEW`, que sólo usaba
+ese límite.
+
+### RED y GREEN
+
+- **RED:** `11e2216a0098db1dd5bc9e795ccf75cb4acfce71` sin el arreglo, con la prueba nueva; mismo
+  directorio, entorno y comando que arriba. Salida 1: 45 casos, 247
+  aserciones, 1 fallo: `Expected: :updated, Actual: :invalid` en la prueba
+  nueva.
+- **GREEN:** el mismo comando con el arreglo, salida 0: 45 casos, 254
+  aserciones, 0 fallos.
+
 ## No verificado
 
 - La integración real Dédalo → API → tarjeta (fuera de alcance, como en 2306).

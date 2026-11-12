@@ -17,7 +17,6 @@ class Card::AutomaticWait::Declaration
   MAX_ACTIVE_PER_CARD = 20
   MAX_ROWS_PER_CARD = 100
   MAX_HORIZON = 24.hours
-  CLOCK_SKEW = 1.minute
   MAX_INTEGER = 2**53 - 1
   MAX_TEXT = 200
 
@@ -241,22 +240,20 @@ class Card::AutomaticWait::Declaration
     # Bounds against the server's clock, checked under the lock and only for a
     # write that is not a retry. A missing next_check_at is an event-only wait.
     #
-    # A valid_until already past is expired evidence, kept with its original
-    # date: the wait is stale from the first write, and a producer can still
-    # update its human condition without renewing a report the monitor never
-    # made (Handy #2314). Only the future is bounded, so a date can never claim
-    # more validity than the horizon. A next check of expired evidence is only
-    # bounded by that evidence.
+    # Dates are the producer's evidence, kept as reported and never renewed:
+    # a valid_until already past is expired evidence, stale from the first
+    # write, and a next check already past reads as due or overdue. So a
+    # producer can update its human condition with its original dates, without
+    # inventing a report the monitor never made (Handy #2314). Only the future
+    # is bounded, so a date can never claim more validity than the horizon, and
+    # a next check never falls after the evidence it belongs to.
     def validate_time_ranges
       valid_until = parse_time(@body["valid_until"])
       next_check_at = parse_time(@body["next_check_at"]) unless @body["next_check_at"].nil?
-      expired = valid_until <= @now
 
       errors = []
       errors << error("valid_until", :out_of_range) if valid_until > @now + MAX_HORIZON
-      if next_check_at && (next_check_at > valid_until || (!expired && next_check_at < @now - CLOCK_SKEW))
-        errors << error("next_check_at", :out_of_range)
-      end
+      errors << error("next_check_at", :out_of_range) if next_check_at && next_check_at > valid_until
       errors
     end
 

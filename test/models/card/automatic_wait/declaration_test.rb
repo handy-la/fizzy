@@ -225,12 +225,36 @@ class Card::AutomaticWait::DeclarationTest < ActiveSupport::TestCase
     assert_equal 0, @card.automatic_waits.count
   end
 
+  # Handy #2314, residual of Dédalo #2302 — authoring answers: docs/test-audits/handy-2314.md.
+  test "a human update on current evidence keeps its original next check, already past" do
+    reported = { producer: "monitor", state: "monitoring", run_id: "mon-1",
+      next_check_at: "2026-11-11T18:03:00Z", valid_until: "2026-11-11T19:00:00Z" }
+    declare(body(**reported), key: "monitor:fleet")
+    travel 10.minutes
+
+    question = declare(body(**reported, expected_revision: 1, human_condition: "pending"), key: "monitor:fleet")
+    assert_equal :updated, question.status
+    summary = Card::AutomaticWait::Summary.new(@card.reload)
+    assert_equal "pending", summary.human
+    assert_equal "overdue", summary.waits.sole.review
+    assert_not summary.waits.sole.stale?
+    assert_equal [ Time.utc(2026, 11, 11, 18, 3, 0), Time.utc(2026, 11, 11, 19, 0, 0) ],
+      wait("monitor:fleet").slice(:next_check_at, :valid_until).values
+
+    assert_equal :revision_mismatch, declare(body(**reported, expected_revision: 1, human_condition: "required"), key: "monitor:fleet").code
+    assert_equal :run_conflict, declare(body(**reported, expected_revision: 2, run_id: "mon-1b"), key: "monitor:fleet").code
+
+    answered = declare(body(**reported, expected_revision: 2, human_condition: "not_required"), key: "monitor:fleet")
+    assert_equal :updated, answered.status
+    assert_equal "not_required", Card::AutomaticWait::Summary.new(@card.reload).human
+    assert_equal Time.utc(2026, 11, 11, 18, 3, 0), wait("monitor:fleet").next_check_at
+  end
+
   test "refuses invalid dates and dates outside the server's horizon" do
     [ [ "valid_until", "mañana", "invalid_date" ],
       [ "valid_until", "2026-11-11 19:00:00", "invalid_date" ],
       [ "valid_until", 1794420000, "invalid_date" ],
       [ "valid_until", "2026-11-12T18:00:01Z", "out_of_range" ],
-      [ "next_check_at", "2026-11-11T17:58:00Z", "out_of_range" ],
       [ "next_check_at", "2026-11-11T20:00:00Z", "out_of_range" ],
       [ "next_check_at", "2026-02-30T10:00:00Z", "invalid_date" ] ].each do |name, value, code|
       result = declare(body(name.to_sym => value))

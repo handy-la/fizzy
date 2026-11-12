@@ -65,25 +65,28 @@ Un identificador cumple `^[a-z0-9][a-z0-9._:-]{0,99}$`. Una fecha es
 `AAAA-MM-DDTHH:MM:SS[.ffffff]` con zona explícita (`Z` o `±HH:MM`); una fecha
 que no existe (30 de febrero) es inválida. Los enteros son enteros JSON, no
 textos. Los límites usan el reloj del **servidor**:
-`valid_until` como máximo `ahora + 24 h`; si `valid_until > ahora`,
-`next_check_at` en `[ahora − 60 s, valid_until]`; si `valid_until ≤ ahora`,
-`next_check_at` como máximo `valid_until`.
+`valid_until` como máximo `ahora + 24 h`; `next_check_at` como máximo
+`valid_until`. No hay límite en el pasado para ninguna de las dos.
 
 ### Evidencia vencida y pendientes humanos (Handy #2314)
 
-`valid_until` es la fecha de la evidencia, no la fecha del envío. El productor
-envía siempre la fecha **original** de su último reporte; Fizzy nunca la
-renueva y no hay heartbeat implícito.
+`valid_until` y `next_check_at` son fechas de la evidencia, no del envío. El
+productor envía siempre las fechas **originales** de su último reporte; Fizzy
+nunca las renueva y no hay heartbeat implícito. Una `next_check_at` pasada se
+muestra como revisión `due` u `overdue`, también con la evidencia vigente.
 
 - **El reporte venció antes del primer envío.** El `PUT` con un
   `valid_until` pasado se acepta (`created` o `updated`). La espera queda
   `freshness: "stale"` desde la primera escritura y la tarjeta muestra
   «Seguimiento desactualizado», sin una vigencia inventada.
 - **Una pregunta humana aparece sobre una evidencia vencida.** El owner
-  envía la misma ejecución (`run_id`, `run_sequence`) y el mismo
-  `valid_until` original, con el `human_condition` nuevo y la revisión que
-  leyó. `required` o `pending` prevalece en `summary.human`; la fila sigue
+  envía la misma ejecución (`run_id`, `run_sequence`) y las mismas fechas
+  originales, con el `human_condition` nuevo y la revisión que leyó.
+  `required` o `pending` prevalece en `summary.human`; la fila sigue
   `stale`.
+- **Una pregunta humana aparece con la evidencia vigente y la revisión ya
+  pasada.** El mismo envío se acepta: la fila sigue `current`, su revisión
+  sigue `due` u `overdue` y la pregunta prevalece.
 - **El pendiente humano termina sin otro reporte.** El mismo envío con
   `not_required` (o `unknown`): `summary.human` vuelve a `stale`, porque la
   evidencia sigue vencida. Sólo un reporte nuevo del monitor, con su propia
@@ -96,9 +99,11 @@ ejecución, idempotencia, cierre y reapertura se aplican igual que a cualquier
 escritura.
 
 **Compatibilidad.** El cambio sólo amplía lo aceptado: todo cuerpo que antes
-daba 2xx da el mismo resultado. Antes, un `valid_until ≤ ahora` (y un
-`next_check_at` anterior a `ahora − 60 s` con esa vigencia) era 422
-`out_of_range`; ahora se guarda como evidencia vencida. No hay propiedades,
+daba 2xx da el mismo resultado. Antes, un `valid_until ≤ ahora` o un
+`next_check_at` anterior a `ahora − 60 s` era 422 `out_of_range`; ahora se
+guardan con su fecha original. La primera corrección (`11e2216a`) sólo quitó el
+límite de `next_check_at` con la evidencia vencida; la segunda lo quita
+también con la evidencia vigente (caso residual de Dédalo #2302). No hay propiedades,
 códigos ni campos de respuesta nuevos. Un productor que dependía de ese 422
 para no publicar una vigencia vencida debe comprobarla él mismo antes del
 `PUT`. El límite superior (`ahora + 24 h`) no cambia.
