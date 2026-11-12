@@ -66,7 +66,7 @@ class Board::PowerThrough
   private
     def candidate_cards
       @candidate_cards ||= user.accessible_cards.active.where(board:).where(column_id: column_ids)
-        .includes(:column, :closure, :not_now, comments: [ :creator, :rich_text_body ])
+        .includes(:column, :closure, :not_now, :automatic_waits, comments: [ :creator, :rich_text_body ])
         .order(:number).limit(MAX_CARDS).to_a
     end
 

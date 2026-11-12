@@ -15,6 +15,13 @@
 # * A marked ⚠️ right after a person's answer (Dédalo refusing it, or asking
 #   for the rest of a partial answer) reopens what that answer closed.
 #
+# The automatic waits Dédalo declares on the card (Handy #2306,
+# docs/automatic-waits.md) are the one structured source Fizzy holds: a
+# presentable wait whose human condition is `required` or `pending` is a
+# pending decision even with no open question. An open question always comes
+# first, and a wait that asks for no one (`not_required`, `unknown`, out of
+# date) never makes a card pending by itself.
+#
 # It never reads idleness, age or the author alone as a wait. When the
 # evidence does not settle the case it answers :review ("Revisar contexto")
 # instead of guessing: an unmarked comment from the account that asks, a
@@ -30,10 +37,11 @@ class Card::PendingRequest
   REASONS = {
     requester_unmarked: "Quien pregunta escribió después sin la marca de Dédalo.",
     warning_after_answer: "Dédalo dejó un aviso después de la última respuesta.",
-    approval_without_question: "La tarjeta espera en su etapa de aprobación, pero no hay una pregunta abierta."
+    approval_without_question: "La tarjeta espera en su etapa de aprobación, pero no hay una pregunta abierta.",
+    declared_human: "Dédalo declara que esta tarjeta necesita a una persona."
   }.freeze
 
-  attr_reader :card, :status, :requests, :reason_code
+  attr_reader :card, :status, :requests, :reason_code, :waits
 
   def self.for(card, comments: nil)
     new(card, comments || card.comments.chronologically.with_rich_text_body.includes(:creator))
@@ -41,6 +49,7 @@ class Card::PendingRequest
 
   def initialize(card, comments)
     @card = card
+    @waits = []
     @status, @requests, @reason_code = evaluate(comments.to_a)
   end
 
@@ -62,7 +71,7 @@ class Card::PendingRequest
 
   # The oldest request still open: what the queue is ordered by.
   def since
-    requests.first&.created_at || card.last_active_at
+    requests.first&.created_at || waits.map(&:updated_at).min || card.last_active_at
   end
 
   # Changes when anything a person reads before answering changes: a new
@@ -74,7 +83,8 @@ class Card::PendingRequest
 
   private
     def request_revisions
-      requests.map { |comment| [ comment.id, Digest::SHA256.hexdigest(comment.body.to_s) ] }
+      requests.map { |comment| [ comment.id, Digest::SHA256.hexdigest(comment.body.to_s) ] } +
+        waits.map { |wait| [ wait.key, wait.revision ] }
     end
 
     def evaluate(comments)
@@ -125,6 +135,10 @@ class Card::PendingRequest
       verdict(open, reason, comments)
     end
 
+    def declared_human_waits
+      card.automatic_waits.select { |wait| wait.presentable? && wait.human_attention? }.sort_by(&:key)
+    end
+
     def marked?(text)
       text.rstrip.end_with?(MARKER)
     end
@@ -140,6 +154,8 @@ class Card::PendingRequest
     def verdict(open, reason, comments)
       if open.any?
         [ reason ? :review : :pending, open, reason ]
+      elsif (@waits = declared_human_waits).any?
+        [ :pending, [], :declared_human ]
       elsif card.column&.awaiting_approval?
         [ :review, Array(comments.reverse.find { |comment| marked?(comment.body.to_plain_text.to_s) }), :approval_without_question ]
       else

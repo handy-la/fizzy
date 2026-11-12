@@ -66,8 +66,15 @@ que se abrió la tarjeta, avisa una vez y conserva el borrador.
 - Almacenamiento rechazado: la página y el editor siguen funcionando; sólo no
   se guarda nada.
 
-## Reloj de espera automática (Dédalo #2302)
+## Reloj de espera automática (Dédalo #2302, Handy #2306)
 
-Cuando el reloj publique su estado en Fizzy, una intervención humana sigue
-primero: el reloj nunca oculta una pregunta abierta, y una espera automática
-sola nunca crea un pendiente. Esta versión no depende del reloj.
+Las esperas automáticas (`docs/automatic-waits.md`) son la única fuente
+estructurada que Fizzy guarda, y Power Through la lee sin escribirla:
+
+- Una pregunta abierta en los comentarios va primero.
+- Sin pregunta abierta, una espera presentable con `human_condition`
+  `required` o `pending` hace la tarjeta pendiente («Dédalo declara que esta
+  tarjeta necesita a una persona»), con su motivo y su evento.
+- Una espera `not_required`, `unknown` o vencida nunca crea un pendiente por
+  sí sola.
+- La huella incluye la clave y la revisión de cada espera declarada.

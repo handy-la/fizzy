@@ -45,6 +45,17 @@
 
     <% if request.review? %>
       <p class="power-through__review"><strong>Revisar contexto.</strong> <%= request.reason %></p>
+    <% elsif request.waits.any? %>
+      <p><%= request.reason %></p>
+      <% request.waits.each do |wait| %>
+        <div class="power-through__request">
+          <p class="power-through__request-author">
+            <strong><%= wait.human_condition == "required" ? "Requiere intervención humana" : "Hay una decisión humana pendiente" %></strong>
+          </p>
+          <p><%= wait.reason %></p>
+          <p class="txt-subtle">Espera: <%= wait.expected_event %></p>
+        </div>
+      <% end %>
     <% elsif !request.actionable? %>
       <p class="txt-subtle">No hay una pregunta abierta.</p>
     <% end %>

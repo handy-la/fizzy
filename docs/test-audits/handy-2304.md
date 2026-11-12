@@ -219,3 +219,19 @@ editor, y la URL de avance se lee de `#power_through_state`.
   del editor permanente; cobertura, ninguna prueba editaba entre dos intentos
   perdidos ni cambiaba etapas con un borrador; seam, el mismo reemplazo de
   `window.fetch` de las otras pruebas de red.
+
+### Integración con las esperas automáticas (Handy #2306)
+
+Al rebasar sobre `origin/main` llegó Handy #2306: Fizzy guarda las esperas
+automáticas que declara Dédalo, con `human_condition`. Es la fuente única que
+pedía la tarjeta, así que `Card::PendingRequest` la lee: una espera
+`required` o `pending` sin pregunta abierta es un pendiente; una pregunta
+abierta va primero; una espera `not_required` o `unknown` no crea un
+pendiente; la huella cambia con la revisión de la espera. Cuatro pruebas
+nuevas en `pending_request_test.rb`. Contrato: el de este archivo; regresión:
+ignorar la condición declarada o tratar cualquier espera como pendiente;
+cobertura: nueva; seam: ninguno, las pruebas declaran por
+`Card::AutomaticWait::Declaration`, el escritor productivo. Excepción RED:
+la condición declarada no existía en la base anterior de esta tarjeta; las
+pruebas fallarían sólo por carga. GREEN: `bin/rails test
+test/models/card/pending_request_test.rb`, salida 0, «22 tests, 0 failures».

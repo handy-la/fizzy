@@ -152,6 +152,37 @@ class Card::PendingRequestTest < ActiveSupport::TestCase
     assert_not_equal before, pending.fingerprint
   end
 
+  test "a wait where Dédalo declares a person is needed is pending without a question" do
+    wait = declare "monitor:deploy", human_condition: "required"
+
+    assert pending.pending?
+    assert_equal :declared_human, pending.reason_code
+    assert_equal [ wait ], pending.waits
+  end
+
+  test "a wait that asks for no one, or gives no evidence, is never pending by itself" do
+    declare "ci:rails"
+    declare "ci:android", human_condition: "unknown"
+
+    assert_equal :none, pending.status
+  end
+
+  test "an open question comes before a declared wait" do
+    question = dedalo "❓ ¿Despliego hoy?"
+    declare "monitor:deploy", human_condition: "pending"
+
+    assert_equal [ question ], pending.requests
+    assert_empty pending.waits
+  end
+
+  test "the fingerprint changes when a declared wait changes" do
+    declare "monitor:deploy", human_condition: "pending"
+    before = pending.fingerprint
+    declare "monitor:deploy", human_condition: "required"
+
+    assert_not_equal before, pending.fingerprint
+  end
+
   private
     def pending
       Card::PendingRequest.for(@card.reload)
@@ -168,6 +199,20 @@ class Card::PendingRequestTest < ActiveSupport::TestCase
     def comment(user, text)
       @at += 1.minute
       @card.comments.create!(body: text, created_at: @at, creator: users(user))
+    end
+
+    def declare(key, human_condition: "not_required")
+      wait = @card.automatic_waits.find_by(key: key)
+      body = {
+        "epoch" => @card.reload.automatic_wait_epoch, "expected_revision" => wait&.revision || 0,
+        "owner" => "dedalo:handy", "run_id" => "ci-1", "run_sequence" => 1,
+        "producer" => key.start_with?("ci:") ? "ci" : "monitor", "state" => key.start_with?("ci:") ? "running" : "monitoring",
+        "reason" => "Motivo #{key}", "expected_event" => "Evento de #{key}",
+        "valid_until" => 1.hour.from_now.utc.iso8601, "human_condition" => human_condition
+      }
+      result = Card::AutomaticWait::Declaration.declare(card: @card, key: key, body: body, user: users(:david))
+      raise "#{key}: #{result.code} #{result.details}" unless result.success?
+      @card.automatic_waits.find_by!(key: key)
     end
 
     def approval_column
