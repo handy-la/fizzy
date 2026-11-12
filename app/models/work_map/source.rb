@@ -81,15 +81,20 @@ class WorkMap::Source
       uri = URI.parse(@url)
       raise Failure, "invalid_url" unless uri.is_a?(URI::HTTP) && uri.host.present?
 
-      deadline = Process.clock_gettime(Process::CLOCK_MONOTONIC) + TIMEOUT
-      Net::HTTP.start(uri.host, uri.port, use_ssl: uri.scheme == "https",
-        open_timeout: TIMEOUT, read_timeout: TIMEOUT, write_timeout: TIMEOUT) do |http|
-        request = Net::HTTP::Get.new(uri.request_uri, "Accept" => "application/json", "Authorization" => "Bearer #{token}")
-        read_response(http, request, deadline)
+      request = Net::HTTP::Get.new(uri.request_uri, "Accept" => "application/json", "Authorization" => "Bearer #{token}")
+
+      # Net::HTTP's timeouts apply per phase and per read, and it retries an
+      # idempotent GET once: only the outer timeout bounds the whole read
+      # (connection, TLS, request, headers and body) to TIMEOUT (Handy #2372).
+      Timeout.timeout(TIMEOUT) do
+        Net::HTTP.start(uri.host, uri.port, use_ssl: uri.scheme == "https",
+          open_timeout: TIMEOUT, read_timeout: TIMEOUT, write_timeout: TIMEOUT) do |http|
+          read_response(http, request)
+        end
       end
     end
 
-    def read_response(http, request, deadline)
+    def read_response(http, request)
       buffer = +""
       http.request(request) do |response|
         raise Failure, "http_#{response.code.to_i}" unless response.is_a?(Net::HTTPOK)
@@ -97,7 +102,6 @@ class WorkMap::Source
         response.read_body do |chunk|
           buffer << chunk
           too_large! if buffer.bytesize > MAX_BYTES
-          raise Timeout::Error if Process.clock_gettime(Process::CLOCK_MONOTONIC) > deadline
         end
       end
       buffer

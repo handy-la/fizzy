@@ -176,9 +176,13 @@ class Webhook::Delivery < ApplicationRecord
       else
         request = Net::HTTP::Post.new(uri, self.request[:headers]).tap { |request| request.body = self.request[:payload] }
 
-        @request_deadline = Process.clock_gettime(Process::CLOCK_MONOTONIC) + 2 * ENDPOINT_TIMEOUT
-        response = http.request(request) do |net_http_response|
-          stream_body_with_limit(net_http_response)
+        # The socket timeouts apply per phase and per read: only the outer
+        # timeout bounds the whole request, connection and TLS included, to
+        # 2 × ENDPOINT_TIMEOUT (Handy #2372).
+        response = Timeout.timeout(2 * ENDPOINT_TIMEOUT) do
+          http.request(request) do |net_http_response|
+            stream_body_with_limit(net_http_response)
+          end
         end
 
         { code: response.code.to_i }
@@ -187,7 +191,7 @@ class Webhook::Delivery < ApplicationRecord
       { error: :response_too_large }
     rescue Surfguard::Unresolvable, Resolv::ResolvTimeout, Resolv::ResolvError, SocketError
       { error: :dns_lookup_failed }
-    rescue Net::OpenTimeout, Net::ReadTimeout, Errno::ETIMEDOUT
+    rescue Timeout::Error, Errno::ETIMEDOUT
       { error: :connection_timeout }
     rescue Errno::ECONNREFUSED, Errno::EHOSTUNREACH, Errno::ENETUNREACH, Errno::EADDRNOTAVAIL, Errno::EAFNOSUPPORT, Errno::ECONNRESET
       { error: :destination_unreachable }
@@ -198,7 +202,6 @@ class Webhook::Delivery < ApplicationRecord
     def stream_body_with_limit(response)
       bytes_read = 0
       response.read_body do |chunk|
-        raise Net::ReadTimeout if Process.clock_gettime(Process::CLOCK_MONOTONIC) > @request_deadline
         bytes_read += chunk.bytesize
         raise ResponseTooLarge if bytes_read > MAX_RESPONSE_SIZE
       end

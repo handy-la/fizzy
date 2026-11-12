@@ -52,6 +52,31 @@ export function chain(graph, id, direction, { onlyPending = false } = {}) {
   return seen
 }
 
+// The cards that resolving `id` would leave with no pending prerequisite,
+// directly or in turn: a dependent counts only once every pending relation
+// into it comes from `id` or from a card it releases. A dependent that still
+// waits on another card, or sits in a cycle with one, is not released.
+export function released(graph, id) {
+  const remaining = new Map()
+  const freed = new Set([ id ])
+  const queue = [ id ]
+
+  while (queue.length) {
+    for (const edge of graph.outgoing.get(queue.shift()) || []) {
+      if (edge.status !== "pending" || freed.has(edge.to)) continue
+      if (!remaining.has(edge.to)) remaining.set(edge.to, (graph.incoming.get(edge.to) || []).filter(other => other.status === "pending").length)
+      remaining.set(edge.to, remaining.get(edge.to) - 1)
+      if (remaining.get(edge.to) === 0) {
+        freed.add(edge.to)
+        queue.push(edge.to)
+      }
+    }
+  }
+
+  freed.delete(id)
+  return freed
+}
+
 export function needsHuman(node) {
   const wait = node.execution?.wait
   return !!wait && (wait.kind === "human" || HUMAN_ATTENTION.includes(wait.human))

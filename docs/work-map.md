@@ -23,7 +23,9 @@ Fizzy hace `GET` a la dirección de `WORK_MAP_SOURCE_URL`, con
 `WORK_MAP_SOURCE_TOKEN_FILE`. Si falta alguna de las dos, el mapa muestra
 «Fuente de ejecución no configurada» y sólo los datos de Fizzy.
 
-Límites del lado de Fizzy: 5 s de plazo total, 2 MiB de respuesta, 5000
+Límites del lado de Fizzy: 5 s de plazo total para toda la lectura (conexión,
+TLS, petición, cabeceras y cuerpo; un `Timeout.timeout` externo, porque los
+plazos de `Net::HTTP` son por fase y por lectura), 2 MiB de respuesta, 5000
 elementos y 5000 relaciones. Un valor fuera de contrato se descarta; un objeto
 con una clave desconocida se descarta entero. Fizzy guarda la respuesta 30 s.
 
@@ -92,6 +94,17 @@ accesibles, y las cerradas que son extremo de una relación. Una tarjeta con
 datos de Dédalo muestra su estado; una sin datos muestra «Sin información de
 ejecución», que no es lo mismo que «Sin bloqueos». Hasta 3000 tarjetas; si hay
 más, el mapa lo dice.
+
+## Selección y detalle
+
+- Un filtro que oculta la tarjeta elegida borra la selección completa: el
+  resaltado, el panel de detalle y «Enfocar cadena», que queda deshabilitado.
+- «Resolverla destrabaría N tarjetas» cuenta sólo las tarjetas que quedarían
+  sin prerrequisitos vigentes: un dependiente cuenta cuando cada relación
+  vigente hacia él viene de la tarjeta elegida o de otra que ésta libera. Un
+  dependiente que también espera a otra tarjeta no cuenta (`released` en
+  `app/javascript/helpers/work_map_graph.js`). La cadena resaltada sigue
+  mostrando todos los dependientes.
 
 ## Activación
 

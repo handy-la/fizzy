@@ -10,7 +10,7 @@ import test from "node:test"
 const path = resolve(dirname(fileURLToPath(import.meta.url)), "../../app/javascript/helpers/work_map_graph.js")
 const source = await readFile(path, "utf8")
 const graphModule = await import(`data:text/javascript;base64,${Buffer.from(source).toString("base64")}`)
-const { buildGraph, chain, visibleIds, hiddenRelations, search, layout, needsHuman, blocksOthers, NODE_WIDTH } = graphModule
+const { buildGraph, chain, released, visibleIds, hiddenRelations, search, layout, needsHuman, blocksOthers, NODE_WIDTH } = graphModule
 
 function card(product, number, extra = {}) {
   return { id: `card-${number}`, kind: "card", product, number, title: `Tarjeta ${number}`, disposition: "column", execution: null, ...extra }
@@ -43,6 +43,30 @@ test("resolving A releases its direct and transitive dependents across products"
   assert.deepEqual([ ...chain(graph, "card-3", "up") ].sort(), [ "card-1", "card-2", "card-6" ])
   assert.deepEqual([ ...chain(graph, "card-3", "up", { onlyPending: true }) ].sort(), [ "card-1", "card-2" ],
     "a satisfied relation releases nothing")
+})
+
+// Handy #2372: the count «Resolverla destrabaría N tarjetas». Authoring
+// answers: docs/test-audits/handy-2372.md.
+test("resolving a card releases only the dependents left with no other pending prerequisite", () => {
+  // 1 → 2 → 3, 1 → 4 ← 5 (5 is pending and unrelated), 2 → 6 ← 7 satisfied,
+  // 1 → 8 twice, and 3 → 9 ← 4: 9 waits on 4, which stays blocked by 5.
+  const graph = buildGraph(payload([ 1, 2, 3, 4, 5, 6, 7, 8, 9 ].map(number => card("handy", number)), [
+    edge(1, 2), edge(2, 3), edge(1, 4), edge(5, 4), edge(2, 6), edge(7, 6, "satisfied"), edge(1, 8), edge(1, 8),
+    edge(3, 9), edge(4, 9)
+  ]))
+
+  assert.deepEqual([ ...released(graph, "card-1") ].sort(), [ "card-2", "card-3", "card-6", "card-8" ])
+  assert.deepEqual([ ...chain(graph, "card-1", "down", { onlyPending: true }) ].sort(),
+    [ "card-2", "card-3", "card-4", "card-6", "card-8", "card-9" ], "the chain still shows every pending dependent")
+  assert.deepEqual([ ...released(graph, "card-5") ], [], "4 still waits on 1")
+})
+
+test("a dependent in a cycle with another card is not released", () => {
+  // 1 → 2 ⇄ 3: 2 also waits on 3, which waits on 2.
+  const graph = buildGraph(payload([ card("handy", 1), card("handy", 2), card("handy", 3) ], [ edge(1, 2), edge(2, 3), edge(3, 2) ]))
+
+  assert.deepEqual([ ...released(graph, "card-1") ], [])
+  assert.deepEqual([ ...released(graph, "card-2") ], [ "card-3" ], "3 waits only on 2, the card resolved")
 })
 
 test("a cycle ends the walk and keeps every relation", () => {

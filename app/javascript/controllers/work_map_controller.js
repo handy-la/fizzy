@@ -2,7 +2,7 @@ import { Controller } from "@hotwired/stimulus"
 import { Turbo } from "@hotwired/turbo-rails"
 import {
   NODE_WIDTH, NODE_HEIGHT, buildGraph, chain, needsHuman, blocksOthers, waitsOnOthers,
-  visibleIds, hiddenRelations, search, layout
+  visibleIds, hiddenRelations, released, search, layout
 } from "helpers/work_map_graph"
 
 // Handy #2348: draws the read-only work map and handles its navigation. It
@@ -197,7 +197,6 @@ export default class extends Controller {
 
   #draw() {
     this.visible = visibleIds(this.graph, this.#filters())
-    if (this.selected && !this.visible.has(this.selected)) this.selected = null
     this.layout = layout(this.graph, this.visible)
 
     const svg = this.svgTarget
@@ -231,7 +230,11 @@ export default class extends Controller {
     svg.append(this.viewport)
     this.#applyView()
     this.#renderStatus()
-    this.#highlight()
+
+    // A filter that hides the chosen card clears the whole selection: the
+    // panel and «Enfocar cadena» too, not only the highlight (Handy #2372).
+    if (this.selected && !this.visible.has(this.selected)) this.#select(null)
+    else this.#highlight()
   }
 
   #definitions() {
@@ -464,16 +467,16 @@ export default class extends Controller {
   #relationLists(node) {
     const before = this.graph.incoming.get(node.id) || []
     const after = this.graph.outgoing.get(node.id) || []
-    const released = chain(this.graph, node.id, "down", { onlyPending: true })
+    const freed = released(this.graph, node.id)
     const lists = []
 
     lists.push(heading("Prerrequisitos", "h3"))
     lists.push(before.length ? this.#relationList(before, edge => edge.from) : paragraph(this.#noRelations()))
     lists.push(heading("Dependientes", "h3"))
     lists.push(after.length ? this.#relationList(after, edge => edge.to) : paragraph(this.#noRelations()))
-    if (released.size) {
-      lists.push(paragraph(`Resolverla destrabaría ${released.size} ${released.size === 1 ? "tarjeta" : "tarjetas"}, directas y transitivas: ` +
-        [ ...released ].map(id => this.#label(id)).join(", ") + "."))
+    if (freed.size) {
+      lists.push(paragraph(`Resolverla destrabaría ${freed.size} ${freed.size === 1 ? "tarjeta" : "tarjetas"}, directas y transitivas: ` +
+        [ ...freed ].map(id => this.#label(id)).join(", ") + "."))
     }
     return lists
   }

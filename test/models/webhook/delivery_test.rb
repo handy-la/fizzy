@@ -156,6 +156,23 @@ class Webhook::DeliveryTest < ActiveSupport::TestCase
     assert_not delivery.succeeded?
   end
 
+  # Handy #2372: the 2 × ENDPOINT_TIMEOUT budget covers the whole request.
+  # A response that is slow before its first byte used to end only when it
+  # arrived, because the deadline was checked per body chunk.
+  test "deliver gives up when the whole request passes its total deadline" do
+    delivery = webhook_deliveries(:pending)
+    stub_const(Webhook::Delivery, :ENDPOINT_TIMEOUT, 0.1.seconds) do
+      stub_request(:post, delivery.webhook.url).to_return(->(_request) { sleep 1.5; { status: 200, body: "" } })
+
+      started = Process.clock_gettime(Process::CLOCK_MONOTONIC)
+      delivery.deliver
+      elapsed = Process.clock_gettime(Process::CLOCK_MONOTONIC) - started
+
+      assert_equal "connection_timeout", delivery.response[:error]
+      assert_operator elapsed, :<, 1.0, "the request stopped at its deadline, not when the response arrived"
+    end
+  end
+
   test "deliver when the connection is refused" do
     delivery = webhook_deliveries(:pending)
     stub_request(:post, delivery.webhook.url).to_raise(Errno::ECONNREFUSED)

@@ -58,6 +58,22 @@ class WorkMap::SourceTest < ActiveSupport::TestCase
     end
   end
 
+  # Handy #2372: the 5 s cover the connection and every read together. A
+  # response slow before its first byte used to end only when it arrived,
+  # because the total was checked per body chunk.
+  test "the read gives up when the whole request passes its total deadline" do
+    stub_const(WorkMap::Source, :TIMEOUT, 0.2.seconds) do
+      stub_request(:get, URL).to_return(->(_request) { sleep 1.5; { status: 200, body: work_map_answer.to_json } })
+
+      started = Process.clock_gettime(Process::CLOCK_MONOTONIC)
+      result = WorkMap::Source.new(url: URL, token_file: @token_file.path, cache: ActiveSupport::Cache::NullStore.new).read
+      elapsed = Process.clock_gettime(Process::CLOCK_MONOTONIC) - started
+
+      assert_equal [ "failed", "timeout" ], [ result.status, result.error ]
+      assert_operator elapsed, :<, 1.0, "the read stopped at its deadline, not when the response arrived"
+    end
+  end
+
   test "a missing token file fails without a request" do
     request = stub_request(:get, URL)
 

@@ -98,6 +98,41 @@ class WorkMapSystemTest < ApplicationSystemTestCase
     assert_no_text "oculto por los filtros"
   end
 
+  # Handy #2372: a filter that hides the chosen card clears the selection, and
+  # the panel and «Enfocar cadena» follow it.
+  test "a filter that hides the chosen card empties the panel and disables the chain button" do
+    visit work_map_url
+    find(node(@a)).click
+    within(".work-map__panel") { assert_text "Beta ##{@a.number}" }
+    assert_no_selector "button[data-work-map-target=chainButton][disabled]"
+
+    find(".work-map__filters summary").click
+    within(".work-map__filters-body") { check "Alpha" }
+
+    assert_no_selector node(@a)
+    assert_no_selector ".work-map__panel", visible: true
+    assert_no_text "Beta ##{@a.number}"
+    assert_selector "button[data-work-map-target=chainButton][disabled]"
+  end
+
+  # Handy #2372: a dependent that still waits on another pending prerequisite
+  # is not released by resolving this card.
+  test "the release count leaves out a dependent that still has another pending prerequisite" do
+    other = cards(:shipping)
+    ENV["WORK_MAP_SOURCE_FILE"] = work_map_file(work_map_answer(
+      products: [ work_map_product("alpha", boards(:writebook), name: "Alpha"), work_map_product("beta", boards(:private), name: "Beta") ],
+      relations: [ work_map_relation([ "beta", @a ], [ "alpha", @b ]), work_map_relation([ "alpha", other ], [ "alpha", @b ]),
+        work_map_relation([ "beta", @a ], [ "alpha", @c ]) ]))
+    visit work_map_url
+
+    find(node(@a)).click
+
+    within(".work-map__panel") do
+      assert_text "Resolverla destrabaría 1 tarjeta, directas y transitivas: Alpha ##{@c.number}."
+      assert_no_text "destrabaría 2"
+    end
+  end
+
   test "a tap on a phone chooses the card" do
     window = Capybara.current_session.current_window
     original_size = window.size
