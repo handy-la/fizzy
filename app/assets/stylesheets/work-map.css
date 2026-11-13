@@ -210,8 +210,7 @@
     stroke-width: 2;
   }
 
-  .work-map__node--maybe .work-map__node-box,
-  .work-map__node--not_now .work-map__node-box {
+  .work-map__node--maybe .work-map__node-box {
     stroke-dasharray: 5 3;
   }
 
@@ -220,7 +219,8 @@
   }
 
   .work-map__node--inaccessible,
-  .work-map__node--missing {
+  .work-map__node--missing,
+  .work-map__node--postponed {
     .work-map__node-box {
       fill: var(--color-ink-lightest);
       stroke-dasharray: 2 3;

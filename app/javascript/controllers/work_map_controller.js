@@ -292,6 +292,10 @@ export default class extends Controller {
       heading.textContent = `${this.#productName(node.product)} #${node.number}`
       title.textContent = "Referencia ausente"
       footer.textContent = "No existe en Fizzy"
+    } else if (node.kind === "postponed") {
+      heading.textContent = `${this.#productName(node.product)} #${node.number}`
+      title.textContent = "Pospuesta (Not Now)"
+      footer.textContent = "No es trabajo vigente"
     } else {
       heading.textContent = "Tarjeta sin acceso"
       title.textContent = "Fuera de tus tableros"
@@ -426,6 +430,10 @@ export default class extends Controller {
     } else if (node.kind === "missing") {
       parts.push(heading(`${this.#productName(node.product)} #${node.number}`),
         paragraph("Referencia ausente: Dédalo nombra esta tarjeta, pero no existe en Fizzy."))
+      parts.push(...this.#relationLists(node))
+    } else if (node.kind === "postponed") {
+      parts.push(heading(`${this.#productName(node.product)} #${node.number}`),
+        paragraph("Pospuesta (Not Now): no es trabajo vigente, por eso no aparece como tarjeta del mapa. Sus relaciones siguen aquí."))
       parts.push(...this.#relationLists(node))
     } else {
       parts.push(heading("Tarjeta sin acceso"), paragraph("La relación apunta a una tarjeta fuera de tus tableros. No se muestran sus datos."))
@@ -597,6 +605,7 @@ export default class extends Controller {
     const node = this.graph.nodes.get(id)
     if (node.kind === "card") return `${this.#productName(node.product)} #${node.number}`
     if (node.kind === "missing") return `${this.#productName(node.product)} #${node.number} (ausente)`
+    if (node.kind === "postponed") return `${this.#productName(node.product)} #${node.number} (pospuesta)`
     return "Tarjeta sin acceso"
   }
 

@@ -71,6 +71,23 @@ class WorkMapsControllerTest < ActionDispatch::IntegrationTest
     assert_equal %w[ error key name read_at status truncated ], payload["products"].first.keys.sort
   end
 
+  # Handy #2412: a postponed card reaches the page only as a reference with no title.
+  test "a postponed card reaches the page only as a postponed reference" do
+    with_current_user(:kevin) { cards(:logo).postpone }
+    serve work_map_answer(products: [ work_map_product("alpha", boards(:writebook)) ],
+      relations: [ work_map_relation([ "alpha", cards(:logo) ], [ "alpha", cards(:text) ]) ])
+    sign_in_as :david
+
+    get work_map_path
+
+    payload = page_payload
+    assert_not_includes response.body, cards(:logo).title.to_json[1..-2]
+    assert_not payload["nodes"].any? { |node| node["kind"] == "card" && node["number"] == cards(:logo).number }
+    postponed = payload["nodes"].find { |node| node["kind"] == "postponed" }
+    assert_equal({ "id" => postponed["id"], "kind" => "postponed", "product" => "alpha", "number" => cards(:logo).number }, postponed)
+    assert_equal [ postponed["id"], "card-#{cards(:text).number}" ], payload["edges"].sole.values_at("from", "to")
+  end
+
   test "a failed source is shown as failed, with every card still there" do
     serve "not json"
     sign_in_as :david

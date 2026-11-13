@@ -98,6 +98,34 @@ class WorkMapSystemTest < ApplicationSystemTestCase
     assert_no_text "oculto por los filtros"
   end
 
+  # Handy #2412: a postponed card is never a card of the map, with or without
+  # filters; its relation shows a postponed reference beside the related card.
+  test "a postponed card stays off the map in the joint view, under a product filter and after a reset" do
+    @c.postpone(user: users(:kevin))
+    visit work_map_url
+
+    assert_selector node(@b)
+    assert_no_selector node(@c)
+    assert_selector ".work-map__node--postponed", text: "Pospuesta (Not Now)"
+    assert_text "#{all(".work-map__node--card").size} tarjetas en el mapa"
+
+    find(".work-map__filters summary").click
+    within(".work-map__filters-body") { check "Alpha" }
+    assert_no_selector node(@c)
+    assert_selector ".work-map__node--postponed"
+    assert_text "#{all(".work-map__node--card").size} tarjetas en el mapa"
+
+    within(".work-map__filters-body") { uncheck "Alpha"; check "Beta" }
+    assert_no_selector node(@b)
+    assert_no_selector ".work-map__node--postponed"
+    assert_text "1 tarjetas en el mapa"
+
+    within(".work-map__filters-body") { click_on "Restablecer filtros" }
+    assert_selector node(@b)
+    assert_no_selector node(@c)
+    assert_text "#{all(".work-map__node--card").size} tarjetas en el mapa"
+  end
+
   # Handy #2372: a filter that hides the chosen card clears the selection, and
   # the panel and «Enfocar cadena» follow it.
   test "a filter that hides the chosen card empties the panel and disables the chain button" do

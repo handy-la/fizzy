@@ -27,14 +27,33 @@ class WorkMapTest < ActiveSupport::TestCase
     assert_empty map.edges
   end
 
-  test "Maybe?, Not Now and a column are told apart, and a postponed card stays" do
+  # Handy #2412: Not Now is not current work; the map leaves it out.
+  test "Maybe? and a column are told apart, and a postponed card with no relation is not on the map" do
     cards(:logo).postpone(user: users(:kevin))
     map = WorkMap.new(user: users(:kevin), source: WorkMap::Source.new)
     by_number = map.nodes.index_by { |node| node.card.number }
 
     assert_equal [ "maybe", "Maybe?" ], [ by_number[cards(:buy_domain).number].disposition, by_number[cards(:buy_domain).number].stage_name ]
-    assert_equal [ "not_now", "Not Now" ], [ by_number[cards(:logo).number].disposition, by_number[cards(:logo).number].stage_name ]
     assert_equal [ "column", "In progress" ], [ by_number[cards(:text).number].disposition, by_number[cards(:text).number].stage_name ]
+    assert_not_includes by_number.keys, cards(:logo).number
+    assert_empty map.placeholders
+    assert cards(:logo).reload.postponed?, "the map never changes the card"
+  end
+
+  test "a postponed card named by a relation is not a card of the map, and the relation keeps a postponed reference" do
+    cards(:logo).postpone(user: users(:kevin))
+    answer = work_map_answer(products: [ work_map_product("alpha", @writebook), work_map_product("beta", @private) ],
+      items: [ work_map_item("alpha", cards(:logo), state: "held") ],
+      relations: [ work_map_relation([ "alpha", cards(:logo) ], [ "alpha", cards(:text) ]),
+        work_map_relation([ "alpha", cards(:logo) ], [ "alpha", cards(:layout) ]),
+        work_map_relation([ "alpha", cards(:logo) ], [ "beta", @secret ]) ])
+    map = WorkMap.new(user: users(:david), source: work_map_source(answer))
+
+    assert_not map.nodes.any? { |node| node.card == cards(:logo) }
+    placeholder = map.placeholders.sole
+    assert_equal [ "postponed", "alpha", cards(:logo).number ], [ placeholder.kind, placeholder.product.key, placeholder.number ]
+    assert_equal [ [ placeholder.id, "card-#{cards(:text).number}", "pending" ], [ placeholder.id, "card-#{cards(:layout).number}", "pending" ] ],
+      map.edges.map { |edge| [ edge.from, edge.to, edge.status ] }, "the dependency still shows, and a relation with no card end says nothing"
   end
 
   test "products come from Dédalo's registry at run time, and a new product appears with no code change" do

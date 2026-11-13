@@ -16,7 +16,6 @@ class WorkMap
 
     def disposition
       if card.closed? then "closed"
-      elsif card.postponed? then "not_now"
       elsif card.column.nil? then "maybe"
       else "column"
       end
@@ -25,7 +24,6 @@ class WorkMap
     def stage_name
       case disposition
       when "closed" then "Done"
-      when "not_now" then "Not Now"
       when "maybe" then "Maybe?"
       else card.column.name
       end
@@ -33,8 +31,10 @@ class WorkMap
   end
 
   # An endpoint Fizzy cannot show as a card: `inaccessible` (another board, a
-  # draft, anything outside the person's access: no identity at all) or
-  # `missing` (no such card on a board the person can access).
+  # draft, anything outside the person's access: no identity at all),
+  # `missing` (no such card on a board the person can access) or `postponed`
+  # (a Not Now card the person can see: Handy #2412, it is not current work, so
+  # it is never a card of the map, only the end of a relation).
   Placeholder = Data.define(:id, :kind, :product, :number)
 
   Edge = Data.define(:from, :to, :condition, :environment, :channel, :status, :since, :resolved_at)
@@ -115,8 +115,9 @@ class WorkMap
       @products_by_board ||= products.index_by(&:board_id)
     end
 
+    # Not Now is not current work (Handy #2412): only open cards outside it.
     def open_cards
-      @open_cards ||= base_cards.open.order(last_active_at: :desc, id: :desc).limit(max_cards + 1).to_a
+      @open_cards ||= base_cards.open.where.missing(:not_now).order(last_active_at: :desc, id: :desc).limit(max_cards + 1).to_a
     end
 
     def base_cards
@@ -128,11 +129,13 @@ class WorkMap
 
       cards = open_cards.first(max_cards).index_by(&:number)
       wanted = endpoint_numbers - cards.keys
+      # A closed endpoint is context of a dependency and stays a card; a
+      # postponed one becomes a reference (`postponed_reference`).
       base_cards.where(number: wanted).each { |card| cards[card.number] ||= card } if wanted.any?
 
       @placeholders = {}
       @edges = relations.filter_map { |relation, index| edge(relation, index, cards) }
-      @nodes = cards.values.map { |card| node(card) }
+      @nodes = cards.values.reject(&:postponed?).map { |card| node(card) }
     end
 
     def relations
@@ -147,8 +150,8 @@ class WorkMap
       from = endpoint(relation["prerequisite"], cards, "#{index}-p")
       to = endpoint(relation["dependent"], cards, "#{index}-d")
 
-      # Two endpoints the person cannot see: the relation says nothing to them.
-      unless hidden?(from) && hidden?(to)
+      # Neither end is a card or a missing reference: the relation says nothing.
+      unless silent?(from) && silent?(to)
         [ from, to ].grep(Placeholder).each { |placeholder| @placeholders[placeholder.id] ||= placeholder }
         Edge.new(from: id_of(from), to: id_of(to), condition: relation["condition"], environment: relation["environment"],
           channel: relation["channel"], status: relation["status"], since: relation["since"], resolved_at: relation["resolved_at"])
@@ -159,7 +162,17 @@ class WorkMap
     # card only when its product's board is the card's board.
     def endpoint(reference, cards, slot)
       card = cards[reference["card"]]
-      card && board_of(reference["product"]) == card.board_id ? card : placeholder(reference, slot)
+      if card.nil? || board_of(reference["product"]) != card.board_id then placeholder(reference, slot)
+      elsif card.postponed? then postponed_reference(card)
+      else card
+      end
+    end
+
+    # The person can see the card, so its product and number may show; its
+    # title and stage do not, because it is not work on the map.
+    def postponed_reference(card)
+      product = products_by_board.fetch(card.board_id)
+      Placeholder.new(id: "postponed-#{product.key}-#{card.number}", kind: "postponed", product:, number: card.number)
     end
 
     def board_of(product_id)
@@ -187,8 +200,8 @@ class WorkMap
       end
     end
 
-    def hidden?(endpoint)
-      endpoint.is_a?(Placeholder) && endpoint.kind == "inaccessible"
+    def silent?(endpoint)
+      endpoint.is_a?(Placeholder) && endpoint.kind.in?(%w[ inaccessible postponed ])
     end
 
     def id_of(endpoint)

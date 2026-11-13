@@ -7,7 +7,7 @@ los productos que la persona puede ver. Desde el mapa no se cambia nada.
 ## Fuentes y autoridad
 
 - **Fizzy** da la identidad: tablero, número, título, columna y disposición
-  (Maybe?, columna, Not Now, cerrada). Fizzy sólo muestra tarjetas que
+  (Maybe?, columna, cerrada). Fizzy sólo muestra tarjetas que
   `User#accessible_cards` permite.
 - **Dédalo** da la ejecución: el estado del trabajo, la espera, los hitos
   (integrada, desplegada, publicada) y las dependencias entre tarjetas. Dédalo
@@ -89,8 +89,15 @@ Fizzy es quien filtra por los permisos de cada persona.
 
 ## Qué muestra por defecto
 
-Todas las tarjetas abiertas (Maybe?, columnas, Not Now) de los tableros
-accesibles, y las cerradas que son extremo de una relación. Una tarjeta con
+Todas las tarjetas abiertas (Maybe?, columnas) de los tableros accesibles, y
+las cerradas que son extremo de una relación.
+
+Una tarjeta pospuesta (Not Now) no es trabajo vigente y nunca es una tarjeta
+del mapa, ni en la vista conjunta ni con filtros (Handy #2412). Si una
+relación la nombra, aparece como «Pospuesta (Not Now)»: con su producto y su
+número, sin título ni columna, para que la dependencia no parezca resuelta.
+Una relación sin una tarjeta del mapa ni una referencia ausente en ninguno de
+sus extremos no se muestra. Una tarjeta con
 datos de Dédalo muestra su estado; una sin datos muestra «Sin información de
 ejecución», que no es lo mismo que «Sin bloqueos». Hasta 3000 tarjetas; si hay
 más, el mapa lo dice.

@@ -605,3 +605,8 @@ título, y es un marcador por relación. El navegador recibe sólo los campos de
 `WorkMapsHelper`. Las flechas del lienzo detienen la propagación: la página
 tiene `keydown.left@document` hacia Home. Contrato: `docs/work-map.md`;
 evidencia: `docs/test-audits/handy-2348.md`.
+
+Una tarjeta Not Now está abierta para `Card.open`, pero no es trabajo
+vigente: nunca es nodo del mapa. Si una relación la nombra, el extremo es un
+marcador `postponed` (producto y número, sin título). Una cerrada sí sigue
+como nodo de contexto. Evidencia: `docs/test-audits/handy-2412.md`.
