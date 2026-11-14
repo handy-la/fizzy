@@ -237,6 +237,13 @@ Los medios remotos requieren una acción explícita; `img-src` y `media-src`
 no deben permitir todo HTTPS. Para S3 o un CDN, autoriza su origen exacto.
 Evidencia y límites: `docs/test-audits/handy-922.md`.
 
+El scrubber guarda una copia de las listas al arrancar. Desde Lexxy 1.0.4,
+Lexxy agrega su marcado (`data-language`, `audio`, `style`…) en un
+`after_initialize` que corre después del nuestro: por eso
+`config/initializers/sanitization.rb` nombra ese marcado. Al subir Lexxy,
+compara su `lexxy.sanitization` con esa lista; sin ella, Mermaid y el audio
+desaparecen sin error. Evidencia: `docs/test-audits/handy-2433.md`.
+
 ## Coding style
 
 Before editing or reviewing code, read STYLE.md.

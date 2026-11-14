@@ -9,8 +9,13 @@ Rails.application.config.after_initialize do
 
   # An explicit scrubber replaces the sanitizer's tag/attribute options.
   # Keep the existing allowlists as well as normalizing authored links.
+  # Lexxy 1.0.4 adds its markup in an after_initialize that runs after this
+  # one, and the scrubber keeps a copy of the lists: name Lexxy's markup here
+  # too, or code blocks lose data-language and audio is dropped (Handy 2433).
+  lexxy_tags = %w[ s u video audio source embed table tbody tr th td ]
+  lexxy_attributes = %w[ controls poster data-language style value start ]
   link_scrubber = ActionTextLinkScrubber.new
-  link_scrubber.tags = ActionText::ContentHelper.allowed_tags
-  link_scrubber.attributes = ActionText::ContentHelper.allowed_attributes
+  link_scrubber.tags = ActionText::ContentHelper.allowed_tags | lexxy_tags
+  link_scrubber.attributes = ActionText::ContentHelper.allowed_attributes | lexxy_attributes
   ActionText::ContentHelper.scrubber = link_scrubber
 end

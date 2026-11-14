@@ -2,6 +2,7 @@ class Webhook::Delivery < ApplicationRecord
   include Rails.application.routes.url_helpers
 
   class ResponseTooLarge < StandardError; end
+  class InvalidResponse < StandardError; end
 
   STALE_TRESHOLD = 7.days
   USER_AGENT = "fizzy/1.0.0 Webhook"
@@ -171,6 +172,8 @@ class Webhook::Delivery < ApplicationRecord
     def perform_request
       if uri.scheme != "https"
         { error: :insecure_uri }
+      elsif Webhook::PERMITTED_PORTS.exclude?(uri.port)
+        { error: :forbidden_port }
       elsif resolved_ip.nil?
         { error: :private_uri }
       else
@@ -179,11 +182,7 @@ class Webhook::Delivery < ApplicationRecord
         # The socket timeouts apply per phase and per read: only the outer
         # timeout bounds the whole request, connection and TLS included, to
         # 2 × ENDPOINT_TIMEOUT (Handy #2372).
-        response = Timeout.timeout(2 * ENDPOINT_TIMEOUT) do
-          http.request(request) do |net_http_response|
-            stream_body_with_limit(net_http_response)
-          end
-        end
+        response = Timeout.timeout(2 * ENDPOINT_TIMEOUT) { post(request) }
 
         { code: response.code.to_i }
       end
@@ -193,10 +192,19 @@ class Webhook::Delivery < ApplicationRecord
       { error: :dns_lookup_failed }
     rescue Timeout::Error, Errno::ETIMEDOUT
       { error: :connection_timeout }
-    rescue Errno::ECONNREFUSED, Errno::EHOSTUNREACH, Errno::ENETUNREACH, Errno::EADDRNOTAVAIL, Errno::EAFNOSUPPORT, Errno::ECONNRESET
+    rescue Errno::ECONNREFUSED, Errno::EHOSTUNREACH, Errno::ENETUNREACH, Errno::EADDRNOTAVAIL, Errno::EAFNOSUPPORT, Errno::ECONNRESET, Errno::EPIPE
       { error: :destination_unreachable }
     rescue OpenSSL::SSL::SSLError
       { error: :failed_tls }
+    rescue InvalidResponse, EOFError, Net::HTTPBadResponse, Net::HTTPHeaderSyntaxError
+      { error: :invalid_response }
+    end
+
+    # Net::HTTP raises ArgumentError for a response header value that holds a bare CR.
+    def post(request)
+      http.request(request) { |response| stream_body_with_limit(response) }
+    rescue ArgumentError
+      raise InvalidResponse
     end
 
     def stream_body_with_limit(response)
@@ -230,6 +238,7 @@ class Webhook::Delivery < ApplicationRecord
     def headers
       {
         "User-Agent" => USER_AGENT,
+        "Accept-Encoding" => "identity",
         "Content-Type" => content_type,
         "X-Webhook-Signature" => signature
       }
