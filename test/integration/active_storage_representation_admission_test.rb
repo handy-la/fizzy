@@ -100,6 +100,9 @@ class ActiveStorageRepresentationAdmissionTest < ActionDispatch::IntegrationTest
   end
 
   test "one identity is limited in how many new representations it asks for" do
+    # The rate counts in a fixed wall-clock minute: a run that crosses one starts a new count and
+    # the 31st request is served (Handy #2464). Pin the clock at the start of a minute.
+    travel_to Time.current.beginning_of_minute
     sign_in_as :david
     limit = ActiveStorage::RepresentationAdmission::PROCESSINGS_PER_MINUTE
 
