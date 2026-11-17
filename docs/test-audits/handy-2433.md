@@ -68,7 +68,7 @@ Las otras pruebas de upstream entran sin cambios:
 | `delivery_test.rb`: «… something other than HTTP», «… malformed header», «asks for an uncompressed response», «refuses a port other than 80 or 443 without connecting», `EPIPE` en «… can't reach the destination»; `Webhook::Delivery` (28511c2ce, 854cf0639, 15d63199a) | Respuestas que no son HTTP, cabecera con CR, puerto no permitido: entrega cerrada con su error y un fallo consecutivo, sin excepción del job. `EPIPE` como destino inalcanzable. Pide el cuerpo sin compresión. | Sin casos previos. Sin seam. |
 | `activities_controller_test.rb`: «index pages through event ids …», «… leaves out an event that moves to an inaccessible board …»; `ActivitiesController#index` (772f5736c, 4dca5927b, 605d1887f) | La página se elige por id y sólo se cargan sus eventos, otra vez por el scope accesible. Detecta volver a `preloaded` en la consulta paginada. | Sin casos previos. Sin seam. |
 | `boards/involvements_controller_test.rb`: «update as turbo stream replaces the involvement frame»; `Boards::InvolvementsController#update` (65a290c11) | Un envío de Turbo recibe el HTML del frame, no 406. | Sin casos previos. Sin seam. |
-| `saas/test/lib/production_secrets_test.rb` (259c62492) | Cada secreto de producción llega a `deploy.production.yml`. | No se ejecuta: el bundle SaaS necesita un repositorio privado (Handy 1394). |
+| `saas/test/lib/production_secrets_test.rb` (259c62492), dos casos; configuración de despliegue SaaS (`deploy.production.yml`, `.kamal/secrets.production`) | Las tres variables del acceso de revisores están en `env.secret` del rol web; cada secreto que leen los contenedores está asignado, y cada uno que se extrae también se pide al `kamal secrets fetch`. Detecta quitar `FIZZY_REVIEWER_SIGN_IN_CODES` de cualquiera de las tres listas. | Sin cobertura previa: ninguna prueba leía estas listas. Sin seam: lee archivos de configuración, no toca código de producción. Se ejecuta sólo con validación alternativa (abajo). |
 
 No se retira ninguna prueba.
 
@@ -138,3 +138,26 @@ contra el límite de 1,0 s. Pasó tres de tres veces en serie y en las suites
 completas. Ni la prueba ni el plazo cambian aquí.
 
 SaaS no está habilitado en este checkout: no se ejecutan `saas/test` (Handy 1394).
+
+**Excepción de RED para `ProductionSecretsTest`.** Con el bundle OSS la
+prueba carga `kamal` (2.12.0), pero el ERB de `saas/config/deploy.yml`
+(línea 21) pide la gema privada `fizzy-saas`: los dos casos dan
+`Gem::MissingSpecError`, no RED ni GREEN. Validación alternativa: un script
+de Ruby, sin Kamal ni ERB, lee las mismas tres listas como texto (el bloque
+`env.secret` de `deploy.production.yml`, las asignaciones y los nombres del
+`kamal secrets fetch` de `.kamal/secrets.production`) y aplica las mismas
+dos comprobaciones.
+
+- Archivos de la base (`origin/main` del fork): salida 1,
+  «`FIZZY_REVIEWER_SIGN_IN_CODES` no está en env.secret».
+- Archivos del merge: salida 0; 34 nombres en `env.secret`, 39 asignaciones,
+  37 pedidos.
+- Merge sin la línea de asignación: salida 1, «no está asignado».
+- Merge sin `Production/FIZZY_REVIEWER_SIGN_IN_CODES` en el fetch: salida 1,
+  «se extrae pero no se pide».
+
+Límites: el script no evalúa el ERB ni une `deploy.yml` con su destino, así
+que no ve los secretos de accesorios ni los que sólo define `deploy.yml`, y
+no comprueba que la prueba de upstream compile contra Kamal. Esos límites
+son de la ejecución, no del cambio: el diff sólo agrega un nombre a dos
+listas, sin valor.
