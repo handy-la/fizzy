@@ -49,6 +49,9 @@ Rails.application.routes.draw do
 
   resources :boards do
     scope module: :boards do
+      resource :tick_health, only: :show, controller: "tick_healths", defaults: { format: :json }
+      put "tick_health/:stage_id", to: "tick_healths#update", defaults: { format: :json }
+
       resources :accesses, only: :index
       resource :subscriptions
       resource :involvement

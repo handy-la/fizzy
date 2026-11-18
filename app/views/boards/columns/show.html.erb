@@ -10,6 +10,8 @@
   </h1>
 <% end %>
 
+<%= render "tick_healths/indicator", column: @column %>
+
 <section class="cards cards--grid">
   <%= turbo_frame_tag @column, :cards do %>
     <div class="cards__list hide-scrollbar" data-drag-drop-item-container>

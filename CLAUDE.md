@@ -311,6 +311,16 @@ límite. Así el productor actualiza un pendiente humano sin simular otro
 reporte del monitor. Evidencia:
 `docs/test-audits/handy-2314.md`.
 
+## Salud del tick por columna
+
+El indicador por columna usa el registro explícito de productos de Dédalo y
+`TickHealth::Declaration`; no consulta procesos ni deduce etapas de nombres.
+Su canal emite invalidaciones tras commit, relee el snapshot y comprueba el
+acceso en cada entrega. Usa `stream_from nombre do … end`: con una llamada
+anidada, las llaves se pueden enlazar al método que calcula el nombre y Cable
+transmite la invalidación sin recuperar el snapshot. Contrato y evidencia:
+`docs/tick-health.md`, `docs/test-audits/handy-2575.md`.
+
 ## Pegado en pruebas de sistema
 
 Lexxy 1.0.1 emite `lexxy:change` antes de programar su validez para el siguiente

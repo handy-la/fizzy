@@ -10,7 +10,7 @@
 #
 # It's strongly recommended that you check this file into your version control system.
 
-ActiveRecord::Schema[8.2].define(version: 2026_11_11_230000) do
+ActiveRecord::Schema[8.2].define(version: 2026_11_18_235000) do
   create_table "accesses", id: :uuid, charset: "utf8mb4", collation: "utf8mb4_0900_ai_ci", force: :cascade do |t|
     t.datetime "accessed_at"
     t.uuid "account_id", null: false
@@ -969,6 +969,20 @@ ActiveRecord::Schema[8.2].define(version: 2026_11_11_230000) do
     t.string "title"
     t.datetime "updated_at", null: false
     t.index ["account_id", "title"], name: "index_tags_on_account_id_and_title", unique: true
+  end
+
+  create_table "tick_healths", id: :uuid, charset: "utf8mb4", collation: "utf8mb4_0900_ai_ci", force: :cascade do |t|
+    t.uuid "account_id", null: false
+    t.uuid "board_id", null: false
+    t.string "product_id", limit: 100, null: false
+    t.string "stage_id", limit: 100, null: false
+    t.bigint "revision", default: 0, null: false
+    t.string "request_digest", limit: 64, null: false
+    t.text "evidence", null: false
+    t.datetime "created_at", null: false
+    t.datetime "updated_at", null: false
+    t.index ["account_id"], name: "index_tick_healths_on_account_id"
+    t.index ["board_id", "stage_id"], name: "index_tick_healths_on_board_id_and_stage_id", unique: true
   end
 
   create_table "user_settings", id: :uuid, charset: "utf8mb4", collation: "utf8mb4_0900_ai_ci", force: :cascade do |t|

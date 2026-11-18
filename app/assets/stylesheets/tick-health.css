@@ -1,0 +1,53 @@
+@layer components {
+  .tick-health {
+    color: var(--color-ink);
+    font-size: var(--text-x-small);
+    font-weight: 400;
+    grid-column: 1 / -1;
+    line-height: 1.5;
+    min-block-size: 1.75rem;
+    text-align: center;
+  }
+
+  .tick-health__button {
+    color: inherit;
+    display: inline-flex;
+    font: inherit;
+    gap: 0.4em;
+    max-inline-size: 100%;
+    min-block-size: 1.75rem;
+    padding: 0.1em 0.5em;
+    white-space: nowrap;
+    align-items: center;
+
+    &:focus-visible { outline: 2px solid var(--color-ink); outline-offset: 2px; }
+
+    svg { flex-shrink: 0; }
+    span { overflow: hidden; text-overflow: ellipsis; }
+  }
+
+  .cards.is-collapsed .tick-health {
+    display: none;
+  }
+
+  .tick-health__detail {
+    background: var(--color-canvas);
+    border: 1px solid var(--color-ink-lighter);
+    border-radius: 0.6rem;
+    color: var(--color-ink);
+    font-size: var(--text-small);
+    inline-size: min(24rem, calc(100vw - 1rem));
+    line-height: 1.5;
+    margin: 0;
+    max-block-size: min(38rem, calc(100dvh - 1rem));
+    overflow: auto;
+    overflow-wrap: anywhere;
+    padding: 1rem;
+    text-align: start;
+
+    dl { margin-block: 0.75rem; }
+    dt { font-weight: 600; margin-block-start: 0.6rem; }
+    dd { margin: 0; font-variant-numeric: tabular-nums; }
+    p { font-size: var(--text-x-small); margin-block-end: 0; }
+  }
+}

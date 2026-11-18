@@ -1,0 +1,20 @@
+{
+  "schema": 1,
+  "expected_revision": 0,
+  "product_id": "example",
+  "run_id": "tick-42",
+  "run_sequence": 42,
+  "state": "running",
+  "phase": "Comprobando despliegue",
+  "phase_started_at": "2026-11-18T23:00:00Z",
+  "reported_at": "2026-11-18T23:01:00Z",
+  "valid_until": "2026-11-18T23:06:00Z",
+  "next_run_at": "2026-11-18T23:10:00Z",
+  "expected_event": null,
+  "last_result": "failed",
+  "last_finished_at": "2026-11-18T22:55:00Z",
+  "last_reason": "No se pudo completar la comprobación",
+  "duration_min_seconds": null,
+  "duration_max_seconds": null,
+  "duration_samples": 0
+}

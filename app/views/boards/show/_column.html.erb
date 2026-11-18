@@ -15,6 +15,7 @@
       <%= icon_tag "grid", class: "translucent" %>
       <span class="for-screen-reader">Maximize column</span>
     <% end %>
+    <%= render "tick_healths/indicator", column: column %>
   </header>
   <%= column_frame_tag dom_id(column, :cards), src: board_column_path(column.board, column) %>
 <% end %>
