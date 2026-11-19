@@ -105,3 +105,13 @@ Fixtures prueban el contrato, nunca adopción LIVE. La aceptación transversal
 requiere productor real de Dédalo, API, Cable y DOM; después de las aprobaciones,
 una corrida programada genuina. No instalar desde este worktree ni dar por
 terminado ese circuito con un fixture.
+
+## Geometría del tablero
+
+El zócalo es hijo directo de la sección `.cards`. El contenedor
+`.cards__transition-container` conserva el margen y la traslación de Fizzy.
+Al plegar, la fila del zócalo deja un área propia para el contador y el título.
+Al abrir, el espacio inferior se reserva en el contenedor de las tarjetas
+para que el desplazamiento móvil llegue hasta la última. Mide las tarjetas o
+la lista visible al verificar la alineación. El `turbo-frame` usa
+`display: contents` y carece de caja propia.

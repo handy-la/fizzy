@@ -11,7 +11,7 @@ module ColumnsHelper
       data: { turbo_frame: "_top", scroll_to_target: column == card.column && card.open? ? "target" : nil }
   end
 
-  def column_tag(id:, name:, drop_url:, collapsed: true, selected: nil, card_color: "var(--color-card-default)", data: {}, **properties, &block)
+  def column_tag(id:, name:, drop_url:, collapsed: true, selected: nil, card_color: "var(--color-card-default)", data: {}, footer: nil, **properties, &block)
     classes = token_list("cards", properties.delete(:class), "is-collapsed": collapsed, "is-expanded": !collapsed)
     hotkeys_disabled = data[:card_hotkeys_disabled]
 
@@ -31,7 +31,7 @@ module ColumnsHelper
     )
 
     tag.section(id: id, class: classes, tabindex: "0", "aria-selected": selected, data: data, **properties) do
-      tag.div(class: "cards__transition-container", data: {
+      content = tag.div(class: "cards__transition-container", data: {
         controller: "navigable-list css-variable-counter",
         css_variable_counter_property_name_value: "--card-count",
         navigable_list_supports_horizontal_navigation_value: "false",
@@ -42,6 +42,7 @@ module ColumnsHelper
         card_hotkeys_disabled: hotkeys_disabled,
         action: "keydown->navigable-list#navigate turbo:before-visit@document->navigable-list#rememberSelection turbo:frame-load->navigable-list#forgetSelection"
       }, &block)
+      safe_join([ content, footer ])
     end
   end
 

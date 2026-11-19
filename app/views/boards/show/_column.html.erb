@@ -1,6 +1,7 @@
-<%# Helper Dependency Updated: column_tag 2026-09-12 %>
+<%# Helper Dependency Updated: column_tag 2026-11-18 %>
 <%= column_tag id: dom_id(column), name: column.name, drop_url: columns_card_drops_column_path("__id__", column_id: column.id), card_color: column.color.to_s,
       class: "cards--doing", style: "--card-color: #{column.color};",
+      footer: render("tick_healths/indicator", column: column),
   data: {
     drag_and_strum_target: "container",
     collapsible_columns_target: "column",
@@ -17,5 +18,4 @@
     <% end %>
   </header>
   <%= column_frame_tag dom_id(column, :cards), src: board_column_path(column.board, column) %>
-  <%= render "tick_healths/indicator", column: column %>
 <% end %>

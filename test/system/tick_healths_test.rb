@@ -160,24 +160,93 @@ class TickHealthsTest < ApplicationSystemTestCase
     page.driver.browser.execute_cdp("Emulation.setTouchEmulationEnabled", enabled: false)
   end
 
-  test "expanded health stays at the base without moving the header when evidence changes" do
-    visit board_url(@board)
-    expand @column
-    settle_columns
-    wait_for_tick
-    title = find("##{dom_id(@column)} .cards__expander-title")
-    button = find("##{dom_id(@column)} .tick-health__button")
-    assert_operator rect(button)["top"], :>, rect(title)["bottom"]
-    column_rect = rect(find("##{dom_id(@column)}"))
-    assert_in_delta column_rect["bottom"], rect(button)["bottom"], 1
-    baseline = header_geometry
-
-    [ [ "running", "En curso" ], [ "failed", "Último intento fallido" ], [ "waiting_resource", "Esperando recurso" ] ].each do |state, label|
-      write state: state, expected_event: "Disponibilidad del recurso"
-      assert_selector "##{dom_id(@column)} .tick-health__button", text: label, wait: 10
-      header_geometry.each_with_index do |value, index|
-        assert_in_delta baseline[index], value, 0.5, "the label must not move the title, header or cards"
+  { desktop: [ 1200, 800 ], mobile: [ 390, 844 ] }.each do |viewport, (width, height)|
+    test "health keeps folded columns aligned on #{viewport}" do
+      with_viewport(width, height) do
+        human = equivalent_human_column
+        visit board_url(@board)
+        wait_for_tick
+        assert_folded_alignment human
+        write state: "failed"
+        assert_selector "##{dom_id(@column)} .tick-health__button", text: "Último intento fallido", visible: :all
+        assert_folded_alignment human
       end
+    end
+
+    test "health keeps expanded columns aligned on #{viewport}" do
+      with_viewport(width, height) do
+        human = equivalent_human_column
+        visit board_url(@board)
+        expand human
+        native = expanded_geometry(human)
+        expand @column
+        wait_for_tick
+        assert_expanded_alignment native
+        button = find("##{dom_id(@column)} .tick-health__button")
+        assert_in_delta rect(find("##{dom_id(@column)}"))["bottom"], rect(button)["bottom"], 1
+
+        [ [ "running", "En curso" ], [ "failed", "Último intento fallido" ], [ "waiting_resource", "Esperando recurso" ] ].each do |state, label|
+          write state: state, expected_event: "Disponibilidad del recurso"
+          assert_selector "##{dom_id(@column)} .tick-health__button", text: label, wait: 10
+          assert_expanded_alignment native
+        end
+      end
+    end
+  end
+
+  { desktop: [ 1200, 480 ], mobile: [ 390, 600 ] }.each do |viewport, (width, height)|
+    test "folded health leaves a long title operable in a low #{viewport} window" do
+      with_viewport(width, height) do
+        @column.update!(name: "Validación de los despliegues de todas las etapas del tablero")
+        write state: "running"
+        visit board_url(@board)
+        stage = find("##{dom_id(@column)}.is-collapsed")
+        button = stage.find(".tick-health__button")
+        title = stage.find(".cards__expander-title")
+        assert_operator rect(stage.find(".cards__expander"))["bottom"], :<=, rect(button)["top"] + 0.5
+        assert_operator rect(title)["height"], :>=, 24
+
+        button.send_keys(:enter)
+        assert_selector ".tick-health__detail:popover-open", text: "Fase actual"
+        assert_selector "##{dom_id(@column)}.is-collapsed"
+        button.send_keys(:escape)
+        assert_no_selector ".tick-health__detail:popover-open"
+
+        page.execute_script("arguments[0].scrollIntoView({block: 'nearest', inline: 'center', behavior: 'instant'})", title)
+        area = rect(title)
+        page.driver.browser.execute_cdp("Emulation.setTouchEmulationEnabled", enabled: true, maxTouchPoints: 1)
+        page.driver.browser.execute_cdp("Input.dispatchTouchEvent", type: "touchStart", touchPoints: [
+          { x: area["x"] + area["width"] / 2, y: area["bottom"] - 4 }
+        ])
+        page.driver.browser.execute_cdp("Input.dispatchTouchEvent", type: "touchEnd", touchPoints: [])
+        assert_selector "##{dom_id(@column)}.is-expanded"
+      ensure
+        page.driver.browser.execute_cdp("Emulation.setTouchEmulationEnabled", enabled: false)
+      end
+    end
+  end
+
+  test "mobile can open the last card above the health footer and bottom navigation" do
+    with_viewport(390, 600) do
+      10.times do |index|
+        @board.cards.create!(title: "Comprobar entrega #{index + 1}", creator: users(:david), status: :published).triage_into(@column)
+      end
+      page.driver.browser.execute_cdp("Emulation.setSafeAreaInsetsOverride", insets: { bottom: 24 })
+      visit board_url(@board)
+      expand @column
+      stage = find("##{dom_id(@column)}.is-expanded")
+      list = stage.find(".cards__list", text: "Comprobar entrega")
+      last = list.all(".card__link", minimum: 10).last
+      footer = stage.find(".tick-health__button")
+      nav = find(".bar")
+      page.execute_script("arguments[0].scrollTop = arguments[0].scrollHeight", list)
+      assert_operator rect(last)["bottom"], :<=, rect(footer)["top"]
+      assert_operator rect(footer)["bottom"], :<=, rect(nav)["top"] + 0.5
+      destination = last[:href]
+      last.click
+      assert_current_path destination, url: true
+    ensure
+      page.driver.browser.execute_cdp("Emulation.setSafeAreaInsetsOverride", insets: { bottom: 0 })
     end
   end
 
@@ -266,12 +335,45 @@ class TickHealthsTest < ApplicationSystemTestCase
       page.evaluate_script("arguments[0].getBoundingClientRect().toJSON()", element)
     end
 
-    def header_geometry
-      column = find("##{dom_id(@column)}")
-      title = rect(column.find(".cards__expander-title"))
-      header = rect(column.find(".cards__header"))
-      frame = rect(column.find("turbo-frame", visible: :all))
-      [ title["x"], title["y"], title["height"], header["height"], frame["y"] ]
+    def with_viewport(width, height)
+      page.driver.browser.execute_cdp("Emulation.setDeviceMetricsOverride", width: width, height: height, deviceScaleFactor: 1, mobile: false)
+      yield
+    ensure
+      page.driver.browser.execute_cdp("Emulation.clearDeviceMetricsOverride")
+    end
+
+    def equivalent_human_column
+      human = columns(:writebook_in_progress)
+      human.cards.update_all(column_id: nil)
+      [ human, @column ].each do |column|
+        column.update!(name: "Validación de entrega")
+        @board.cards.create!(title: "Comprobar entrega", creator: users(:david), status: :published).triage_into(column)
+      end
+      human
+    end
+
+    def assert_folded_alignment(human)
+      settle_columns
+      configured = find("##{dom_id(@column)}.is-collapsed")
+      native = find("##{dom_id(human)}.is-collapsed")
+      %w[.cards__expander-count .cards__expander-title].each do |selector|
+        assert_in_delta rect(native.find(selector))["top"], rect(configured.find(selector))["top"], 0.5, selector
+      end
+    end
+
+    def expanded_geometry(column)
+      stage = find("##{dom_id(column)}.is-expanded")
+      card = stage.first(".cards__list .card", minimum: 1)
+      settle_columns
+      title = rect(stage.find(".cards__expander-title"))
+      { title_top: title["top"], title_left: title["left"] - rect(stage)["left"], card_top: rect(card)["top"] }
+    end
+
+    def assert_expanded_alignment(native)
+      actual = expanded_geometry(@column)
+      native.each do |part, position|
+        assert_in_delta position, actual.fetch(part), 0.5, part.to_s
+      end
     end
 
     def expand(column)

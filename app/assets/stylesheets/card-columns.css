@@ -40,6 +40,7 @@
     --cards-gap: min(1.2cqi, 1.7rem);
     --column-gap: 8px;
     --column-padding: calc(var(--column-gap) * 2);
+    --column-start-gap: 0.5ch; /* Allow a little room for the mini bubble */
     --column-transition-duration: 300ms;
     --column-width-collapsed: 40px;
     --column-width-expanded: 450px;
@@ -185,7 +186,7 @@
   .cards__transition-container {
     block-size: 100%;
     border-radius: calc(var(--column-width-collapsed) / 2);
-    margin-block-start: 0.5ch; /* Allow a little room for the mini bubble */
+    margin-block-start: var(--column-start-gap);
     transition: translate var(--column-transition-duration) var(--ease-out-overshoot-subtle);
 
     @media (min-width: 640px) {

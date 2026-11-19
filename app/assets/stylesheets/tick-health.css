@@ -1,25 +1,57 @@
 @layer components {
   /* The board's 20lh minimum can extend behind the fixed navigation on low
      windows. Reserve a viewport-sized board before anchoring its footers. */
-  .card-columns:has(.tick-health) { min-block-size: 0; }
+  .card-columns:has(.tick-health) {
+    min-block-size: 0;
 
-  /* The footer reserves space independently of state and countdown width. */
-  .cards:has(.tick-health) > .cards__transition-container {
-    margin-block-start: 0;
-    padding-block-end: 3rem;
-    position: relative;
-    translate: none;
+    @media (max-width: 639px) {
+      /* Keep both controls usable when the main area has to scroll. */
+      min-block-size: calc(2 * var(--column-width-collapsed) + var(--column-start-gap) + 4rem + var(--custom-safe-inset-bottom));
+      padding-block-end: var(--custom-safe-inset-bottom);
+    }
   }
 
-  .cards--grid:has(> .tick-health) {
-    min-block-size: 20rem;
-    padding-block-end: 3rem;
+  .cards:has(> .tick-health) {
+    --tick-footer-size: 3rem;
+
+    &.is-expanded > .cards__transition-container {
+      block-size: calc(100% - var(--column-start-gap));
+      padding-block-end: var(--tick-footer-size);
+    }
+
+    &.is-collapsed {
+      --tick-folded-offset: var(--column-start-gap);
+      --tick-footer-size: clamp(0px, calc(100% - var(--tick-folded-offset) - 2 * var(--column-width-collapsed)), min(13.5rem, 40dvh));
+
+      display: grid;
+      grid-template-columns: minmax(0, 1fr);
+      grid-template-rows: minmax(0, 1fr) var(--tick-footer-size);
+
+      @media (min-width: 640px) {
+        --tick-folded-offset: var(--column-width-collapsed);
+      }
+
+      > .cards__transition-container {
+        block-size: calc(100% - var(--tick-folded-offset));
+      }
+
+      /* Leave the count and title inside the expander's own hit area. */
+      .cards__expander-title {
+        max-inline-size: min(50vh, calc(100% - var(--column-width-collapsed) - 0.5ch));
+      }
+    }
+
+    &.cards--grid {
+      min-block-size: 20rem;
+      padding-block-end: var(--tick-footer-size);
+    }
   }
 
   .tick-health-stage-title > h1 { font: inherit; }
 
   .tick-health {
     background: var(--color-canvas);
+    block-size: var(--tick-footer-size);
     border-block-start: 1px solid var(--color-ink-lighter);
     color: color-mix(in oklch, var(--color-ink) 72%, var(--color-canvas));
     font-size: 0.6875rem;
@@ -33,7 +65,7 @@
 
   .tick-health__button {
     align-items: center;
-    block-size: 3rem;
+    block-size: 100%;
     border-radius: 0;
     color: inherit;
     display: flex;
@@ -79,16 +111,17 @@
   }
 
   .cards.is-collapsed .tick-health {
-    --tick-footer-size: min(13.5rem, 40dvh);
-    block-size: var(--tick-footer-size);
+    block-size: auto;
     font-size: 0.625rem;
+    inset: auto;
     line-height: 1.2;
+    position: relative;
 
-    .tick-health__button { block-size: 100%; display: block; padding: 0; }
+    .tick-health__button { display: block; padding: 0; }
     .tick-health__state {
       top: 0.75rem;
       right: 0.25rem;
-      max-inline-size: calc(var(--tick-footer-size) - 1.5rem);
+      max-inline-size: calc(100% - 1.5rem);
       position: absolute;
       writing-mode: vertical-rl;
     }
@@ -99,7 +132,7 @@
       inline-size: auto;
       top: 0.75rem;
       left: 0.25rem;
-      max-inline-size: calc(var(--tick-footer-size) - 1.5rem);
+      max-inline-size: calc(100% - 1.5rem);
       min-inline-size: 0;
       position: absolute;
       writing-mode: vertical-rl;
