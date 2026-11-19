@@ -9,12 +9,13 @@ const LABELS = {
 const RESULTS = { succeeded: "Completado", noop: "Sin cambios", failed: "Fallido", cancelled: "Cancelado" }
 
 export default class extends Controller {
-  static targets = [ "button", "label", "detail", "fields" ]
-  static values = { board: String, stage: String, snapshot: Object, url: String }
+  static targets = [ "button", "label", "icon", "path", "next", "nextLabel", "detail", "fields" ]
+  static values = { board: String, stage: String, snapshot: Object, url: String, icons: Object }
 
   #state
   #subscription
   #timer
+  #clock
   #request
   #generation = 0
   #pinned = false
@@ -29,11 +30,18 @@ export default class extends Controller {
     this.recover()
     this.#subscribe()
     this.#timer = setInterval(() => this.refresh(), 15_000)
+    // Local display only: the clock never polls or broadcasts once per second.
+    this.#clock = setInterval(() => {
+      const previous = this.labelTarget.textContent
+      this.#summary()
+      if (previous !== this.labelTarget.textContent) this.refresh()
+    }, 1000)
   }
 
   disconnect() {
     this.#generation++
     clearInterval(this.#timer)
+    clearInterval(this.#clock)
     this.#request?.abort()
     this.#subscription?.unsubscribe()
     this.hide()
@@ -104,8 +112,7 @@ export default class extends Controller {
     const state = this.#state
     const now = Date.now() + this.#serverOffset
     const stale = state.revision > 0 && Date.parse(state.valid_until) <= now
-    this.labelTarget.textContent = stale ? "Desactualizado" : LABELS[state.state] || "Sin señal"
-    this.buttonTarget.setAttribute("aria-label", `Salud del tick: ${this.labelTarget.textContent}`)
+    this.#summary()
     const fields = [
       [ "Estado", this.labelTarget.textContent ],
       [ "Actualización en vivo", this.#connected ? "Conectada" : "Sin conexión; se conserva la última señal" ],
@@ -126,6 +133,30 @@ export default class extends Controller {
     })
     this.fieldsTarget.replaceChildren(...nodes)
     if (this.detailTarget.matches(":popover-open")) this.show()
+  }
+
+  #summary() {
+    if (!this.#state) return
+    const state = this.#state
+    const now = Date.now() + this.#serverOffset
+    const stale = state.revision > 0 && Date.parse(state.valid_until) <= now
+    const key = stale ? "stale" : state.state
+    this.labelTarget.textContent = stale ? "Desactualizado" : LABELS[key] || "Sin señal"
+    this.iconTarget.dataset.state = key
+    this.pathTarget.setAttribute("d", this.iconsValue[key] || this.iconsValue.no_signal)
+    const unavailable = stale || [ "no_signal", "scheduler_missing", "disabled" ].includes(state.state)
+    const event = !unavailable && [ "waiting_ci", "waiting_resource", "lock_busy" ].includes(state.state) && state.expected_event
+    const next = Date.parse(state.next_run_at)
+    let value = "No disponible"
+    if (event) value = state.expected_event
+    else if (!unavailable && Number.isFinite(next)) {
+      const seconds = Math.ceil((next - now) / 1000)
+      value = seconds <= 0 ? "Pendiente" : [ Math.floor(seconds / 3600), Math.floor(seconds % 3600 / 60), seconds % 60 ].map(number => String(number).padStart(2, "0")).join(":")
+    } else if (state.state === "disabled") value = "Sin programación"
+    this.nextLabelTarget.textContent = event ? "Evento" : "Próximo"
+    this.nextTarget.textContent = value
+    this.nextTarget.title = value
+    this.buttonTarget.setAttribute("aria-label", `Salud del tick: ${this.labelTarget.textContent}. ${this.nextLabelTarget.textContent}: ${value}`)
   }
 
   pointing(event) {

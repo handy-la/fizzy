@@ -160,14 +160,16 @@ class TickHealthsTest < ApplicationSystemTestCase
     page.driver.browser.execute_cdp("Emulation.setTouchEmulationEnabled", enabled: false)
   end
 
-  test "expanded health stays above the stage name without moving the header when evidence changes" do
+  test "expanded health stays at the base without moving the header when evidence changes" do
     visit board_url(@board)
     expand @column
     settle_columns
     wait_for_tick
     title = find("##{dom_id(@column)} .cards__expander-title")
     button = find("##{dom_id(@column)} .tick-health__button")
-    assert_operator rect(button)["bottom"], :<=, rect(title)["top"] + 0.5
+    assert_operator rect(button)["top"], :>, rect(title)["bottom"]
+    column_rect = rect(find("##{dom_id(@column)}"))
+    assert_in_delta column_rect["bottom"], rect(button)["bottom"], 1
     baseline = header_geometry
 
     [ [ "running", "En curso" ], [ "failed", "Último intento fallido" ], [ "waiting_resource", "Esperando recurso" ] ].each do |state, label|
@@ -188,11 +190,23 @@ class TickHealthsTest < ApplicationSystemTestCase
     assert_selector "##{dom_id(@column)}.is-collapsed"
     assert_selector "##{dom_id(@column)} .tick-health__button", text: "En curso"
     button = find("##{dom_id(@column)} .tick-health__button", text: "En curso")
-    assert_equal "vertical-rl", page.evaluate_script("getComputedStyle(arguments[0]).writingMode", button)
+    assert_selector "##{dom_id(@column)} .tick-health__state"
+    assert_equal "vertical-rl", page.evaluate_script("getComputedStyle(arguments[0]).writingMode", button.find(".tick-health__state"))
     column_rect = rect(find("##{dom_id(@column)}"))
     assert_operator rect(button)["width"], :>=, 24
+    assert page.evaluate_script("arguments[0].scrollHeight <= arguments[0].clientHeight + 1", button.find("[data-tick-health-target=label]")), "the vertical state must remain readable"
+    assert page.evaluate_script("arguments[0].scrollHeight <= arguments[0].clientHeight + 1", button.find(".tick-health__next")), "the vertical countdown must remain readable"
     assert_operator rect(button)["left"], :>=, column_rect["left"]
     assert_operator rect(button)["right"], :<=, column_rect["right"] + 0.5
+    state_rect = rect(button.find(".tick-health__state"))
+    schedule_rect = rect(button.find(".tick-health__schedule"))
+    assert_operator state_rect["left"], :>=, schedule_rect["right"] - 0.5
+    [ state_rect, schedule_rect ].each do |lane|
+      assert_operator lane["top"], :>=, rect(button)["top"]
+      assert_operator lane["bottom"], :<=, rect(button)["bottom"]
+    end
+    assert_in_delta column_rect["bottom"], rect(button)["bottom"], 1
+    assert_selector "##{dom_id(@column)} .tick-health__next", text: /\d{2}:\d{2}:\d{2}/
     page.execute_script("arguments[0].focus()", button)
     button.send_keys(:enter)
     assert_selector ".tick-health__detail:popover-open", text: "Fase actual"
@@ -209,6 +223,35 @@ class TickHealthsTest < ApplicationSystemTestCase
     assert_selector "##{dom_id(@column)}.is-collapsed"
   ensure
     page.driver.browser.execute_cdp("Emulation.setTouchEmulationEnabled", enabled: false)
+  end
+
+  test "status icons differ and the next tick clock advances without inventing a run after expiry" do
+    write state: "scheduled"
+    visit board_url(@board)
+    expand @column
+    wait_for_tick
+    selector = "##{dom_id(@column)}"
+    assert_selector "#{selector} .tick-health__next", text: /00:0[45]:[0-5]\d/
+    initial = find("#{selector} .tick-health__next").text
+    page.execute_script("window.tickClockOriginal = Date.now; Date.now = () => window.tickClockOriginal() + 2000")
+    assert_no_selector "#{selector} .tick-health__next", exact_text: initial, wait: 3
+    icons = []
+    %w[scheduled running waiting_ci waiting_resource deferred lock_busy noop failed no_signal scheduler_missing disabled].each do |state|
+      write state: state, expected_event: "Resultado esperado"
+      assert_selector "#{selector} .tick-health__icon[data-state='#{state}']", wait: 10
+      icons << find("#{selector} .tick-health__icon path", visible: :all)["d"]
+    end
+    assert_equal icons.length, icons.uniq.length
+    write state: "scheduled"
+    assert_selector "#{selector} .tick-health__button", text: "Programado", wait: 10
+    page.execute_script("Date.now = () => window.tickClockOriginal() + 301000")
+    assert_selector "#{selector} .tick-health__next", text: "Pendiente", wait: 3
+    assert_selector "#{selector} .tick-health__button", text: "Programado"
+    page.execute_script("Date.now = () => window.tickClockOriginal() + 601000")
+    assert_selector "#{selector} .tick-health__button", text: "Desactualizado", wait: 3
+    assert_selector "#{selector} .tick-health__next", text: "No disponible"
+    assert_selector "#{selector} .tick-health__icon[data-state='stale']"
+    assert_equal icons.length + 1, (icons + [ find("#{selector} .tick-health__icon path", visible: :all)["d"] ]).uniq.length
   end
 
   private
@@ -251,7 +294,7 @@ class TickHealthsTest < ApplicationSystemTestCase
       body = JSON.parse(file_fixture("tick_health/v1.json").read).merge(
         "expected_revision" => row&.revision || 0, "state" => state, "expected_event" => expected_event,
         "reported_at" => Time.current.utc.iso8601, "phase_started_at" => 2.minutes.ago.utc.iso8601,
-        "valid_until" => 10.minutes.from_now.utc.iso8601, "next_run_at" => 5.minutes.from_now.utc.iso8601,
+        "valid_until" => 10.minutes.from_now.utc.iso8601, "next_run_at" => (state.in?(%w[disabled scheduler_missing]) ? nil : 5.minutes.from_now.utc.iso8601),
         "last_finished_at" => 5.minutes.ago.utc.iso8601)
       result = TickHealth::Declaration.write(board: @board, stage_id: "deploying", body: body, user: users(:david))
       assert_includes [ :created, :updated ], result.code

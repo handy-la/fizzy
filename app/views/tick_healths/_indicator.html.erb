@@ -2,13 +2,20 @@
   <%= tag.div class: "tick-health", data: {
         controller: "tick-health", tick_health_board_value: column.board_id,
         tick_health_stage_value: stage["stage_id"],
+        tick_health_icons_value: TickHealthsHelper::TICK_ICONS,
         tick_health_snapshot_value: stage, tick_health_url_value: board_tick_health_path(column.board),
         action: "pointerenter->tick-health#hover pointerleave->tick-health#hideUnlessPinned pointerdown->tick-health#pointing focusin->tick-health#show focusout->tick-health#hideUnlessPinned keydown->tick-health#keyboard online@window->tick-health#recover"
       } do %>
     <button type="button" class="tick-health__button btn btn--plain" data-tick-health-target="button"
       data-action="click->tick-health#toggle" aria-expanded="false" aria-controls="tick_detail_<%= column.id %>">
-      <svg viewBox="0 0 16 16" width="14" height="14" fill="none" stroke="currentColor" stroke-width="1.3" aria-hidden="true"><circle cx="8" cy="8" r="6"/><path d="M8 4v4l2.5 1.5"/></svg>
-      <span data-tick-health-target="label"><%= tick_health_label(stage) %></span>
+      <span class="tick-health__state">
+        <svg class="tick-health__icon" data-tick-health-target="icon" data-state="<%= tick_health_state(stage) %>" viewBox="0 0 16 16" width="14" height="14" fill="none" stroke="currentColor" stroke-width="1.3" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path data-tick-health-target="path" d="<%= TickHealthsHelper::TICK_ICONS.fetch(tick_health_state(stage), TickHealthsHelper::TICK_ICONS.fetch('no_signal')) %>"/></svg>
+        <span data-tick-health-target="label"><%= tick_health_label(stage) %></span>
+      </span>
+      <span class="tick-health__schedule">
+        <span class="tick-health__next-label" data-tick-health-target="nextLabel">Próximo</span>
+        <span class="tick-health__next" data-tick-health-target="next">No disponible</span>
+      </span>
     </button>
     <div id="tick_detail_<%= column.id %>" class="tick-health__detail" popover="auto" data-tick-health-target="detail" data-action="toggle->tick-health#toggled">
       <strong><%= stage["description"] %></strong>

@@ -84,7 +84,17 @@ confirmar cada suscripción cierra la carrera de conexión y permite reinicios.
 
 El cliente conserva la revisión mayor de cada etapa, ignora duplicados y
 mensajes viejos, y recupera snapshot por HTTP al cargar y volver online.
-El reloj local actualiza vigencia y duración cada 15s, sin tráfico de red.
+El zócalo reserva espacio en la base de la columna. Al plegarla, conserva dos
+líneas verticales: estado con su icono monocromático y próximo tick o evento.
+Cada estado tiene un icono distinto, incluido el estado local desactualizado.
+La cuenta regresiva local avanza cada segundo, con cifras tabulares y espacio
+fijo, sin tráfico de red. Al alcanzar el horario indica Pendiente; no crea un
+run ni afirma que haya empezado. Una fuente vencida oculta ese reloj y muestra
+No disponible. Sin señal, sin programador y deshabilitado tampoco anuncian una
+fecha fiable. Las esperas por CI o recurso muestran el evento esperado cuando
+existe. La fecha absoluta y la fase siguen disponibles en el detalle.
+El detalle y la duración transcurrida se actualizan cada 15s. La vigencia del
+resumen también se comprueba cada segundo.
 Si falta socket no hay polling agresivo: vence la evidencia y deja de decir
 En curso. Un error de broadcast no revierte la persistencia ni afecta al tick.
 No se publican logs, comentarios, tokens o contenido comercial.

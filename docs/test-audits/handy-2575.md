@@ -160,3 +160,46 @@ Tras conservar el h1 y su título nativo separados del detalle, se repitió el
 archivo completo de salud: 6 pruebas, 93 aserciones, sin fallos ni errores
 (`.context/tick-correction-final-system.log`). Las capturas móviles finales
 corresponden a ese marcado.
+
+## Diseño Zócalo aprobado por Arturo
+
+Autoría previa de la actualización de los casos de geometría y del caso de reloj:
+
+- Contrato: el estado queda en la base de la columna abierta o plegada, con un
+  icono distinto por estado y tiempo restante del próximo tick conocido. El
+  reloj no informa una entrega ni mantiene fechas fiables con fuente vencida.
+  Dueño: presentación de salud; frontera: DOM y geometría reales del navegador.
+- Regresión: volver al encabezado, reutilizar un icono o quitar el reloj debe
+  fallar. Candidata sobre HEAD productivo sin cambiar, base completa
+  `6ef4e942ef85e8f0df34617df270b63a0e92b736`, antes de modificar la implementación.
+- Cobertura: se actualizan los dos casos de geometría existentes por la nueva
+  ubicación aprobada, conservando sus comprobaciones de estabilidad y operación.
+  Un caso adicional verifica avance, vencimiento e iconos; los casos de Cable
+  no observaban estos valores ni la transición local del reloj.
+- Seam: ninguno nuevo. Se usa el escritor real, el controlador Stimulus público,
+  Date.now del navegador y los controles reales. No se retiran defensas de API,
+  acceso ni transporte. El contador local no produce tráfico de red por segundo.
+
+
+RED de Zócalo: el mismo checkout seguía en el SHA completo indicado, sin
+cambios productivos, con sólo la candidata de sistema y esta ficha. Comando
+OSS, Ruby 4.0.9 y PARALLEL_WORKERS=1, desde fizzy-custom:
+`bin/rails test test/system/tick_healths_test.rb -i '/expanded health|folded health|status icons/'`.
+Exit 1: tres pruebas, 17 aserciones, tres fallos y cero errores. El indicador
+estaba arriba y no existían el reloj ni las dos líneas plegadas. Log local:
+`.context/tick-zocalo-red.log`. El primer intento con una consulta directa de
+un elemento ausente produjo un error y no se usa como RED.
+
+GREEN: `bin/rails test test/system/tick_healths_test.rb test/system/automatic_waits_test.rb`,
+mismo entorno, 13 pruebas, 203 aserciones, cero fallos y errores. Log local:
+`.context/tick-zocalo-green.log`. Incluye reloj que avanza sin nuevo snapshot,
+Pendiente al alcanzar el horario, fuente vencida sin reloj, doce iconos
+distintos contando stale, geometría estable y operación plegada con teclado y
+touch. El helper de escritura respeta la prohibición contractual de next_run_at
+para disabled y scheduler_missing. No se modificó la validación del productor.
+
+Una ventana baja expuso que el mínimo de 20lh del tablero podía dejar el pie
+detrás de la navegación inferior. Los tableros con salud eliminan ese mínimo;
+el espacio del pie se reserva en la columna y no depende del estado. La altura
+reservada de las líneas verticales es explícita para que el texto no se recorte
+por una medida lógica calculada desde el ancho de la columna.

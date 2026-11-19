@@ -1,72 +1,107 @@
 @layer components {
-  /* One reserved strip for the entire board, independent of signal length or
-     freshness. The indicator itself never participates in the header layout. */
-  .card-columns:has(.tick-health) .cards__header {
-    padding-block-start: 1.5rem;
+  /* The board's 20lh minimum can extend behind the fixed navigation on low
+     windows. Reserve a viewport-sized board before anchoring its footers. */
+  .card-columns:has(.tick-health) { min-block-size: 0; }
+
+  /* The footer reserves space independently of state and countdown width. */
+  .cards:has(.tick-health) > .cards__transition-container {
+    margin-block-start: 0;
+    padding-block-end: 3rem;
     position: relative;
+    translate: none;
   }
 
-  .tick-health-stage-title {
-    min-inline-size: 0;
-    position: relative;
-
-    &:has(.tick-health) { padding-block-start: 1.5rem; }
-    > h1 { font: inherit; }
+  .cards--grid:has(> .tick-health) {
+    min-block-size: 20rem;
+    padding-block-end: 3rem;
   }
+
+  .tick-health-stage-title > h1 { font: inherit; }
 
   .tick-health {
+    background: var(--color-canvas);
+    border-block-start: 1px solid var(--color-ink-lighter);
     color: color-mix(in oklch, var(--color-ink) 72%, var(--color-canvas));
     font-size: 0.6875rem;
     font-weight: 400;
-    inline-size: max-content;
-    inset-block-start: 0;
+    inset-block-end: 0;
     inset-inline: 0;
     line-height: 1.4;
-    margin-inline: auto;
-    max-inline-size: calc(100% - 1rem);
     position: absolute;
-    text-align: center;
     z-index: 1;
   }
 
   .tick-health__button {
     align-items: center;
-    block-size: 1.5rem;
+    block-size: 3rem;
+    border-radius: 0;
     color: inherit;
-    display: inline-flex;
+    display: flex;
     font: inherit;
-    gap: 0.4em;
-    max-inline-size: 100%;
-    padding: 0 0.35em;
+    gap: 0.5rem;
+    inline-size: 100%;
+    justify-content: space-between;
+    padding: 0 0.75rem;
     white-space: nowrap;
 
-    &:focus-visible { outline: 2px solid var(--color-ink); outline-offset: 2px; }
-
-    svg { block-size: 0.75rem; flex-shrink: 0; inline-size: 0.75rem; }
-    span { overflow: hidden; text-overflow: ellipsis; }
+    &:focus-visible { outline: 2px solid var(--color-ink); outline-offset: -2px; }
   }
 
-  /* The folded column has two reading lanes inside its existing 40 px:
-     a quiet status on the left and the stage name on the right. */
-  .cards.is-collapsed:has(.tick-health) .cards__expander-title {
-    align-self: flex-end;
-    line-height: 24px;
+  .tick-health__state {
+    align-items: center;
+    display: inline-flex;
+    gap: 0.4em;
+    min-inline-size: 0;
+
+    > span { overflow: hidden; text-overflow: ellipsis; }
+  }
+
+  .tick-health__icon { block-size: 0.75rem; flex-shrink: 0; inline-size: 0.75rem; }
+
+  .tick-health__schedule {
+    align-items: end;
+    display: flex;
+    flex-direction: column;
+    flex-shrink: 0;
+    gap: 0.1rem;
+    inline-size: 10rem;
+    max-inline-size: 45%;
+    min-inline-size: 8ch;
+  }
+
+  .tick-health__next-label { font-size: 0.5625rem; }
+  .tick-health__next {
+    font-size: 0.625rem;
+    font-variant-numeric: tabular-nums;
+    max-inline-size: 100%;
+    overflow: hidden;
+    text-overflow: ellipsis;
   }
 
   .cards.is-collapsed .tick-health {
-    block-size: min(15rem, 40dvh);
-    inline-size: 24px;
-    inset-block-start: calc(1.5rem + var(--column-width-collapsed) + 0.4rem);
-    inset-inline: 0 auto;
-    margin: 0;
-    max-inline-size: none;
+    --tick-footer-size: min(13.5rem, 40dvh);
+    block-size: var(--tick-footer-size);
+    font-size: 0.625rem;
+    line-height: 1.2;
 
-    .tick-health__button {
-      block-size: 24px;
-      inline-size: min(15rem, 40dvh);
-      justify-content: start;
-      max-inline-size: none;
-      padding: 0.35em 0;
+    .tick-health__button { block-size: 100%; display: block; padding: 0; }
+    .tick-health__state {
+      top: 0.75rem;
+      right: 0.25rem;
+      max-inline-size: calc(var(--tick-footer-size) - 1.5rem);
+      position: absolute;
+      writing-mode: vertical-rl;
+    }
+    .tick-health__schedule {
+      align-items: center;
+      flex-direction: row;
+      gap: 0.4rem;
+      inline-size: auto;
+      top: 0.75rem;
+      left: 0.25rem;
+      max-inline-size: calc(var(--tick-footer-size) - 1.5rem);
+      min-inline-size: 0;
+      position: absolute;
       writing-mode: vertical-rl;
     }
   }
