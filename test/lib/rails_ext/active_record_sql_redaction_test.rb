@@ -33,6 +33,7 @@ class ActiveRecordSqlRedactionTest < ActiveSupport::TestCase
     "push_subscriptions.auth_key" => "Web Push accepts a message only when it is signed with our VAPID key",
     "push_subscriptions.endpoint_digest" => "a SHA-256 digest of a push endpoint, not an address or a session credential",
     "push_subscriptions.p256dh_key" => "a public key",
+    "tick_healths.request_digest" => "a SHA-256 digest of validated non-secret tick evidence, to recognise a retry; it does not authenticate a producer",
     "webhook_dispatches.token" => "an internal job lease identifier with no public endpoint"
   }
 

@@ -76,3 +76,34 @@ No se verificaron aquí producción, systemd, tokens instalados ni adopción LIV
 La matriz del registro y el productor real son de Dédalo 2574. El circuito real
 y una corrida programada genuina sólo se aceptan después de los gates y las
 aprobaciones. Los fixtures de esta tarjeta no acreditan ese paso.
+
+## Corrección exigida por CI tras los primeros PASS
+
+El job `fizzy-custom-test`, run `01a1f113-1fa6-7148-8680-18827cf3559c`,
+sobre `5e00fd62f53799d3279f0bc4eff71b9cf2611d13` terminó con exit 1:
+3301 pruebas, 18318 aserciones, un fallo, cero errores, cinco omisiones.
+Falló únicamente `ActiveRecordSqlRedactionTest#test_every_column_that_looks_secret_is_redacted_or_declared_not_secret`:
+`tick_healths.request_digest` no estaba clasificado. No era un defecto de los
+límites no bloqueantes de revisión; esos límites se conservan sin cambios.
+
+Autoría previa de la clasificación en la prueba existente:
+
+- Contrato: cada columna cuyo nombre parece una credencial tiene una política
+  explícita de registro SQL. Dueño: el inventario de redacción de Fizzy.
+- Regresión: agregar una columna `digest` sin clasificación deja la prueba roja.
+  La CI anterior es el RED histórico del SHA exacto. Comprobación enfocada:
+  `bin/rails test test/lib/rails_ext/active_record_sql_redaction_test.rb -n /every_column/`.
+- Cobertura: la prueba existente ya detecta el caso; sólo se amplía su inventario
+  `NOT_SECRET` con una razón. No se duplica ni retira ninguna defensa.
+- Seam: ninguno nuevo. `request_digest` contiene SHA-256 de evidencia validada
+  no secreta para reconocer un reintento. No autentica, no autoriza y no contiene
+  el cuerpo original. Es la misma clasificación de `card_automatic_waits.request_digest`.
+
+La corrección renueva ambos gates sobre el nuevo diff y exige otra CI del SHA
+final; los PASS anteriores corresponden a la huella d216db8398e1, ronda 1.
+
+La comprobación enfocada repitió el RED local sobre el SHA anterior (1 prueba,
+4 aserciones, un fallo: columna sin clasificar). Tras la clasificación, el
+mismo comando dio GREEN: 1 prueba, 4 aserciones, sin fallos ni errores.
+Logs locales: `.context/tick-classification-red.log` y
+`.context/tick-classification-green.log`, en el workspace padre.
