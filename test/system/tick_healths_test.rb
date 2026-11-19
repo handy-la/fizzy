@@ -160,10 +160,80 @@ class TickHealthsTest < ApplicationSystemTestCase
     page.driver.browser.execute_cdp("Emulation.setTouchEmulationEnabled", enabled: false)
   end
 
+  test "expanded health stays above the stage name without moving the header when evidence changes" do
+    visit board_url(@board)
+    expand @column
+    settle_columns
+    wait_for_tick
+    title = find("##{dom_id(@column)} .cards__expander-title")
+    button = find("##{dom_id(@column)} .tick-health__button")
+    assert_operator rect(button)["bottom"], :<=, rect(title)["top"] + 0.5
+    baseline = header_geometry
+
+    [ [ "running", "En curso" ], [ "failed", "Último intento fallido" ], [ "waiting_resource", "Esperando recurso" ] ].each do |state, label|
+      write state: state, expected_event: "Disponibilidad del recurso"
+      assert_selector "##{dom_id(@column)} .tick-health__button", text: label, wait: 10
+      header_geometry.each_with_index do |value, index|
+        assert_in_delta baseline[index], value, 0.5, "the label must not move the title, header or cards"
+      end
+    end
+  end
+
+  test "folded health is a visible vertical control that keeps the stage closed on keyboard use" do
+    write state: "running"
+    visit board_url(@board)
+    expander = find("##{dom_id(@column)} .cards__expander")
+    expander.find(".cards__expander-title").click if expander["aria-expanded"] == "true"
+    settle_columns
+    assert_selector "##{dom_id(@column)}.is-collapsed"
+    assert_selector "##{dom_id(@column)} .tick-health__button", text: "En curso"
+    button = find("##{dom_id(@column)} .tick-health__button", text: "En curso")
+    assert_equal "vertical-rl", page.evaluate_script("getComputedStyle(arguments[0]).writingMode", button)
+    column_rect = rect(find("##{dom_id(@column)}"))
+    assert_operator rect(button)["width"], :>=, 24
+    assert_operator rect(button)["left"], :>=, column_rect["left"]
+    assert_operator rect(button)["right"], :<=, column_rect["right"] + 0.5
+    page.execute_script("arguments[0].focus()", button)
+    button.send_keys(:enter)
+    assert_selector ".tick-health__detail:popover-open", text: "Fase actual"
+    assert_selector "##{dom_id(@column)}.is-collapsed"
+    button.send_keys(:escape)
+    assert_no_selector ".tick-health__detail:popover-open"
+
+    page.driver.browser.execute_cdp("Emulation.setTouchEmulationEnabled", enabled: true, maxTouchPoints: 1)
+    area = rect(button)
+    point = { x: area["x"] + area["width"] / 2, y: area["y"] + area["height"] / 2 }
+    page.driver.browser.execute_cdp("Input.dispatchTouchEvent", type: "touchStart", touchPoints: [ point ])
+    page.driver.browser.execute_cdp("Input.dispatchTouchEvent", type: "touchEnd", touchPoints: [])
+    assert_selector ".tick-health__detail:popover-open", text: "Fase actual"
+    assert_selector "##{dom_id(@column)}.is-collapsed"
+  ensure
+    page.driver.browser.execute_cdp("Emulation.setTouchEmulationEnabled", enabled: false)
+  end
+
   private
+    def settle_columns
+      page.evaluate_async_script(<<~JS)
+        const done = arguments[0]
+        Promise.all(document.getAnimations().map(animation => animation.finished.catch(() => {}))).then(() => done())
+      JS
+    end
+
+    def rect(element)
+      page.evaluate_script("arguments[0].getBoundingClientRect().toJSON()", element)
+    end
+
+    def header_geometry
+      column = find("##{dom_id(@column)}")
+      title = rect(column.find(".cards__expander-title"))
+      header = rect(column.find(".cards__header"))
+      frame = rect(column.find("turbo-frame", visible: :all))
+      [ title["x"], title["y"], title["height"], header["height"], frame["y"] ]
+    end
+
     def expand(column)
       button = find("##{dom_id(column)} .cards__expander")
-      button.click unless button["aria-expanded"] == "true"
+      button.find(".cards__expander-title").click unless button["aria-expanded"] == "true"
     end
 
     def wait_for_tick

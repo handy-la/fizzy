@@ -18,6 +18,7 @@ export default class extends Controller {
   #request
   #generation = 0
   #pinned = false
+  #touching = false
   #connected = false
   #serverOffset = 0
   #serverTime = 0
@@ -127,12 +128,35 @@ export default class extends Controller {
     if (this.detailTarget.matches(":popover-open")) this.show()
   }
 
-  show() {
+  pointing(event) {
+    this.#touching = event.pointerType === "touch" || event.pointerType === "pen"
+  }
+
+  hover(event) {
+    if (event.pointerType === "mouse") this.show()
+  }
+
+  show(event) {
+    // A touch opens on click. Opening on its synthetic hover/focus can place
+    // the popover over the finger before touchend and cancel the activation.
+    if (event?.type === "focusin" && this.#touching && !this.buttonTarget.matches(":focus-visible")) return
     if (!this.detailTarget.matches(":popover-open")) this.detailTarget.showPopover()
     const anchor = this.buttonTarget.getBoundingClientRect()
     const { width, height } = this.detailTarget.getBoundingClientRect()
-    this.detailTarget.style.left = `${Math.max(8, Math.min(anchor.left, innerWidth - width - 8))}px`
-    this.detailTarget.style.top = `${Math.max(8, Math.min(anchor.bottom + 8, innerHeight - height - 8))}px`
+    const margin = 8
+    let left = Math.max(margin, Math.min(anchor.left, innerWidth - width - margin))
+    let top = Math.max(margin, Math.min(anchor.bottom + margin, innerHeight - height - margin))
+
+    // Keep the anchor clear when the tall detail fits beside a folded rail.
+    // Otherwise pointerleave would close it as soon as it covers the button.
+    if (anchor.bottom + margin + height > innerHeight && anchor.top - margin < height) {
+      if (anchor.left >= width + margin) left = anchor.left - width - margin
+      else if (anchor.right + margin + width <= innerWidth) left = anchor.right + margin
+    } else if (anchor.bottom + margin + height > innerHeight) {
+      top = anchor.top - height - margin
+    }
+    this.detailTarget.style.left = `${left}px`
+    this.detailTarget.style.top = `${top}px`
   }
 
   hideUnlessPinned() {
@@ -145,6 +169,7 @@ export default class extends Controller {
   }
 
   toggle(event) {
+    this.#touching = false
     event.preventDefault()
     event.stopPropagation()
     if (this.#pinned) this.hide()
@@ -152,6 +177,7 @@ export default class extends Controller {
   }
 
   keyboard(event) {
+    this.#touching = false
     // Board navigation handles Enter and Space. The health control owns them.
     if (event.target === this.buttonTarget && [ "Enter", " " ].includes(event.key)) this.toggle(event)
     if (event.key === "Escape") { event.stopPropagation(); this.hide() }

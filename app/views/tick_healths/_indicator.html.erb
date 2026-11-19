@@ -3,7 +3,7 @@
         controller: "tick-health", tick_health_board_value: column.board_id,
         tick_health_stage_value: stage["stage_id"],
         tick_health_snapshot_value: stage, tick_health_url_value: board_tick_health_path(column.board),
-        action: "mouseenter->tick-health#show mouseleave->tick-health#hideUnlessPinned focusin->tick-health#show focusout->tick-health#hideUnlessPinned keydown->tick-health#keyboard online@window->tick-health#recover"
+        action: "pointerenter->tick-health#hover pointerleave->tick-health#hideUnlessPinned pointerdown->tick-health#pointing focusin->tick-health#show focusout->tick-health#hideUnlessPinned keydown->tick-health#keyboard online@window->tick-health#recover"
       } do %>
     <button type="button" class="tick-health__button btn btn--plain" data-tick-health-target="button"
       data-action="click->tick-health#toggle" aria-expanded="false" aria-controls="tick_detail_<%= column.id %>">

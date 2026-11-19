@@ -107,3 +107,56 @@ La comprobación enfocada repitió el RED local sobre el SHA anterior (1 prueba,
 mismo comando dio GREEN: 1 prueba, 4 aserciones, sin fallos ni errores.
 Logs locales: `.context/tick-classification-red.log` y
 `.context/tick-classification-green.log`, en el workspace padre.
+
+## Corrección visual solicitada por Arturo
+
+Petición posterior a la entrega: poner la salud encima del nombre, reducir su
+peso visual, evitar saltos y conservarla al plegar la columna.
+
+Autoría previa de la ampliación de `TickHealthsTest`:
+
+- Contrato: salud encima del título abierto; salud legible y operable en una
+  franja vertical al plegar. Los cambios de estado o llegada de un snapshot no
+  mueven el título, el contador ni el inicio de las tarjetas. Dueño: encabezado
+  del tablero; frontera: geometría y acciones reales del navegador.
+- Regresión: ocultar el indicador plegado o devolverlo al flujo bajo el título
+  hace fallar las aserciones de visibilidad, orden y geometría. Se ejecuta la
+  candidata contra el commit cb66eed020df7fa8f9ec172ba278a0ee5981028a antes de
+  editar CSS o marcado.
+- Cobertura: los casos existentes cubren datos, Cable, acceso y detalle, pero no
+  la posición ni la geometría del encabezado. Se agregan dos casos al mismo archivo,
+  sin duplicar las pruebas de transporte o permisos.
+- Seam: ninguno. Se mide getBoundingClientRect y writing-mode sobre controles
+  productivos y se usan el escritor y el teclado que ya usan las otras pruebas.
+
+Evidencia de esta corrección: exportación aislada de
+`cb66eed020df7fa8f9ec172ba278a0ee5981028a` con la candidata final copiada al
+mismo archivo de sistema. Comando OSS, Ruby 4.0.9 y un worker:
+`bin/rails test test/system/tick_healths_test.rb -n '/expanded health|folded health/'`.
+RED: 2 pruebas, 10 aserciones, dos fallos, cero errores. Una sitúa el control
+por debajo del título; la otra no encuentra el control plegado. Log:
+`.context/tick-layout-base-red.log` del workspace padre. No se cuenta como RED
+el primer intento con un nombre incorrecto del método async de Capybara.
+
+GREEN final: `bin/rails test test/system/tick_healths_test.rb test/system/automatic_waits_test.rb`:
+12 pruebas, 137 aserciones, sin fallos ni errores. Log:
+`.context/tick-layout-final.log`. La prueba de geometría compara título, alto
+fijo del encabezado e inicio de tarjetas después de tres estados recibidos por
+Cable. El control plegado conserva 24 px de ancho para toque y no abre la etapa
+al activar su detalle con teclado o touch CDP.
+
+El helper de expansión ahora pulsa el título visible. El botón previo ocupa
+toda la altura de la columna: su centro puede coincidir con la nueva franja de
+salud, que es un control distinto. No se usa un click JS que omita hit testing.
+La prueba táctil detectó además la apertura prematura por foco/hover sintético:
+el toque ahora abre al completar el click, y el detalle evita tapar su ancla
+cuando puede colocarse a un lado. API, estados y productores no cambiaron.
+
+La petición explícita del usuario de colocar la salud sobre el nombre prima
+sobre la recomendación genérica de no añadir una línea sobre el título. No se
+introducen un estilo nuevo, una animación ni un color por estado.
+
+Tras conservar el h1 y su título nativo separados del detalle, se repitió el
+archivo completo de salud: 6 pruebas, 93 aserciones, sin fallos ni errores
+(`.context/tick-correction-final-system.log`). Las capturas móviles finales
+corresponden a ese marcado.

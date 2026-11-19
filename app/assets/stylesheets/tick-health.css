@@ -1,33 +1,74 @@
 @layer components {
+  /* One reserved strip for the entire board, independent of signal length or
+     freshness. The indicator itself never participates in the header layout. */
+  .card-columns:has(.tick-health) .cards__header {
+    padding-block-start: 1.5rem;
+    position: relative;
+  }
+
+  .tick-health-stage-title {
+    min-inline-size: 0;
+    position: relative;
+
+    &:has(.tick-health) { padding-block-start: 1.5rem; }
+    > h1 { font: inherit; }
+  }
+
   .tick-health {
-    color: var(--color-ink);
-    font-size: var(--text-x-small);
+    color: color-mix(in oklch, var(--color-ink) 72%, var(--color-canvas));
+    font-size: 0.6875rem;
     font-weight: 400;
-    grid-column: 1 / -1;
-    line-height: 1.5;
-    min-block-size: 1.75rem;
+    inline-size: max-content;
+    inset-block-start: 0;
+    inset-inline: 0;
+    line-height: 1.4;
+    margin-inline: auto;
+    max-inline-size: calc(100% - 1rem);
+    position: absolute;
     text-align: center;
+    z-index: 1;
   }
 
   .tick-health__button {
+    align-items: center;
+    block-size: 1.5rem;
     color: inherit;
     display: inline-flex;
     font: inherit;
     gap: 0.4em;
     max-inline-size: 100%;
-    min-block-size: 1.75rem;
-    padding: 0.1em 0.5em;
+    padding: 0 0.35em;
     white-space: nowrap;
-    align-items: center;
 
     &:focus-visible { outline: 2px solid var(--color-ink); outline-offset: 2px; }
 
-    svg { flex-shrink: 0; }
+    svg { block-size: 0.75rem; flex-shrink: 0; inline-size: 0.75rem; }
     span { overflow: hidden; text-overflow: ellipsis; }
   }
 
+  /* The folded column has two reading lanes inside its existing 40 px:
+     a quiet status on the left and the stage name on the right. */
+  .cards.is-collapsed:has(.tick-health) .cards__expander-title {
+    align-self: flex-end;
+    line-height: 24px;
+  }
+
   .cards.is-collapsed .tick-health {
-    display: none;
+    block-size: min(15rem, 40dvh);
+    inline-size: 24px;
+    inset-block-start: calc(1.5rem + var(--column-width-collapsed) + 0.4rem);
+    inset-inline: 0 auto;
+    margin: 0;
+    max-inline-size: none;
+
+    .tick-health__button {
+      block-size: 24px;
+      inline-size: min(15rem, 40dvh);
+      justify-content: start;
+      max-inline-size: none;
+      padding: 0.35em 0;
+      writing-mode: vertical-rl;
+    }
   }
 
   .tick-health__detail {
